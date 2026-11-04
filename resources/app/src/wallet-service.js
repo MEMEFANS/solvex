@@ -1311,11 +1311,8 @@ export function createWalletService(options = {}) {
       user.updatedAt = previousUpdatedAt;
       throw error;
     }
-    // 2026-11-01 后台充值 AIX：同步计入可用额度，充值的 AIX 可直接挂卖（无需再走匹配池）
-    if (symbol === 'A') {
-      try { database.addATokenUsableQuota(address, amountUnits); }
-      catch (e) { console.error(`[后台赠送] ${address} AIX 可用额度累加失败:`, e?.message || e); }
-    }
+    // 后台充值 AIX 只入余额，不发放可用额度：充值获得的 AIX 只能用于质押/开矿机，不可挂卖。
+    // 历史已发放的可用额度不追溯、不回收。
     return presentAssetAdjustment(adjustment, asset.decimals);
   }
   function presentAssetAdjustment(record, decimals) {
@@ -1367,15 +1364,7 @@ export function createWalletService(options = {}) {
       user.updatedAt = previousUpdatedAt;
       throw error;
     }
-    // 2026-11-01 后台扣除 AIX：同步扣减可用额度（不超过当前可用，避免出现负可用）
-    if (symbol === 'A') {
-      try {
-        const quota = database.getATokenUsableQuota(address);
-        const available = BigInt(quota.releasedUnits) - BigInt(quota.usedUnits);
-        const cut = available > 0n ? (available < amountUnits ? available : amountUnits) : 0n;
-        if (cut > 0n) database.consumeATokenUsableQuota(address, cut);
-      } catch (e) { console.error(`[后台扣除] ${address} AIX 可用额度扣减失败:`, e?.message || e); }
-    }
+    // 后台扣减 AIX 不再回收可用额度：充值已不发放可用额度，回收会误伤用户经匹配池获得的额度。
     return presentAssetAdjustment(adjustment, asset.decimals);
   }
 
