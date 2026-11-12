@@ -33,6 +33,7 @@ const KIND_LABELS = {
   parity: '平级奖',
   a10_pool_share: 'A10 分红',
   direct_count: '直推阶梯奖',
+  blindbox: '盲盒产出',
 };
 
 // 汇总用户的 SVX 收益流水（全部为 SVX、18 位精度）
@@ -121,6 +122,18 @@ export function createATokenRevenueService({ database }) {
       }
     } catch (error) { throw new Error(`SVX 收益读取失败：${error.message}`); }
 
+    // 5. 盲盒每日产出（写入待领取账本，已领取的计入 SVX 收益）
+    try {
+      for (const r of db.listATokenPendingRewards(addr, 'claimed', 500)) {
+        if (r.bizType !== 'blindbox') continue;
+        rows.push({
+          id: `blindbox_${r.id}`, kind: 'blindbox', label: KIND_LABELS.blindbox,
+          amount: fmtA(r.amountUnits), amountUnits: r.amountUnits, createdAt: r.claimedAt || r.createdAt,
+          detail: '盲盒每日产出 · 已领取',
+        });
+      }
+    } catch { /* 盲盒未启用时忽略 */ }
+
     // 按 kind 筛选
     let filtered = rows;
     if (kind) filtered = rows.filter(r => r.kind === kind);
@@ -141,7 +154,7 @@ export function createATokenRevenueService({ database }) {
     const minerUnits = sumUnits(allRows.filter(r => r.kind === 'miner'));
     const stakeUnits = sumUnits(allRows.filter(r => r.kind === 'stake'));
     const directUnits = sumUnits(allRows.filter(r => r.kind === 'direct_count' || r.kind === 'miner_direct' || r.kind === 'stake_direct'));
-    const teamUnits = sumUnits(allRows.filter(r => !['miner','stake','direct_count','miner_direct','stake_direct'].includes(r.kind)));
+    const teamUnits = sumUnits(allRows.filter(r => !['miner','stake','direct_count','miner_direct','stake_direct','blindbox'].includes(r.kind)));
     const teamTotalUnits = teamUnits + directUnits;
 
     // 按类型分组汇总
@@ -167,6 +180,7 @@ export function createATokenRevenueService({ database }) {
         direct: fmtA(directUnits.toString()),
         team: fmtA(teamUnits.toString()),
         teamTotal: fmtA(teamTotalUnits),
+        blindbox: fmtA(sumUnits(allRows.filter(r => r.kind === 'blindbox')).toString()),
         principalReturned:fmtA(returnedPrincipalUnits),
       },
       summary,

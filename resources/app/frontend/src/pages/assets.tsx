@@ -28,6 +28,9 @@ const time = (value?: number | string, short = false) => {
 const STATUS: Record<string, string> = { pending_review:'正在提现', pending_funds:'正在提现', pending_auto:'自动出款中', processing:'准备出款', signed:'等待广播', broadcast:'链上确认中', payout_failed:'出款失败', paid:'已到账', rejected:'已驳回·已退款', refunded:'已退回', pending:'确认中', confirmed:'已入账', credited:'已入账', expired:'已过期', loss:'亏损' };
 const statusLabel = (status?: string) => STATUS[status || ''] || status || '处理中';
 const TYPE_LABEL: Record<string, string> = { spot_trade:'现货成交', perp_trade:'合约成交', liquidation:'强制平仓', funding:'资金费', stake:'质押', unstake:'赎回质押', strategy_balance_consolidated:'策略划转', internal_strategy_settle:'策略结算', ai_copy_start:'加入跟单', ai_copy_redeem:'跟单赎回', aix_trade:'SVX 交易', deposit:'充值', withdrawal:'提现' };
+// 钱包操作类流水（红包 / 额度买卖 / 盲盒），来自 a-token/fund-records
+interface FundRecord { id: string; kind: string; label: string; direction: 'in' | 'out' | 'onchain'; asset: string; amount: string; detail?: string; createdAt: number }
+const DIRECTION_LABEL: Record<string, string> = { in: '收入', out: '支出', onchain: '链上支付' };
 
 function capitalView(item: CapitalRow) {
   const isFund = item.type === 'deposit' || item.type === 'withdrawal';
@@ -85,6 +88,7 @@ export default function AssetsPage() {
   const isPartner = shareholderQuery.data?.member?.status === 'active';
   const poolQuery = useQuery({ queryKey: ['svx-pool-price'], queryFn: () => api<{ priceUsdt?: string }>('a-token/pool', {}, false), staleTime: 60000 });
   const revenueQuery = useQuery({ queryKey: ['svx-revenue', identity], queryFn: () => api<RevenueReport>('a-token/revenue?limit=200'), enabled: wallet.authenticated && view === 'revenue' });
+  const fundRecordsQuery = useQuery({ queryKey: ['svx-fund-records', identity], queryFn: () => api<{ records: FundRecord[] }>('a-token/fund-records?limit=100'), enabled: wallet.authenticated && view === 'records' });
   const walletProfile = walletQuery.data, platform = platformQuery.data, balances = walletProfile?.balances;
   const markPrice = poolQuery.data?.priceUsdt || '0';
   const loading = walletQuery.isLoading || platformQuery.isLoading;
@@ -139,6 +143,7 @@ export default function AssetsPage() {
 
   const capital = platform?.capitalHistory || [], deposits = walletProfile?.deposits || [], withdrawals = walletProfile?.withdrawals || [];
   const rewards = walletProfile?.aiManagedRewards || [], revenue = revenueQuery.data;
+  const fundRecords = fundRecordsQuery.data?.records || [];
 
   return <div className="account-shell"><div id="account-content">
     <div id="assets-dashboard-view">
@@ -209,6 +214,14 @@ export default function AssetsPage() {
             <div className="rec-cards">{capital.map((item, index) => { const row = capitalView(item); return <RecordCard key={index} title={row.typeLabel} amount={row.value} positive={row.positive} meta={time(item.createdAt, true)} details={[['市场', row.market], ['方向', row.side], ['数量', row.size], ['状态', row.status]]} />; })}{!capital.length && <EmptyCard text="暂无交易及账户流水" />}</div>
           </RecordBlock>
 
+          <RecordBlock title="红包 / 额度 / 盲盒">
+            <div className="account-history"><table><thead><tr><th>时间</th><th>类型</th><th>方向</th><th>数量</th><th>说明</th></tr></thead><tbody>
+              {fundRecords.map(row => <tr key={row.id}><td>{time(row.createdAt)}</td><td>{row.label}</td><td className={row.direction === 'out' ? 'down' : row.direction === 'in' ? 'up' : ''}>{DIRECTION_LABEL[row.direction] || row.direction}</td><td>{row.direction === 'out' ? '−' : row.direction === 'in' ? '+' : ''}{formatDecimal(row.amount, 2)} {row.asset}</td><td>{row.detail || '—'}</td></tr>)}
+              {!fundRecords.length && <tr><td colSpan={5} className="account-empty">{fundRecordsQuery.isLoading ? '正在读取' : '暂无红包、额度或盲盒流水'}</td></tr>}
+            </tbody></table></div>
+            <div className="rec-cards">{fundRecords.map(row => <RecordCard key={row.id} title={row.label} amount={(row.direction === 'out' ? '−' : row.direction === 'in' ? '+' : '') + formatDecimal(row.amount, 2) + ' ' + row.asset} positive={row.direction !== 'out'} meta={time(row.createdAt, true)} details={[['方向', DIRECTION_LABEL[row.direction] || row.direction], ['说明', row.detail || '—']]} />)}{!fundRecords.length && <EmptyCard text={fundRecordsQuery.isLoading ? '正在加载…' : '暂无红包、额度或盲盒流水'} />}</div>
+          </RecordBlock>
+
           <RecordBlock title="跟单收益">
             <div className="account-history"><table><thead><tr><th>入账时间</th><th>跟单批次</th><th>资产</th><th>收益</th><th>收益日期</th><th>状态</th></tr></thead><tbody>
               {rewards.map((row, index) => { const loss = row.status === 'loss' || String(row.amount || '').startsWith('-'); return <tr key={index}><td>{time(row.createdAt)}</td><td>{row.batchId ? row.batchId.slice(-8).toUpperCase() : '-'}</td><td>{row.asset || 'USDT'}</td><td className={loss ? 'down' : 'up'}>{loss ? '-' : '+'}{formatDecimal(row.amount, 8)}</td><td>{row.rewardDate || '-'}</td><td>{statusLabel(row.status)}</td></tr>; })}
@@ -239,7 +252,7 @@ export default function AssetsPage() {
             <div className="aix-revenue-summary">
               {revenueQuery.isLoading ? '正在加载…' : <>
                 <div className="aix-rev-total"><span className="lbl">累计 SVX 收益</span><span className="val">{formatDecimal(revenue?.total, 2)}<small>SVX</small></span></div>
-                {[['昨日收益', 'yesterday'], ['能量释放', 'stake'], ['直推收益(10%)', 'direct'], ['间推/级差收益', 'team']].map(([title, key]) => <div className="aix-rev-item" key={key}><div className="lbl">{title}</div><div className="val">{formatDecimal(revenue?.stats?.[key], 2)} <small>SVX</small></div></div>)}
+                {[['昨日收益', 'yesterday'], ['能量释放', 'stake'], ['直推收益(10%)', 'direct'], ['间推/级差收益', 'team'], ['盲盒产出', 'blindbox']].map(([title, key]) => <div className="aix-rev-item" key={key}><div className="lbl">{title}</div><div className="val">{formatDecimal(revenue?.stats?.[key], 2)} <small>SVX</small></div></div>)}
               </>}
             </div>
           </RecordBlock>

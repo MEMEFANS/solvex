@@ -30,6 +30,67 @@ export function createATokenApi({
   const RATE_LIMIT_KEY = 'a-token-mutation';
   const revenueService = createATokenRevenueService({ database: walletService.database });
 
+  // 资金记录补充流水：红包收/发、蓄能/驱动额度买卖、盲盒入场（链上支付）
+  // 这些动作不进 platform/capitalHistory，需要单独汇总，否则用户对不上余额来源。
+  function fundRecords(wallet, limit) {
+    const addr = String(wallet || '').toLowerCase();
+    const dec = { USDT: 6, SVX: 18 };
+    const amountOf = (units, asset) => {
+      try { return formatUnits(BigInt(units || '0'), dec[asset] ?? 18); } catch { return '0'; }
+    };
+    const short = value => {
+      const text = String(value || '');
+      return text.length > 12 ? `${text.slice(0, 6)}…${text.slice(-4)}` : text;
+    };
+    const records = [];
+    // 红包：领到的
+    for (const row of walletService.database.listCommunityClaimedPacketShares(addr, limit)) {
+      const asset = row.asset === 'A' ? 'SVX' : 'USDT';
+      records.push({
+        id: `rp_in_${row.id}`, kind: 'redpacket_in', label: '群红包·领取', direction: 'in',
+        asset, amount: amountOf(row.amount_units, asset),
+        detail: `来自 ${short(row.sender)}${row.greeting ? ' · ' + row.greeting : ''}`,
+        createdAt: Number(row.claimed_at) || 0,
+      });
+    }
+    // 红包：发出的
+    for (const row of walletService.database.listCommunityPacketsBySender(addr, limit)) {
+      const asset = row.asset === 'A' ? 'SVX' : 'USDT';
+      const refunded = BigInt(row.refunded_units || '0') > 0n;
+      records.push({
+        id: `rp_out_${row.id}`, kind: 'redpacket_out', label: '群红包·发出', direction: 'out',
+        asset, amount: amountOf(row.total_units, asset),
+        detail: `已抢 ${Number(row.claimed_count) || 0}/${Number(row.share_count) || 0} 份${refunded ? ' · 未抢部分已退回' : ''}`,
+        createdAt: Number(row.created_at) || 0,
+      });
+    }
+    // 蓄能额度 / 驱动额度 一键买、一键卖
+    const zoneLabels = { alpha: '蓄能额度', beta: '驱动额度', market: '自由交易' };
+    for (const order of walletService.database.listATokenZoneOrders(addr, limit)) {
+      const usdt = amountOf(order.usdtUnits, 'USDT');
+      const svx = amountOf(order.aUnits, 'SVX');
+      const buy = order.side === 'buy';
+      records.push({
+        id: `zone_${order.id}`, kind: 'zone_trade', label: `${zoneLabels[order.zone] || order.zone}${buy ? '买入' : '卖出'}`,
+        direction: buy ? 'out' : 'in', asset: 'USDT', amount: usdt,
+        detail: buy ? `支付 ${usdt} USDT · 获得 ${svx} SVX` : `卖出 ${svx} SVX · 到账 ${usdt} USDT`,
+        createdAt: Number(order.createdAt) || 0,
+      });
+    }
+    // 盲盒入场（链上支付 1 USDT，不进平台余额）
+    const box = walletService.database.getATokenBlindBoxByWallet(addr);
+    if (box) {
+      records.push({
+        id: `blindbox_${box.id}`, kind: 'blindbox', label: '盲盒入场', direction: 'onchain',
+        asset: 'USDT', amount: amountOf(box.entryUsdtUnits, 'USDT'),
+        detail: `链上支付 · 产出 ${amountOf(box.totalUnits, 'SVX')} SVX / ${Number(box.claimDays) || 30} 天`,
+        createdAt: Number(box.startedAt) || 0,
+      });
+    }
+    records.sort((a, b) => b.createdAt - a.createdAt);
+    return records.slice(0, limit);
+  }
+
   function sendError(res, error) {
     send(res, Number(error?.statusCode) || 400, { error: error?.message || String(error), code: errorCode(error) });
   }
@@ -279,6 +340,14 @@ export function createATokenApi({
         try {
           const sp = new URLSearchParams(request.url?.split('?')[1] || '');
           return send(res, 200, { orders: zoneTradeService.history(session.address, Number(sp.get('limit') || 50)) });
+        } catch (e) { return sendError(res, e); }
+      }
+      // GET /api/a-token/fund-records：钱包操作类资金流水（红包 / 额度买卖 / 盲盒入场）
+      if (isGet && pathname === '/api/a-token/fund-records') {
+        const sp = new URLSearchParams(request.url?.split('?')[1] || '');
+        const limit = Math.min(Math.max(Number(sp.get('limit') || 100), 1), 300);
+        try {
+          return send(res, 200, { records: fundRecords(session.address, limit) });
         } catch (e) { return sendError(res, e); }
       }
       // 我的委托（含 OPEN / FILLED / CANCELLED）

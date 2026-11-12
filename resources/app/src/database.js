@@ -4433,6 +4433,20 @@ export function openDatabase(dataRoot) {
     return listCommunitySenderPacketsStmt.all(String(sender).toLowerCase(), String(asset), Number(since))
       .map(row => String(row.total_units));
   }
+  // 资金记录：我领到的红包（含红包资产与留言）
+  function listCommunityClaimedPacketShares(wallet, limit = 100) {
+    return db.prepare(`SELECT s.id, s.packet_id, s.amount_units, s.claimed_at, p.asset, p.greeting, p.sender
+      FROM community_red_packet_shares s JOIN community_red_packets p ON p.id = s.packet_id
+      WHERE s.claimed_by = ? AND s.status = 'claimed'
+      ORDER BY s.claimed_at DESC LIMIT ?`)
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 100, 1), 500));
+  }
+  // 资金记录：我发出的红包
+  function listCommunityPacketsBySender(wallet, limit = 100) {
+    return db.prepare(`SELECT * FROM community_red_packets WHERE sender = ?
+      ORDER BY created_at DESC LIMIT ?`)
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 100, 1), 500));
+  }
 
   // P2P 撮合部分成交：扣减订单剩余冻结额度
   function updateATokenOrderInputs(id, { inputUsdtUnits, inputAUnits, updatedAt }) {
@@ -4654,6 +4668,7 @@ export function openDatabase(dataRoot) {
     getCommunityRedPacketShareByClient, getCommunityRedPacketOpenShare, claimCommunityRedPacketShare,
     updateCommunityRedPacketClaimed, refundCommunityRedPacket, expireCommunityRedPacketShares,
     listExpiredCommunityRedPackets, listCommunityRedPacketsByIds, listCommunitySenderPackets,
+    listCommunityClaimedPacketShares, listCommunityPacketsBySender,
     getSetting, saveSetting, listSettingsByPrefix, deleteSetting,
     upsertAirdropAccount, getAirdropAccount, insertAirdropFlow, listAirdropFlows, findAirdropFlowByRef, sumAirdropFlowsWeek,
     // 代理账号
