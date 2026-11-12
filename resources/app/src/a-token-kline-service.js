@@ -102,6 +102,9 @@ function defaultSettings() {
     dailyChangePct: 1,
     // daily 模式当日锚点：{ dayKey(当日00:00秒), startTimeS, endTimeS, startPrice }（内部状态，勿手工改）
     daily: null,
+    // 固定价（>0 时生效）：SVX 池价与 K 线一律恒定在该价（如 0.1），用于关闭行情波动。
+    // 2026-11-12 用户确认锁定 0.1：100 USDT 精确兑换 1000 SVX，K 线呈水平线。
+    fixedPrice: 0,
     // 每日随机交易 A 数量基准（用于 volume 生成）
     baseVolumePerDayA: 50_000,
   };
@@ -422,7 +425,9 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
   function tickLiveBar() {
     ensureSeeded();
     const settings = getSettings();
-    if (settings.mode === 'manual') return { skipped: true, reason: 'manual mode' };
+    // 固定价优先于 manual：锁定价格时 K 线仍需按时间推进（只是恒为水平线）
+    const fixedPrice = Number(settings.fixedPrice);
+    if (!(fixedPrice > 0) && settings.mode === 'manual') return { skipped: true, reason: 'manual mode' };
     const nowS = Math.floor(clock() / 1000);
 
     // 计算一个价格"下一步"：根据当前模式
@@ -509,6 +514,8 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
       console.warn('[A币K线] nextPrice 非法，用 curPrice 顶回:', nextPrice, 'curPrice=', curPrice, 'mode=', settings.mode);
       nextPrice = curPrice && curPrice > 0 ? curPrice : 0.1;
     }
+    // 固定价模式：覆盖行情计算，池价与所有周期 K 线恒定在 fixedPrice（K 线为水平线）
+    if (fixedPrice > 0) nextPrice = fixedPrice;
 
     const volumeTick = Math.max(1,
       (settings.baseVolumePerDayA / 86400) * (10 + Math.random() * 30));
