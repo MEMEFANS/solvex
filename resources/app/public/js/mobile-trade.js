@@ -60,7 +60,8 @@
       <span class="mt-tf-label">1小时</span>
       <svg viewBox="0 0 24 24" fill="none" stroke="#a3b2b8" stroke-width="1.5"><path d="m6 9 6 6 6-6"/></svg>
     </button>${tfMenuHtml}</div>
-    ${iconButton('candles', '切换空心 K 线', 'candle')}${iconButton('fullscreen', '全屏图表', 'expand')}`);
+    ${iconButton('tools', '绘图工具', 'trend')}${iconButton('candles', '切换空心 K 线', 'candle')}${iconButton('fullscreen', '全屏图表', 'expand')}`);
+  toolbar.querySelector('[data-mt-action="tools"]').setAttribute('aria-expanded','false');
   chartPanel.prepend(toolbar);
   const chartArea = make('div', 'mt-only mt-chart-area', '');
   const drawingToolbar = make('div', 'mt-drawing-tools', ['cursor','trend','horizontal','fib','measure','undo','trash'].map((v,i) => iconButton(v, ['十字光标','绘制趋势线：选择两个点','绘制水平线：选择价格','斐波那契：选择两个点','测量涨跌：选择两个点','撤销上一条绘图','清除绘图'][i], v)).join(''));
@@ -79,8 +80,9 @@
   book.append(bookHint);
   const funding = make('section', 'mt-only mt-funding', '<h2>资金费</h2><p>永续合约每 8 小时结算</p><div><span>当前资金费率</span><strong id="mt-funding-rate">—</strong></div><div><span>距下次结算</span><strong id="mt-funding-countdown">—</strong></div><p id="mt-funding-note">暂无资金费数据</p>');
   find('.terminal-grid').append(funding);
-  const nav = make('nav', 'mt-only mt-bottom-nav', ['market','trade','account'].map((v,i) => `<button type="button" data-mt-view="${v}" aria-label="${['市场','交易','账户'][i]}">${svg(v)}<span>${['市场','交易','账户'][i]}</span></button>`).join(''));
-  nav.setAttribute('aria-label', '交易底部导航'); root.append(nav);
+  const nav = make('nav', 'mt-only mt-bottom-nav', ['market','trade','account'].map((v,i) => `<button type="button" data-mt-view="${v}" aria-label="${['市场','交易','账户'][i]}">${svg(v)}<span>${['行情','买卖','持仓与委托'][i]}</span></button>`).join(''));
+  nav.setAttribute('aria-label', '交易功能');
+  find('.terminal-marketbar').after(nav);
   const sheet = make('dialog', 'mt-sheet', '<div class="mt-sheet-head"><h2 id="mt-sheet-title"></h2><button type="button" aria-label="关闭面板">'+svg('close')+'</button></div><div id="mt-sheet-body"></div>');
   sheet.setAttribute('aria-labelledby','mt-sheet-title'); document.body.append(sheet);
   sheet.querySelector('button').addEventListener('click', () => sheet.close());
@@ -88,6 +90,7 @@
   sheet.addEventListener('close', () => { if (mounted) chartPanel.append($('trade-indicators')); });
 
   function relocate(node, target, before = null) {
+    if (!node || !target) return;
     const anchor = document.createComment('mobile-trade original position');
     node.before(anchor); moves.push({node,anchor}); target.insertBefore(node,before);
   }
@@ -103,8 +106,10 @@
     relocate($('trade-leverage-field'),controls);
     relocate(find('.amount-slider'),sliderWrap,sliderWrap.firstChild);
     relocate($('trade-book-precision'),bookFooter,bookFooter.firstChild);
-    savedLangMarkup = $('lang-toggle').innerHTML; $('lang-toggle').innerHTML = svg('globe');
-    if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>{if(mounted)$('lang-toggle').innerHTML=svg('globe');},{once:true});
+    if ($('lang-toggle') && !window.WG_REACT_APP) {
+      savedLangMarkup = $('lang-toggle').innerHTML; $('lang-toggle').innerHTML = svg('globe');
+      if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',()=>{if(mounted&&$('lang-toggle'))$('lang-toggle').innerHTML=svg('globe');},{once:true});
+    }
     $('trade-order-size').setAttribute('aria-label','下单数量或金额');
     $('trade-order-size').setAttribute('inputmode','decimal');
     $('trade-order-size').setAttribute('min','0'); $('trade-order-size').setAttribute('step','any');
@@ -123,7 +128,7 @@
     mounted = false;
     for (const {node,anchor} of moves.reverse()) { anchor.replaceWith(node); }
     moves.length = 0;
-    $('lang-toggle').innerHTML = savedLangMarkup;
+    if ($('lang-toggle') && savedLangMarkup !== undefined) $('lang-toggle').innerHTML = savedLangMarkup;
     document.body.classList.remove('mt-trading');
     $('trade-buy-label').textContent=window.tradeProduct==='perp'?'做多':'买入';
     $('trade-sell-label').textContent=window.tradeProduct==='perp'?'做空':'卖出';
@@ -212,11 +217,11 @@
     const body=$('mt-sheet-body');
     if(body.contains($('trade-indicators'))) chartPanel.append($('trade-indicators'));
     body.replaceChildren();
-    const titles={help:'开始使用 AxiX',details:'行情详情',settings:'交易显示设置',indicators:'图表指标'};
+    const titles={help:'开始使用 Solvex',details:'行情详情',settings:'交易显示设置',indicators:'图表指标'};
     $('mt-sheet-title').textContent=titles[kind];
     if(kind==='indicators') body.append($('trade-indicators'));
     if(kind==='help') {
-      body.innerHTML='<ol class="mt-help"><li><b>选择交易市场</b><p>点击交易对可切换币种、现货与永续合约。</p></li><li><b>查看行情或下单</b><p>底部「市场」查看图表，「交易」设置订单类型、方向和数量。</p></li><li><b>管理账户与订单</b><p>连接钱包后，在「账户」查看资产、持仓和委托记录。</p></li></ol><button class="mt-sheet-primary" type="button">开始交易</button>';
+      body.innerHTML='<ol class="mt-help"><li><b>选择交易市场</b><p>点击交易对可切换币种、现货与永续合约。</p></li><li><b>查看行情或下单</b><p>顶部「行情」查看图表，「买卖」设置订单类型、方向和数量。</p></li><li><b>管理账户与订单</b><p>连接钱包后，在「持仓与委托」查看资产、持仓和委托记录。</p></li></ol><button class="mt-sheet-primary" type="button">开始交易</button>';
       body.querySelector('button').onclick=()=>{sheet.close();setView('trade');};
     }
     if(kind==='details') {
@@ -242,8 +247,9 @@
     savedCandleOptions=copyOptions(tradeCandleSeries.options());
     initialVolume=tradeVolVisibility;
     savedPaneFactors=tradeChart.panes().map(p=>p.getStretchFactor());
-    tradeChart.applyOptions({layout:{background:{type:'solid',color:'#0d191e'},textColor:'#a2afb5',fontSize:12},grid:{vertLines:{color:'#19292f'},horzLines:{color:'#19292f'}},rightPriceScale:{borderColor:'#26363d',minimumWidth:66},timeScale:{borderColor:'#26363d',barSpacing:9}});
-    tradeCandleSeries.applyOptions({upColor:'#40b5a4',downColor:'#e16980',wickUpColor:'#40b5a4',wickDownColor:'#e16980'});
+    const theme=window.WGTheme?.chartOptions?.() || {};
+    tradeChart.applyOptions({...theme,layout:{...theme.layout,fontSize:12},rightPriceScale:{...theme.rightPriceScale,minimumWidth:66},timeScale:{...theme.timeScale,barSpacing:9}});
+    tradeCandleSeries.applyOptions({upColor:window.WGTheme?.UP||'#60d9b0',downColor:window.WGTheme?.DOWN||'#f3798b',wickUpColor:window.WGTheme?.UP||'#60d9b0',wickDownColor:window.WGTheme?.DOWN||'#f3798b'});
     setTradeVol(mobileVolume);
     sizeVolumePane();
     tradeChart.subscribeClick(onChartClick);
@@ -277,7 +283,7 @@
     const price=tradeCandleSeries.coordinateToPrice(event.point.y);
     if(!Number.isFinite(price)) return;
     if(drawTool==='horizontal') {
-      const priceLine=tradeCandleSeries.createPriceLine({price,color:'#50cdbb',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:''});
+      const priceLine=tradeCandleSeries.createPriceLine({price,color:'#0e9c88',lineWidth:1,lineStyle:2,axisLabelVisible:true,title:''});
       drawings.push([{priceLine}]); setDrawTool('cursor'); return;
     }
     if(!event.time) return;
@@ -285,7 +291,7 @@
     if(!drawStart) { drawStart=point; $('mt-draw-status').textContent='起点已选，点击终点完成'; return; }
     if(point.time===drawStart.time) { $('mt-draw-status').textContent='请选择另一个时间点'; return; }
     const start=drawStart, tool=drawTool, points=[start,point].sort((a,b)=>a.time-b.time), group=[];
-    const addLine=(data,color='#50cdbb')=>{const series=tradeChart.addSeries(LightweightCharts.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});series.setData(data);group.push(series);};
+    const addLine=(data,color='#0e9c88')=>{const series=tradeChart.addSeries(LightweightCharts.LineSeries,{color,lineWidth:1,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false,autoscaleInfoProvider:()=>null});series.setData(data);group.push(series);};
     if(tool==='fib') [0,.236,.382,.5,.618,1].forEach((ratio,i)=>{const value=start.value+(point.value-start.value)*ratio;addLine(points.map(p=>({time:p.time,value})),['#9eaeb4','#b3a07b','#b3a07b','#50cdbb','#50cdbb','#9eaeb4'][i]);});
     else addLine(points);
     drawings.push(group); setDrawTool('cursor');
@@ -307,6 +313,11 @@
     if(b.dataset.mtSec) timeframe(b.dataset.mtSec);
     if(b.dataset.mtBook) { book.dataset.mobileBook=b.dataset.mtBook;bookFooter.querySelectorAll('[data-mt-book]').forEach(x=>x.setAttribute('aria-pressed',String(x===b))); }
     const action=b.dataset.mtAction;
+    if(action==='tools') {
+      const expanded=root.classList.toggle('mt-tools-open');
+      b.setAttribute('aria-expanded',String(expanded));
+      if(!expanded)setDrawTool('cursor');
+    }
     if(['cursor','trend','horizontal','fib','measure'].includes(action)) setDrawTool(action);
     if(action==='undo') {if(drawings.length)removeDrawing(drawings.pop());setDrawTool('cursor');}
     if(action==='trash') clearDrawings();
@@ -315,7 +326,7 @@
     if(action==='fit') tradeChart.timeScale().fitContent();
     if(action==='auto') {tradeChart.priceScale('right').applyOptions({autoScale:true});snapTradeChartToLatest();}
     if(action==='percent'||action==='log') {priceScaleMode=priceScaleMode===(action==='log'?1:2)?0:(action==='log'?1:2);tradeChart.priceScale('right').applyOptions({mode:priceScaleMode});footer.querySelectorAll('[aria-pressed]').forEach(x=>x.setAttribute('aria-pressed',String(priceScaleMode===(x.dataset.mtAction==='log'?1:2))));}
-    if(action==='candles') {candleMode=!candleMode;tradeCandleSeries.applyOptions({upColor:candleMode?'#0d191e':'#40b5a4',borderVisible:candleMode,borderUpColor:'#40b5a4',borderDownColor:'#e16980'});b.setAttribute('aria-pressed',String(candleMode));}
+    if(action==='candles') {candleMode=!candleMode;tradeCandleSeries.applyOptions({upColor:candleMode?(window.WGTheme?.CHART?.layout?.background?.color||'#111e28'):(window.WGTheme?.UP||'#60d9b0'),borderVisible:candleMode,borderUpColor:window.WGTheme?.UP||'#60d9b0',borderDownColor:window.WGTheme?.DOWN||'#f3798b'});b.setAttribute('aria-pressed',String(candleMode));}
   });
   $('mt-order-type').addEventListener('change',e=>{find(`#trade-order-types [data-order-type="${e.target.value}"]`).click();sync();});
   $('mt-percent').addEventListener('input',e=>{const percent=Math.max(0,Math.min(100,Number(e.target.value)||0));const slider=find('.amount-slider');slider.value=percent;e.target.value=percent;slider.dispatchEvent(new Event('input',{bubbles:true}));});

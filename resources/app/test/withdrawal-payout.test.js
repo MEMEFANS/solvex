@@ -14,7 +14,7 @@ const userWallet = Wallet.createRandom();
 // 提现必须由用户钱包 personal_sign 签名（消息格式与 wallet-service.verifyOperationSignature 一致）
 const signedWithdrawalBody = async (user, body) => {
   const timestamp = String(Date.now());
-  const message = `AxiX 提现确认：${body.amount} ${body.asset ?? 'USDT'}，编号 ${body.requestId}，时间：${timestamp}`;
+  const message = `Solvex 提现确认：${body.amount} ${body.asset ?? 'USDT'}，编号 ${body.requestId}，时间：${timestamp}`;
   return { ...body, timestamp, signature: await user.signMessage(message) };
 };
 const tokenContract = '0x55d398326f99059fF775485246999027B3197955';

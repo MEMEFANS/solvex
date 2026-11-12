@@ -55,7 +55,7 @@ try {
   await page.evaluate(()=>switchTab('account'));
   await page.waitForFunction(()=>!!document.querySelector('#assets-table-body tr b'),{timeout:8000});
   const aixValues=()=>page.evaluate(()=>{
-    const row=[...document.querySelectorAll('#assets-table-body tr')].find(r=>r.querySelector('b')?.textContent==='AIX');
+    const row=[...document.querySelectorAll('#assets-table-body tr')].find(r=>r.querySelector('b')?.textContent==='SVX');
     return row?[row.cells[1].querySelector('.assets-total-amount').textContent,row.cells[2].textContent,row.cells[3].textContent]:null;
   });
   const beforePlatform=await aixValues();
@@ -63,7 +63,7 @@ try {
   holdPlatform=false;
   await Promise.all(held.map(request=>request.respond({contentType:'application/json',body:JSON.stringify(platform)})));
   const loadError=await page.evaluate(async()=>{try{await loadPlatformProfile();return null;}catch(error){return error.message;}});
-  console.log(JSON.stringify({first_assets_profile_error:loadError,AIX_before_platform_profile:beforePlatform}));
+  console.log(JSON.stringify({first_assets_profile_error:loadError,SVX_before_platform_profile:beforePlatform}));
   assert.equal(loadError,null,'Assets profile must load without a chart variable');
   assert.equal(beforePlatform[1],'4,321.87654321','Wallet balance must render while the platform request is pending');
   assert.deepEqual(await aixValues(),['4,324.12654321','4,321.87654321','2.25']);

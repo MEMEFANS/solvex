@@ -155,7 +155,7 @@ export function createPlatformApi({ platformService, fetchPrices, fetchFuturesPr
         const priceEntries = await Promise.all(PLATFORM_SYMBOLS.map(async symbol=>[symbol,await marketPrice('perp',symbol,{allowStale:true}).catch(()=>0)]));
         const spotPriceEntries = await Promise.all(PLATFORM_SYMBOLS.map(async symbol=>[symbol,await marketPrice('spot',symbol,{allowStale:true}).catch(()=>0)]));
         const markPrices = Object.fromEntries(priceEntries);
-        // 资产页 marketPrices 注入 AIX 现价（来自 AIX 交易页 priceProvider），让 AIX 行的市值列按现价折算 USDT
+        // 资产页 marketPrices 注入 SVX 现价（来自 SVX 交易页 priceProvider），让 SVX 行的市值列按现价折算 USDT
         const aixPrice = platformService.aTokenSpotPrice?.() || 0;
         send(res, 200, { connected:true, symbols:PLATFORM_SYMBOLS, marketPrices:{ ...Object.fromEntries(spotPriceEntries), A:aixPrice }, ...platformService.profile(session.address, markPrices, selectedSymbol) });
         return true;

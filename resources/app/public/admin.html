@@ -7,20 +7,19 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>AxiX 管理后台</title>
-  <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png?v=3">
-  <link rel="alternate icon" href="/favicon.ico?v=3">
-  <meta name="theme-color" content="#101a1c">
-  <link rel="stylesheet" href="/styles/base.css?v=14">
-  <link rel="stylesheet" href="/styles/operator-admin.css?v=15">
-  <link rel="stylesheet" href="/styles/community-links.css?v=2">
-  <link rel="stylesheet" href="/styles/terminal.css?v=51">
+  <title>Solvex 管理后台</title>
+  <link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png?v=20261111-domain-solvex-logo-3">
+  <link rel="alternate icon" href="/favicon.ico?v=20261111-domain-solvex-logo-3">
+  <meta name="theme-color" content="#ffffff">
+  <link rel="stylesheet" href="/styles/base.css?v=20261111-domain-solvex-2">
+  <link rel="stylesheet" href="/styles/operator-admin.css?v=20261111-domain-solvex-2">
+  <link rel="stylesheet" href="/styles/terminal.css?v=20261111-domain-solvex-2">
   <!-- 管理后台不加载 i18n.js：后台内容不翻译，避免词典替换破坏 DOM 结构 -->
 </head>
 <body class="operator-admin-page">
   <main id="admin-login-view" class="admin-login-view">
     <form id="admin-login-form" class="admin-login-card">
-      <div class="admin-login-brand"><i class="brand-mark"></i><b>AxiX Exchange</b></div>
+      <div class="admin-login-brand"><i class="brand-mark"></i><b>Solvex Exchange</b></div>
       <div class="admin-login-heading">
         <h1>管理后台</h1>
         <p>使用管理员账号登录运营控制台</p>
@@ -36,24 +35,24 @@
   <div id="admin-app" class="admin-app" hidden>
     <div class="admin-sidebar-backdrop" id="admin-sidebar-backdrop" aria-hidden="true"></div>
     <aside class="admin-sidebar" id="admin-sidebar" aria-label="管理侧边栏">
-      <div class="admin-sidebar-brand"><i class="brand-mark"></i><span><b>AxiX Exchange</b><small>管理控制台</small></span></div>
+      <div class="admin-sidebar-brand"><i class="brand-mark"></i><span><b>Solvex Exchange</b><small>管理控制台</small></span></div>
       <nav class="admin-navigation" aria-label="后台功能">
         <button class="active" type="button" data-admin-page="overview"><span class="admin-nav-icon">📊</span>首页总览</button>
         <button type="button" data-admin-page="users"><span class="admin-nav-icon">👥</span>用户管理</button>
+        <button type="button" data-admin-page="devices"><span class="admin-nav-icon">💻</span>设备管理</button>
         <button type="button" data-open-funds><span class="admin-nav-icon">↗</span>资金后台</button>
         <button type="button" data-admin-page="deposits"><span class="admin-nav-icon">💰</span>充值记录</button>
         <button type="button" data-admin-page="tokens"><span class="admin-nav-icon">🪙</span>代币管理</button>
         <button type="button" data-admin-page="stocks"><span class="admin-nav-icon">📈</span>股票管理</button>
-        <button type="button" data-admin-page="community"><span class="admin-nav-icon">↗</span>社群链接</button>
+        <button type="button" data-admin-page="community-admin"><span class="admin-nav-icon">👥</span>群聊管理</button>
         <div class="admin-sidebar-divider" aria-hidden="true"></div>
-        <button type="button" data-admin-page="a-kline"><span class="admin-nav-icon">📈</span>AIX 行情调控</button>
-        <button type="button" data-admin-page="a-token-balance"><span class="admin-nav-icon">💎</span>AIX 代币管理</button>
-        <button type="button" data-admin-page="a-miner"><span class="admin-nav-icon">⛏️</span>AIX 矿机管理</button>
+        <button type="button" data-admin-page="a-kline"><span class="admin-nav-icon">📈</span>SVX 行情调控</button>
+        <button type="button" data-admin-page="a-token-balance"><span class="admin-nav-icon">💎</span>SVX 代币管理</button>
+        <button type="button" data-admin-page="a-miner"><span class="admin-nav-icon">⛏️</span>SVX 矿机管理</button>
+        <button type="button" data-admin-page="blindbox"><span class="admin-nav-icon">🎲</span>盲盒概率</button>
         <button type="button" data-admin-page="team-activations"><span class="admin-nav-icon">🔍</span>团队激活查询</button>
         <button type="button" data-admin-page="announcement"><span class="admin-nav-icon">📢</span>平台公告</button>
-        <button type="button" data-admin-page="lottery"><span class="admin-nav-icon">🎰</span>抽奖管理</button>
         <button type="button" data-admin-page="support"><span class="admin-nav-icon">💬</span>在线客服<span id="admin-support-nav-badge" class="admin-nav-badge" hidden>0</span></button>
-        <button type="button" data-admin-page="agents"><span class="admin-nav-icon">🤝</span>代理管理</button>
         <button type="button" data-admin-page="mall"><span class="admin-nav-icon">🛍️</span>商城商户</button>
       </nav>
       <div class="admin-sidebar-account">
@@ -103,6 +102,19 @@
             <button id="admin-users-prev" class="admin-secondary-button" type="button" disabled>上一页</button>
             <button id="admin-users-next" class="admin-secondary-button" type="button" disabled>下一页</button>
           </div>
+        </section>
+      </section>
+
+      <section class="admin-page-panel" data-admin-panel="devices">
+        <section class="admin-content-block">
+          <header class="admin-list-header">
+            <div><h2>设备管理</h2><p id="admin-devices-summary">同一设备最多绑定 3 个钱包；解除绑定只释放名额，不删除钱包、会话与资金记录</p></div>
+            <div class="admin-filters">
+              <button class="admin-secondary-button" type="button" id="admin-devices-refresh">🔄 刷新</button>
+            </div>
+          </header>
+          <div id="admin-devices-status" class="admin-inline-status"></div>
+          <div id="admin-devices-list" style="display:grid;gap:10px;padding:18px"></div>
         </section>
       </section>
 
@@ -157,56 +169,87 @@
         </section>
       </section>
 
-      <section class="admin-page-panel" data-admin-panel="community">
+      <section class="admin-page-panel" data-admin-panel="community-admin">
         <section class="admin-content-block">
-          <header><div><h2>社群链接</h2><p>管理前台社群与支持入口，保存后即时生效</p></div><a class="admin-community-preview" href="/?page=community" target="_blank" rel="noopener noreferrer">查看前台 ↗</a></header>
-          <div class="admin-community-quick"><span>快捷添加</span><div id="admin-community-presets"></div></div>
-          <form id="admin-community-form" class="admin-community-form">
-            <h3 id="admin-community-editor-title">添加链接</h3>
-            <label>入口类型<select id="admin-community-type" required><option value="telegram">TG</option><option value="twitter">推特</option><option value="dexbox">dexBOX</option><option value="telegram-support">TG客服</option><option value="qq">QQ社群</option><option value="email">邮箱投递</option><option value="ticket">留言工单</option></select></label>
-            <label>显示名称<input id="admin-community-title" maxlength="40" placeholder="例如：AxiX 官方 TG 社群" required></label>
-            <label class="admin-community-wide">链接 / 邮箱<input id="admin-community-url" type="text" maxlength="2048" placeholder="https://t.me/你的社群" autocomplete="off"><small id="admin-community-url-hint">填写完整的 https:// 链接；邮箱类型可直接填写邮箱地址。</small></label>
-            <label class="admin-community-wide admin-community-qq-group" style="display:none">QQ 群号码<input id="admin-community-group-number" type="text" inputmode="numeric" maxlength="12" placeholder="例如：123456789" autocomplete="off"><small>填写后前台 QQ 卡片会显示群号码，访客可一键复制后到 QQ 加群。</small></label>
-            <label class="admin-community-wide">入口说明<input id="admin-community-description" maxlength="140" placeholder="简短介绍此入口的用途（选填）"></label>
-            <label class="admin-community-wide admin-community-qr-field">二维码图片<span class="admin-field-hint">QQ社群推荐上传，支持 PNG/JPG/WEBP（≤2MB）。前台将优先显示二维码卡片。</span><input id="admin-community-qrcode" type="file" accept="image/png,image/jpeg,image/webp" class="admin-community-qr-input"><input id="admin-community-qrcode-data" type="hidden"><div id="admin-community-qrcode-preview" class="admin-community-qr-preview" style="display:none"></div></label>
-            <label>显示顺序<input id="admin-community-order" type="number" min="0" max="9999" step="1" value="0" required><small>数值越小越靠前，也可使用列表中的上移 / 下移。</small></label>
-            <label class="admin-community-enabled"><input id="admin-community-enabled" type="checkbox" checked><span>在前台显示</span></label>
-            <div class="admin-community-form-actions"><button id="admin-community-save" type="submit" class="admin-primary-button">添加链接</button><button id="admin-community-cancel" type="button" class="admin-secondary-button">清空表单</button></div>
-            <div id="admin-community-form-status" class="admin-community-wide" role="status"></div>
+          <header><div><h2>群管理员任命</h2><p>按钱包地址任命或撤销群管理员，操作全部写入审计日志；被踢成员重新登录不会自动恢复，需在此恢复</p></div><button class="admin-secondary-button" type="button" id="acm-refresh">🔄 刷新</button></header>
+          <form id="acm-admin-form" class="admin-credit-form" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <label style="flex:1;min-width:260px">钱包地址<input id="acm-admin-address" autocomplete="off" placeholder="0x..."></label>
+            <button class="admin-primary-button" type="button" id="acm-appoint">任命为群管理员</button>
+            <button class="admin-secondary-button" type="button" id="acm-revoke">撤销管理员</button>
           </form>
+          <div id="acm-status" class="admin-inline-status"></div>
+          <div class="admin-table-scroll"><table><thead><tr><th>地址</th><th>状态</th><th>任命人 / 时间</th><th>撤销人 / 时间</th><th>操作</th></tr></thead><tbody id="acm-admins-body"></tbody></table></div>
         </section>
-        <section class="admin-content-block admin-community-list-block">
-          <header><div><h2>已添加的链接</h2><p id="admin-community-count">尚未加载</p></div><button id="admin-community-refresh" class="admin-secondary-button" type="button">刷新列表</button></header>
-          <div id="admin-community-list-status" role="status"></div>
-          <div id="admin-community-list" class="admin-community-list"></div>
+
+        <section class="admin-content-block">
+          <header><div><h2>群成员</h2><p id="acm-member-count">尚未加载</p></div></header>
+          <div class="admin-filters" style="padding:0 18px 10px"><input id="acm-member-search" placeholder="按地址或昵称筛选" autocomplete="off"><select id="acm-member-filter"><option value="">全部状态</option><option value="active">正常</option><option value="kicked">已踢出</option><option value="muted">禁言中</option></select></div>
+          <div class="admin-table-scroll"><table><thead><tr><th>地址</th><th>昵称</th><th>状态</th><th>禁言至</th><th>操作</th></tr></thead><tbody id="acm-members-body"></tbody></table></div>
+        </section>
+
+        <section class="admin-content-block">
+          <header><div><h2>敏感词</h2><p>命中敏感词的消息会被拒绝发送</p></div></header>
+          <form id="acm-word-form" class="admin-credit-form" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+            <label style="flex:1;min-width:220px">敏感词<input id="acm-word-input" maxlength="30" autocomplete="off" placeholder="最多 30 字"></label>
+            <button class="admin-primary-button" type="submit">添加</button>
+          </form>
+          <div id="acm-word-status" class="admin-inline-status"></div>
+          <div id="acm-words" class="acm-chip-list"></div>
+        </section>
+
+        <section class="admin-content-block">
+          <header><div><h2>最近消息</h2><p>删除后前台保留占位，内容与操作人写入审计日志</p></div></header>
+          <div class="admin-table-scroll"><table><thead><tr><th>时间</th><th>发送者</th><th>内容</th><th>状态</th><th>操作</th></tr></thead><tbody id="acm-messages-body"></tbody></table></div>
+        </section>
+
+        <section class="admin-content-block">
+          <header><div><h2>操作日志</h2><p>最近 100 条群聊管理操作</p></div></header>
+          <div class="admin-table-scroll"><table><thead><tr><th>时间</th><th>操作人</th><th>角色</th><th>动作</th><th>目标</th><th>详情</th></tr></thead><tbody id="acm-logs-body"></tbody></table></div>
         </section>
       </section>
       <section class="admin-page-panel" data-admin-panel="a-kline">
         <section class="admin-content-block">
-          <header><div><h2>AIX 代币行情调控</h2><p>实时操控 AIX / USDT 资金池价格、K 线模式与全周期 K 线</p></div><button class="admin-secondary-button" type="button" id="admin-a-kline-refresh">🔄 刷新</button></header>
-          <div id="admin-a-kline-root" class="admin-a-module">正在读取 AIX 代币状态...</div>
+          <header><div><h2>SVX 代币行情调控</h2><p>实时操控 SVX / USDT 资金池价格、K 线模式与全周期 K 线</p></div><button class="admin-secondary-button" type="button" id="admin-a-kline-refresh">🔄 刷新</button></header>
+          <div id="admin-a-kline-root" class="admin-a-module">正在读取 SVX 代币状态...</div>
         </section>
       </section>
 
       <section class="admin-page-panel" data-admin-panel="a-token-balance">
         <section class="admin-content-block">
-          <header><div><h2>AIX 资产管理</h2><p>充值、扣除需要单独验证资金权限。</p></div></header>
+          <header><div><h2>SVX 资产管理</h2><p>充值、扣除需要单独验证资金权限。</p></div></header>
           <button type="button" class="admin-primary-button" data-open-funds>打开资金后台</button>
         </section>
         <section class="admin-content-block">
-          <header><div><h2>查询用户 AIX 余额</h2><p>输入钱包地址查看当前 AIX 余额</p></div></header>
+          <header><div><h2>查询用户 SVX 余额</h2><p>输入钱包地址查看当前 SVX 余额</p></div></header>
           <div class="admin-credit-form" style="flex-direction:row;gap:8px;align-items:flex-end">
             <label style="flex:1">钱包地址<input id="admin-aix-query-wallet" autocomplete="off" placeholder="0x..."></label>
             <button class="admin-secondary-button" type="button" id="admin-aix-query-btn">查询余额</button>
           </div>
           <div id="admin-aix-balance-result" class="admin-inline-status"></div>
         </section>
+        <section class="admin-content-block">
+          <header><div><h2>自由交易开关</h2><p>链上流动性就绪后由运营手动开启；关闭时自由交易与撮合全部拦截，仅保留蓄能额度/驱动额度一键买入。</p></div></header>
+          <div style="display:flex;gap:12px;align-items:center;padding:18px;flex-wrap:wrap">
+            <span id="admin-free-trading-state" class="admin-inline-status">读取中…</span>
+            <button class="admin-primary-button" type="button" id="admin-free-trading-toggle" disabled>开启自由交易</button>
+          </div>
+        </section>
       </section>
 
       <section class="admin-page-panel" data-admin-panel="a-miner">
         <section class="admin-content-block">
-          <header><div><h2>AIX 矿机管理</h2><p>AIX 代币矿机发放、搜索、手动产出、强制过期等后台运营操作</p></div><button class="admin-secondary-button" type="button" id="admin-a-miner-refresh">🔄 刷新</button></header>
+          <header><div><h2>SVX 矿机管理</h2><p>SVX 代币矿机发放、搜索、手动产出、强制过期等后台运营操作</p></div><button class="admin-secondary-button" type="button" id="admin-a-miner-refresh">🔄 刷新</button></header>
           <div id="admin-a-miner-root" class="admin-a-module">正在读取矿机数据...</div>
+        </section>
+      </section>
+      <section class="admin-page-panel" data-admin-panel="blindbox">
+        <section class="admin-content-block">
+          <header><div><h2>盲盒概率配置</h2><p>每档填写「币数（100–500 的整数）」与「权重（百分比，最多两位小数）」，权重合计必须等于 100% 才能保存。当前没有有效配置时，开盒回退为 100–500 均匀随机。</p></div><button class="admin-secondary-button" type="button" id="admin-blindbox-refresh">🔄 刷新</button></header>
+          <div id="admin-blindbox-root" class="admin-a-module">正在读取盲盒概率配置...</div>
+        </section>
+        <section class="admin-content-block">
+          <header><div><h2>最近开盒分布</h2><p>最近 500 个盲盒的实际开盒结果，按当前档位统计开出次数，用于核对概率是否符合预期；配置变更前开出的结果仍按原档位计数。</p></div></header>
+          <div id="admin-blindbox-dist" class="admin-a-module">——</div>
         </section>
       </section>
       <section class="admin-page-panel" data-admin-panel="team-activations">
@@ -234,7 +277,7 @@
         <section class="admin-content-block">
           <header><div><h2>平台公告</h2><p>最多同时展示 2 条公告，各自独立开关与关闭，支持中英双语、随用户切换语言自动切换；英文留空时英文用户回退显示中文</p></div></header>
           <div style="display:grid;gap:14px;padding:18px;max-width:720px">
-            <div style="display:grid;gap:10px;padding:12px;border:1px solid var(--admin-line, #29413e);border-radius:8px">
+            <div style="display:grid;gap:10px;padding:12px;border:1px solid var(--admin-line, #dfe8e4);border-radius:8px">
               <label class="admin-checkbox" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="admin-announce-enabled-1"> 启用公告一（横幅显示在上方）</label>
               <label style="display:grid;gap:7px;color:var(--admin-muted);font-size:11px">中文内容（最多 2000 字）
                 <textarea id="admin-announce-zh-1" rows="5" maxlength="2000" autocomplete="off" placeholder="例如：平台将于 11 月 1 日 00:00 进行系统升级，届时暂停充提 30 分钟。"></textarea>
@@ -243,10 +286,10 @@
                 <textarea id="admin-announce-en-1" rows="5" maxlength="2000" autocomplete="off" placeholder="Shown to English users. Leave blank to fall back to Chinese."></textarea>
               </label>
             </div>
-            <div style="display:grid;gap:10px;padding:12px;border:1px solid var(--admin-line, #29413e);border-radius:8px">
+            <div style="display:grid;gap:10px;padding:12px;border:1px solid var(--admin-line, #dfe8e4);border-radius:8px">
               <label class="admin-checkbox" style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="admin-announce-enabled-2"> 启用公告二（横幅显示在下方）</label>
               <label style="display:grid;gap:7px;color:var(--admin-muted);font-size:11px">中文内容（最多 2000 字）
-                <textarea id="admin-announce-zh-2" rows="5" maxlength="2000" autocomplete="off" placeholder="例如：AIX 卖出最低 100 起、互转最低 20 起，买入不限，严打脚本刷量。"></textarea>
+                <textarea id="admin-announce-zh-2" rows="5" maxlength="2000" autocomplete="off" placeholder="例如：SVX 卖出最低 100 起、互转最低 20 起，买入不限，严打脚本刷量。"></textarea>
               </label>
               <label style="display:grid;gap:7px;color:var(--admin-muted);font-size:11px">英文内容（最多 2000 字）
                 <textarea id="admin-announce-en-2" rows="5" maxlength="2000" autocomplete="off" placeholder="Shown to English users. Leave blank to fall back to Chinese."></textarea>
@@ -260,9 +303,6 @@
         </section>
       </section>
 
-      <section class="admin-page-panel" data-admin-panel="lottery">
-        <div id="admin-lottery-root">正在读取抽奖数据...</div>
-      </section>
       <section class="admin-page-panel" data-admin-panel="support">
         <section class="admin-content-block">
           <header class="admin-list-header">
@@ -284,31 +324,10 @@
           </div>
         </section>
       </section>
-      <section class="admin-page-panel" data-admin-panel="agents">
-        <header>
-          <div><h2>代理管理</h2><p>创建代理账号，绑定团队根钱包。代理用用户名密码登录独立后台，仅能查看其下级团队数据，无资金操作权限。</p></div>
-          <button id="admin-agents-refresh" class="admin-secondary-button" type="button">刷新</button>
-        </header>
-        <div class="admin-content-block">
-          <header><h3>新建代理</h3></header>
-          <form id="admin-agents-form" class="admin-grid-form" style="display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:12px;align-items:end">
-            <label>用户名<input id="agent-username" maxlength="32" placeholder="agent001" required></label>
-            <label>密码<input id="agent-password" type="password" placeholder="至少6位" required></label>
-            <label>绑定钱包地址<input id="agent-wallet" maxlength="64" placeholder="0x..." required></label>
-            <button class="admin-primary-button" type="submit">创建</button>
-          </form>
-          <div id="admin-agents-form-status" role="status" style="margin-top:8px"></div>
-        </div>
-        <div class="admin-content-block">
-          <header><h3>代理列表</h3></header>
-          <div id="admin-agents-list-status" role="status"></div>
-          <div id="admin-agents-list"></div>
-        </div>
-      </section>
       <section class="admin-page-panel" data-admin-panel="mall">
         <div class="admin-content-block">
           <header class="admin-list-header">
-            <div><h2>商城商户审核</h2><p>用户缴纳保证金（USDT / AIX）后进入待审核；通过后店铺开业，拒绝将自动退回保证金</p></div>
+            <div><h2>商城商户审核</h2><p>用户缴纳保证金（USDT / SVX）后进入待审核；通过后店铺开业，拒绝将自动退回保证金</p></div>
             <div class="admin-filters">
               <select id="admin-mall-filter">
                 <option value="pending">入驻待审核</option>
@@ -326,7 +345,7 @@
         </div>
         <div class="admin-content-block">
           <header class="admin-list-header">
-            <div><h2>商城订单总览</h2><p>担保账户在冻资金 <b id="admin-mall-frozen" style="color:#50d2c2">—</b> AIX（已付款+已发货订单货款合计）</p></div>
+            <div><h2>商城订单总览</h2><p>担保账户在冻资金 <b id="admin-mall-frozen" style="color:#0e9c88">—</b> SVX（已付款+已发货订单货款合计）</p></div>
             <div class="admin-filters">
               <select id="admin-mall-order-filter">
                 <option value="">全部状态</option>
@@ -344,11 +363,10 @@
       </section>
     </section>
   </div>
-  <script src="/js/admin-dialogs.js?v=20261011-security-1"></script>
-  <script src="/js/admin-community.js?v=7-security-20261011"></script>
-  <script src="/js/admin-lottery.js?v=20261012-admin-speed-1"></script>
-  <script src="/js/operator-admin.js?v=20261021-miner-today-1"></script>
-  <script src="/js/admin-agents.js?v=20261012-admin-speed-1"></script>
-  <script src="/js/admin-mall.js?v=20261031c"></script>
+  <script src="/js/admin-dialogs.js?v=20261111-domain-solvex-2"></script>
+  <script src="/js/admin-community-admin.js?v=20261111-domain-solvex-2"></script>
+  <script src="/js/operator-admin.js?v=20261112-remove-agents-1"></script>
+  <script src="/js/admin-devices.js?v=20261111-domain-solvex-2"></script>
+  <script src="/js/admin-mall.js?v=20261111-domain-solvex-2"></script>
 </body>
 </html>

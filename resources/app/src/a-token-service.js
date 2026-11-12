@@ -1,31 +1,34 @@
 import { createAixTransaction } from './a-token-ledger.js';
 import crypto from 'node:crypto';
+import { SOLVEX_RULES } from '../shared/solvex-rules.js';
 import { formatUnits, parseUnits } from 'ethers';
 
-// A 币生态主服务：定价、池元数据、销毁（通缩）、用户ID、profile 聚合
-// A 币 18 位小数（BEP-20 标准），USDT 6 位小数
+// SVX生态主服务：定价、池元数据、销毁（通缩）、用户ID、profile 聚合
+// SVX 18 位小数（BEP-20 标准），USDT 6 位小数
 export const A_TOKEN_DECIMALS = 18;
 export const USDT_DECIMALS = 6;
-// 总量 20 亿枚，通缩 99%（销毁至仅剩 1% = 2000 万枚后停止销毁）
-const TOTAL_SUPPLY = 2_000_000_000n * 10n ** BigInt(A_TOKEN_DECIMALS);
-const BURN_CAP = 1_980_000_000n * 10n ** BigInt(A_TOKEN_DECIMALS); // 销毁上限 19.8 亿（总量的 99%）
+// 总量 10 亿枚，销毁至剩余 10%（1 亿枚）后停止。
+const TOTAL_SUPPLY = parseUnits(SOLVEX_RULES.asset.totalSupply, A_TOKEN_DECIMALS);
+const BURN_CAP = TOTAL_SUPPLY - parseUnits(SOLVEX_RULES.asset.remainingSupplyFloor, A_TOKEN_DECIMALS);
 // 每日固定销毁：当天各类销毁累计不足 100 万枚时，跨日结算自动补足到 100 万枚
 const DAILY_BURN_TARGET = 1_000_000n * 10n ** BigInt(A_TOKEN_DECIMALS);
 // 产出分配：50% 由激活包矿机产出，50% 由质押挖出，两个渠道各自封顶
-const MINER_SHARE = TOTAL_SUPPLY / 2n; // 10 亿 — 矿机产出份额上限
-const STAKE_SHARE = TOTAL_SUPPLY / 2n; // 10 亿 — 质押产出份额上限
-// 默认 0.1 USDT/A，手续费统一 3%（50% 销毁 + 50% 进 A10 分红池，与 a-token-order-service / a-token-transfer-service 一致）
+const MINER_SHARE = TOTAL_SUPPLY / 2n; // 5 亿 — 矿机产出份额上限
+const STAKE_SHARE = TOTAL_SUPPLY / 2n; // 5 亿 — 质押产出份额上限
+// 默认 0.1 USDT/A，手续费统一 5%（50% 销毁 + 50% 进 A10 分红池，与 a-token-order-service / a-token-transfer-service 一致）
 const DEFAULT_PRICE_USDT = '0.1';
-const DEFAULT_FEE_RATE_BPS = 300;
-const BURN_RATE_BPS = 5000;     // 手续费中的销毁比例（50%）
-const DIVIDEND_RATE_BPS = 5000; // 手续费中的 A10 分红池比例（50%）
+const DEFAULT_FEE_RATE_BPS = SOLVEX_RULES.fees.tradeBps;
+const BURN_RATE_BPS = SOLVEX_RULES.fees.feeBurnShareBps;     // 手续费中的销毁比例（50%）
+const DIVIDEND_RATE_BPS = SOLVEX_RULES.fees.feePartnerShareBps; // 手续费中的 A10 分红池比例（50%）
 
 const POOL_META_KEY = 'a_token_pool_meta';
 const ACTIVATION_META_KEY = 'a_token_activation_meta';
+// 自由交易总开关：准备金达到门槛后由运营开启（默认关闭，可暂停）
+const FREE_TRADING_SETTING_KEY = 'free_trading_enabled';
 const id = prefix => `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 const now = () => Date.now();
 
-function parseA(value, label = 'A 币数量') {
+function parseA(value, label = 'SVX数量') {
   let result;
   try { result = parseUnits(String(value ?? '').trim(), A_TOKEN_DECIMALS); }
   catch { throw new Error(`${label}格式不正确`); }
@@ -33,28 +36,10 @@ function parseA(value, label = 'A 币数量') {
   return result;
 }
 function parseUsdt(value, label = 'USDT 数量') {
-  // 规范化：先 Number 转一轮，避免科学计数 / 多余空格 / 'NaN' / 'Infinity' 字符串
-  // 被 ethers parseUnits(6) 当成非法小数位；并在这里把诊断信息打出来便于排错
-  const rawText = String(value ?? '').trim();
-  let numericText = rawText;
-  if (rawText.length > 0) {
-    const numeric = Number(rawText);
-    if (!Number.isFinite(numeric) || numeric <= 0) {
-      console.warn('[A币] parseUsdt 非法输入，label=', label, 'raw=', JSON.stringify(rawText), 'type=', typeof value, 'Number→', numeric);
-      throw new Error(`${label}格式不正确`);
-    }
-    // 最大 6 位小数（USDT 精度），避免 8 位小数以上的字符串被 parseUnits 拒绝
-    numericText = Number.isInteger(numeric)
-      ? numeric.toString()
-      : (+numeric.toFixed(USDT_DECIMALS)).toString();
-  }
-  let result;
-  try { result = parseUnits(numericText, USDT_DECIMALS); }
-  catch (e) {
-    console.warn('[A币] parseUsdt ethers 解析失败 label=', label, 'raw=', JSON.stringify(rawText), 'normalized=', JSON.stringify(numericText), 'err=', e?.message || e);
-    throw new Error(`${label}格式不正确`);
-  }
-  if (result <= 0n) throw new Error(`${label}必须大于 0`);
+  const raw = String(value ?? '').trim();
+  if (!/^\d+(?:\.\d{1,6})?$/.test(raw)) throw new Error(label + '格式不正确，最多支持 6 位小数');
+  const result = parseUnits(raw, USDT_DECIMALS);
+  if (result <= 0n) throw new Error(label + '必须大于 0');
   return result;
 }
 // A 数量 → USDT 金额（按当前价格）
@@ -70,13 +55,13 @@ function usdtToA(usdtUnits, priceUsdtUnits) {
   return BigInt(usdtUnits) * (10n ** BigInt(A_TOKEN_DECIMALS)) / BigInt(priceUsdtUnits);
 }
 /**
- * 宽松解析 A 币 USDT 单价：失败 / 非法时 返回默认价，不抛错。
+ * 宽松解析 SVX USDT 单价：失败 / 非法时 返回默认价，不抛错。
  * 用于所有"自动链路"（K 线 tick / 种子重建 / 撮合写回）避免一轮坏数据把整条定时器卡死。
  */
 function safeParsePriceUsdt(usdtPerA, fallback = DEFAULT_PRICE_USDT) {
   const numeric = Number(String(usdtPerA ?? '').trim());
   if (!Number.isFinite(numeric) || numeric <= 0 || Number.isNaN(numeric)) {
-    console.warn('[A币] 价格非法，使用默认价', fallback, '入参=', JSON.stringify(usdtPerA), 'type=', typeof usdtPerA);
+    console.warn('[SVX] 价格非法，使用默认价', fallback, '入参=', JSON.stringify(usdtPerA), 'type=', typeof usdtPerA);
     return String(fallback);
   }
   return (+numeric.toFixed(USDT_DECIMALS)).toString();
@@ -87,6 +72,36 @@ export function createATokenService({ database, walletService, clock = () => Dat
   const transaction = createAixTransaction(database, walletService);
 
   // ── 池元数据（定价/统计） ──
+  function isFreeTradingEnabled() {
+    try {
+      const raw = db.getSetting(FREE_TRADING_SETTING_KEY);
+      if (raw == null) return false;
+      const parsed = JSON.parse(raw);
+      const authorized = parsed === true || parsed === 'true' || parsed === 1 || parsed === '1';
+      return authorized && BigInt(db.getATokenLpPoolBalance().usdtUnits || '0') >= parseUnits(SOLVEX_RULES.liquidity.thresholdUsdt, USDT_DECIMALS);
+    } catch { return false; }
+  }
+  function setFreeTradingEnabled(enabled) {
+    const value = enabled === true || enabled === 'true' || enabled === 1 || enabled === '1';
+    db.saveSetting(FREE_TRADING_SETTING_KEY, JSON.stringify(value));
+    return value;
+  }
+  function liquidityStatus() {
+    const enabled = isFreeTradingEnabled();
+    return {
+      enabled,
+      status: enabled ? 'open' : 'pending',
+      mode: 'platform_reserve',
+      thresholdUsdt: SOLVEX_RULES.liquidity.thresholdUsdt,
+      thresholdReached: BigInt(db.getATokenLpPoolBalance().usdtUnits || '0') >= parseUnits(SOLVEX_RULES.liquidity.thresholdUsdt, USDT_DECIMALS),
+      balanceUsdt: formatUnits(BigInt(db.getATokenLpPoolBalance().usdtUnits || '0'), USDT_DECIMALS),
+    };
+  }
+  function assertFreeTrading() {
+    if (isFreeTradingEnabled()) return;
+    // 错误码保留 LP_TRADING_LOCKED，避免未知调用方按码判断失效
+    throw Object.assign(new Error('自由交易暂未开放：平台流动性准备金须达到 500,000 USDT，并由运营开启'), {code:'LP_TRADING_LOCKED'});
+  }
   function defaultPoolMeta() {
     return {
       priceUsdt: DEFAULT_PRICE_USDT,
@@ -113,10 +128,10 @@ export function createATokenService({ database, walletService, clock = () => Dat
   function getPoolMeta() {
     const raw = db.db.prepare('SELECT payload_json FROM service_settings WHERE setting_key=?').get(POOL_META_KEY);
     const meta = raw ? JSON.parse(raw.payload_json) : defaultPoolMeta();
-    const merged = { ...defaultPoolMeta(), ...meta };
+    const merged = { ...defaultPoolMeta(), ...meta, totalSupplyUnits: TOTAL_SUPPLY.toString() };
     // 价格兜底：若数据库存了坏值（NaN/空串/≤0）立刻改回 DEFAULT，避免上一层 parseUsdt 直接抛
     if (!Number(merged.priceUsdt) > 0 || !Number.isFinite(Number(merged.priceUsdt))) {
-      console.warn('[A币] getPoolMeta 读到坏价格:', JSON.stringify(merged.priceUsdt), '已重置为', DEFAULT_PRICE_USDT);
+      console.warn('[SVX] getPoolMeta 读到坏价格:', JSON.stringify(merged.priceUsdt), '已重置为', DEFAULT_PRICE_USDT);
       merged.priceUsdt = DEFAULT_PRICE_USDT;
     }
     return merged;
@@ -156,17 +171,17 @@ export function createATokenService({ database, walletService, clock = () => Dat
   }
   function getPriceUsdtUnits() {
     const meta = getPoolMeta();
-    return parseUsdt(meta.priceUsdt, 'A 币价格');
+    return parseUsdt(meta.priceUsdt, 'SVX价格');
   }
   function setPrice(usdtPerA) {
     // 自动链路：不抛错。非法就落回 DEFAULT_PRICE_USDT，保证 K 线/撮合不被坏数据一轮打断。
     const safePrice = safeParsePriceUsdt(usdtPerA, DEFAULT_PRICE_USDT);
     // 再走一次 parseUsdt 验证（含规范化），一般不会失败；若失败再兜底 DEFAULT
     let price;
-    try { price = parseUsdt(safePrice, 'A 币价格'); }
+    try { price = parseUsdt(safePrice, 'SVX价格'); }
     catch (e) {
-      console.warn('[A币] setPrice parseUsdt 二次校验失败，使用默认价:', DEFAULT_PRICE_USDT, '入参=', JSON.stringify(usdtPerA), 'safe=', safePrice);
-      price = parseUsdt(DEFAULT_PRICE_USDT, 'A 币价格');
+      console.warn('[SVX] setPrice parseUsdt 二次校验失败，使用默认价:', DEFAULT_PRICE_USDT, '入参=', JSON.stringify(usdtPerA), 'safe=', safePrice);
+      price = parseUsdt(DEFAULT_PRICE_USDT, 'SVX价格');
     }
     const meta = getPoolMeta();
     meta.priceUsdt = formatUnits(price, USDT_DECIMALS);
@@ -203,18 +218,49 @@ export function createATokenService({ database, walletService, clock = () => Dat
     savePoolMeta(meta);
     return meta;
   }
+  // 今日成交量只按实际买卖流水计算：蓄能买入 + 驱动买入 + 流通卖出。
+  // 驱动入池与流通额度释放不属于新成交，不重复计量。
+  function todayTradingVolume() {
+    const day = new Date(clock()).toISOString().slice(0, 10);
+    const start = Date.parse(`${day}T00:00:00.000Z`);
+    const end = start + 86_400_000;
+    let energyBuyUnits = 0n, driveBuyUnits = 0n, circulatingSellUnits = 0n, usdtUnits = 0n;
+    const orders = db.db.prepare(`SELECT side,zone,a_units,usdt_units FROM a_token_zone_orders
+      WHERE status='filled' AND created_at>=? AND created_at<?`).all(start, end);
+    for (const row of orders) {
+      const a = BigInt(row.a_units || '0');
+      if (row.side === 'buy' && row.zone === 'alpha') energyBuyUnits += a;
+      else if (row.side === 'buy' && row.zone === 'beta') driveBuyUnits += a;
+      else if (row.side === 'sell') circulatingSellUnits += a;
+      else continue;
+      usdtUnits += BigInt(row.usdt_units || '0');
+    }
+    const turboPurchases = db.db.prepare(`SELECT turbo_units,usdt_units FROM a_token_turbo_purchases
+      WHERE created_at>=? AND created_at<?`).all(start, end);
+    for (const row of turboPurchases) {
+      driveBuyUnits += BigInt(row.turbo_units || '0');
+      usdtUnits += BigInt(row.usdt_units || '0');
+    }
+    return {
+      energyBuyUnits: energyBuyUnits.toString(),
+      driveBuyUnits: driveBuyUnits.toString(),
+      circulatingSellUnits: circulatingSellUnits.toString(),
+      aUnits: (energyBuyUnits + driveBuyUnits + circulatingSellUnits).toString(),
+      usdtUnits: usdtUnits.toString(),
+    };
+  }
   // 累计铸造 A（仅买入时调用），返回铸造后总量；超出 TOTAL_SUPPLY 抛错
   function addMinted(units) {
     const amount = BigInt(units);
     if (amount <= 0n) return BigInt(getPoolMeta().totalMintedUnits);
     const meta = getPoolMeta();
     const next = BigInt(meta.totalMintedUnits) + amount;
-    if (next > TOTAL_SUPPLY) throw new Error('A 币总量已达上限，无法继续铸造');
+    if (next > TOTAL_SUPPLY) throw new Error('SVX总量已达上限，无法继续铸造');
     meta.totalMintedUnits = next.toString();
     savePoolMeta(meta);
     return next;
   }
-  function getMintedRemaining() { return TOTAL_SUPPLY - BigInt(getPoolMeta().totalMintedUnits); }
+  function getMintedRemaining() { const left = TOTAL_SUPPLY - BigInt(getPoolMeta().totalMintedUnits); return left > 0n ? left : 0n; }
   // 平台做市 USDT 储备变动（买入+，卖出-）
   function moveTreasuryUsdt(deltaUnits) {
     const delta = BigInt(deltaUnits);
@@ -229,7 +275,7 @@ export function createATokenService({ database, walletService, clock = () => Dat
   // ── 销毁（通缩）──
   function totalBurned() { return BigInt(getPoolMeta().totalBurnedUnits); }
   function isBurnEnabled() { const v = getPoolMeta().burnEnabled; return v === '1' || v === 1 || v === true; }
-  // 矿机激活 / AIX 提现 总开关（缺省视为开启，仅显式 '0'/false 时关闭）
+  // 矿机激活 / SVX 提现 总开关（缺省视为开启，仅显式 '0'/false 时关闭）
   function isActivationEnabled() { const v = getPoolMeta().activationEnabled; return v === undefined || v === '1' || v === 1 || v === true; }
   function isWithdrawEnabled() { const v = getPoolMeta().withdrawEnabled; return v === undefined || v === '1' || v === 1 || v === true; }
   function isDeflationActive() { return totalBurned() < BURN_CAP; }
@@ -253,7 +299,7 @@ export function createATokenService({ database, walletService, clock = () => Dat
     meta.todayBurnedUnits = '0';
     if (shortfall > 0n && isBurnEnabled()) {
       const capLeft = BURN_CAP - BigInt(meta.totalBurnedUnits);
-      const makeup = shortfall < capLeft ? shortfall : capLeft; // 受 99% 通缩上限约束
+      const makeup = shortfall < capLeft ? shortfall : capLeft; // 受剩余 10%（1 亿枚）下限约束
       if (makeup > 0n) {
         db.insertATokenBurnRow({ id: id('atb'), source: 'daily_fixed', reason: `每日固定销毁补足（${prevDate} 销毁未达 100 万枚）`, amountUnits: makeup.toString(), createdAt: clock() });
         meta.totalBurnedUnits = (BigInt(meta.totalBurnedUnits) + makeup).toString();
@@ -330,6 +376,7 @@ export function createATokenService({ database, walletService, clock = () => Dat
   // ── profile 聚合（前端赚取/交易页用）──
   async function profile(wallet) {
     const meta = settleDailyBurn();
+    const volume = todayTradingVolume();
     const normalized = String(wallet || '').toLowerCase();
     const userIdRow = ensureUserId(wallet);
     const miners = db.listATokenMiners(wallet);
@@ -352,8 +399,8 @@ export function createATokenService({ database, walletService, clock = () => Dat
       pool: {
         priceUsdt: meta.priceUsdt,
         feeRateBps: meta.feeRateBps,
-        todayVolumeA: formatUnits(BigInt(meta.todayVolumeAUnits), A_TOKEN_DECIMALS),
-        todayVolumeUsdt: formatUnits(BigInt(meta.todayVolumeUsdtUnits), USDT_DECIMALS),
+        todayVolumeA: formatUnits(BigInt(volume.aUnits), A_TOKEN_DECIMALS),
+        todayVolumeUsdt: formatUnits(BigInt(volume.usdtUnits), USDT_DECIMALS),
         dividendPool: a10PoolPendingA(),
         totalSupply: formatUnits(TOTAL_SUPPLY, A_TOKEN_DECIMALS),
         totalBurned: formatUnits(burned, A_TOKEN_DECIMALS),
@@ -365,10 +412,21 @@ export function createATokenService({ database, walletService, clock = () => Dat
       },
       miners: miners.map(m => ({ ...m, total: formatUnits(BigInt(m.totalUnits), A_TOKEN_DECIMALS), dailyTarget: formatUnits(BigInt(m.dailyTargetUnits), A_TOKEN_DECIMALS), dayEarned: formatUnits(BigInt(m.dayEarnedUnits), A_TOKEN_DECIMALS), totalEarned: formatUnits(BigInt(m.totalEarnedUnits), A_TOKEN_DECIMALS) })),
       stakes: stakes.map(s => ({ ...s, principal: formatUnits(BigInt(s.principalUnits), A_TOKEN_DECIMALS), dayEarned: formatUnits(BigInt(s.dayEarnedUnits), A_TOKEN_DECIMALS), totalEarned: formatUnits(BigInt(s.totalEarnedUnits), A_TOKEN_DECIMALS) })),
-      trades: trades.map(t => ({ ...t, size: formatUnits(BigInt(t.sizeUnits), A_TOKEN_DECIMALS), priceUsdt: formatUnits(BigInt(t.priceUsdtUnits), USDT_DECIMALS), amountUsdt: formatUnits(BigInt(t.amountUsdtUnits), USDT_DECIMALS), fee: formatUnits(BigInt(t.feeUnits), A_TOKEN_DECIMALS), burn: t.burnUnits ? formatUnits(BigInt(t.burnUnits), A_TOKEN_DECIMALS) : '0', dividend: t.dividendUnits ? formatUnits(BigInt(t.dividendUnits), A_TOKEN_DECIMALS) : '0' })),
+      // 手续费口径（2026-11-09 P2）：新的撮合记录手续费按 USDT 计（payload.feeAsset='USDT'），旧记录仍按 A 计
+      trades: trades.map(t => {
+        const feeAsset = String(t.payload?.feeAsset || '').toUpperCase() === 'USDT' ? 'USDT' : 'A';
+        return { ...t, size: formatUnits(BigInt(t.sizeUnits), A_TOKEN_DECIMALS), priceUsdt: formatUnits(BigInt(t.priceUsdtUnits), USDT_DECIMALS), amountUsdt: formatUnits(BigInt(t.amountUsdtUnits), USDT_DECIMALS), fee: formatUnits(BigInt(t.feeUnits || '0'), feeAsset === 'USDT' ? USDT_DECIMALS : A_TOKEN_DECIMALS), feeAsset, burn: t.burnUnits ? formatUnits(BigInt(t.burnUnits), A_TOKEN_DECIMALS) : '0', dividend: t.dividendUnits ? formatUnits(BigInt(t.dividendUnits), A_TOKEN_DECIMALS) : '0' };
+      }),
       transfers: transfers.map(t => ({ ...t, amount: formatUnits(BigInt(t.amountUnits), A_TOKEN_DECIMALS), fee: formatUnits(BigInt(t.feeUnits), A_TOKEN_DECIMALS), direction: String(t.fromWallet).toLowerCase() === normalized ? 'out' : 'in' })),
       activations,
-      teamLevel: teamLevel ? { ...teamLevel, personalHeld: formatUnits(BigInt(teamLevel.personalHeldUnits), A_TOKEN_DECIMALS), teamHeld: formatUnits(BigInt(teamLevel.teamHeldUnits), A_TOKEN_DECIMALS) } : null,
+      teamLevel: teamLevel ? {
+        ...teamLevel,
+        // 兼容旧字段名：P3 起 personal_held_units 存「升级仓金额」、team_held_units 存「团队业绩」
+        personalHeld: formatUnits(BigInt(teamLevel.personalHeldUnits), A_TOKEN_DECIMALS),
+        teamHeld: formatUnits(BigInt(teamLevel.teamHeldUnits), A_TOKEN_DECIMALS),
+        upgradeA: formatUnits(BigInt(teamLevel.personalHeldUnits), A_TOKEN_DECIMALS),
+        teamPerfA: formatUnits(BigInt(teamLevel.teamHeldUnits), A_TOKEN_DECIMALS),
+      } : null,
       recentTrades: recentTrades.map(t => ({ ...t, size: formatUnits(BigInt(t.sizeUnits), A_TOKEN_DECIMALS), priceUsdt: formatUnits(BigInt(t.priceUsdtUnits), USDT_DECIMALS), amountUsdt: formatUnits(BigInt(t.amountUsdtUnits), USDT_DECIMALS) })),
     };
   }
@@ -392,6 +450,7 @@ export function createATokenService({ database, walletService, clock = () => Dat
   }
   function computePoolStats() {
     const meta = settleDailyBurn();
+    const volume = todayTradingVolume();
     const burned = BigInt(meta.totalBurnedUnits);
     const todayBurned = BigInt(meta.todayBurnedUnits || '0');
     const todayBurnLeft = DAILY_BURN_TARGET - todayBurned > 0n ? DAILY_BURN_TARGET - todayBurned : 0n;
@@ -448,8 +507,8 @@ export function createATokenService({ database, walletService, clock = () => Dat
       feeRateBps: meta.feeRateBps,
       burnRateBps: meta.burnRateBps,
       dividendRateBps: meta.dividendRateBps,
-      todayVolumeA: formatUnits(BigInt(meta.todayVolumeAUnits), A_TOKEN_DECIMALS),
-      todayVolumeUsdt: formatUnits(BigInt(meta.todayVolumeUsdtUnits), USDT_DECIMALS),
+      todayVolumeA: formatUnits(BigInt(volume.aUnits), A_TOKEN_DECIMALS),
+      todayVolumeUsdt: formatUnits(BigInt(volume.usdtUnits), USDT_DECIMALS),
       dividendPool: a10PoolPendingA(),
       totalSupply: formatUnits(TOTAL_SUPPLY, A_TOKEN_DECIMALS),
       totalMinted: formatUnits(BigInt(meta.totalMintedUnits), A_TOKEN_DECIMALS),
@@ -494,6 +553,7 @@ export function createATokenService({ database, walletService, clock = () => Dat
     // 激活元数据
     getActivationMeta, setActivationMeta,
     // 常量
+    liquidityStatus, assertFreeTrading, isFreeTradingEnabled, setFreeTradingEnabled,
     TOTAL_SUPPLY, BURN_CAP, DAILY_BURN_TARGET, A_TOKEN_DECIMALS, USDT_DECIMALS,
   };
 }

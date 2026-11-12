@@ -32,9 +32,6 @@ try {
       static CLOSED = 2;
       constructor(url) {
         this.url = url; this.readyState = 1; mockStreams.push(this);
-        if (url.includes('internal-strategy')) setTimeout(() => {
-          if (this.readyState !== 2) this.onmessage?.({ data:JSON.stringify({ exchange:url.split('/')[3], running:false, capital:'10', equity:'10', fills:[], alerts:[], stats:{} }) });
-        }, 10);
       }
       close() { this.readyState = 2; }
     };
@@ -54,22 +51,15 @@ try {
     if (p === '/api/market/candles') return { candles:[{ time:Date.now(), open:100, high:101, low:99, close:100, volume:10 }], markPrice:100 };
     if (p === '/api/market/orderbook') return { bids:[], asks:[] };
     if (p === '/api/market/tickers') return { tickers:[] };
-    if (p === '/api/internal-strategy/summary') return { strategies:{}, runningCount:0 };
-    if (p.endsWith('/markets')) return { mode:'paper', markets:[{ marketId:'BTC', displayName:'BTC/USDT', minOrderSize:0.001 }] };
-    if (p.endsWith('/trend')) return { analysis:{ price:100, trend:'range', strength:0.5, recommended:'neutral', detail:'TEST', atr:1 }, candles:[{ time:Date.now(), open:100, high:101, low:99, close:100 }] };
     if (p === '/api/a-token/pool') return { priceUsdt:0.1234, recentTrades:[] };
     if (p === '/api/a-token/orderbook') return { bids:[], asks:[], markPrice:0.1234 };
     if (p === '/api/a-token/orders') return { orders:[] };
     if (p === '/api/a-token/kline') return { candles:[] };
-    if (p === '/api/lottery/config') return { prizes:[], pointRules:{} };
-    if (p === '/api/lottery/points') return { points:123, flows:[] };
-    if (p === '/api/lottery/recent' || p === '/api/lottery/wins' || p === '/api/lottery/leaderboard') return { wins:[] };
     if (p === '/api/referrals/profile') return { code:'TEST', link:'/?ref=TEST', directValid:3, rows:[] };
     if (p === '/api/airdrop/points') return { points:42 };
     if (p === '/api/platform/leaderboard') return { items:[], total:0 };
     if (p === '/api/support/session') return { ticket:{ id:'T', status:'open' }, messages:[] };
     if (p === '/api/ai-managed/state') return { running:false, principal:'75', totalEarned:'9', dayEarned:'1', availableBalance:'789', progress:0, batches:[], records:[] };
-    if (p === '/api/community-links') return { links:[] };
     if (p === '/api/ledger') return { items:[], total:0, summary:{ records:0, completed:0, wins:0, losses:0, realizedPnl:0, fees:0 } };
     if (p === '/api/ai/status') return { enabled:false };
     if (p === '/api/hyperliquid/info') {
@@ -141,13 +131,6 @@ try {
   assert.equal(await page.$('#trade-chart canvas'),null);
   await page.evaluate(() => { setTradeEma(7,true); setTradeBoll(true); });
   mark('trading price and available balance render before chart library');
-  const started = Date.now();
-  await visit('overview');
-  await contains('#tot-equity', '0');
-  result.overviewWithChartHeldMs = Date.now() - started;
-  assert(!calls.some(c => /internal-strategy\/(de|ex|rs)\/(markets|trend)/.test(c.url)));
-  mark('slow chart cannot block overview or start other strategies');
-
   holding.add('/api/wallet/profile'); holding.add('/api/platform/profile');
   await visit('account');
   await pending('/api/wallet/profile'); await pending('/api/platform/profile');
@@ -180,7 +163,7 @@ try {
   await page.evaluate(() => pendingTrade);
   assert.equal(await page.$eval('.tab-panel.active',n=>n.id),'tab-a-token-trade');
   await page.waitForFunction(() => document.querySelector('#atrade-chart')?.querySelector('canvas'));
-  mark('AIX price renders before profile/chart; order history loads on its tab');
+  mark('SVX price renders before profile/chart; order history loads on its tab');
   await visit('trade');
   await page.waitForFunction(() => tradeCandleData.length > 0 && !!tradeCandleSeries);
   assert.equal(await page.evaluate(() => tradeCandleData.at(-1).close),100);
@@ -188,36 +171,11 @@ try {
   assert.equal(await page.evaluate(() => tradeBollUpper.options().visible),true);
   mark('deferred trading chart receives real candle data when ready');
 
-  await visit('support'); await contains('#support-chat-content','客服');
-  await wait(250);
-  holding.add('/api/lottery/config'); holding.add('/api/lottery/points');
-  await visit('points');
-  await pending('/api/lottery/config'); await pending('/api/lottery/points');
-  await page.waitForSelector('.lottery-wrap');
-  const supportCalls = count('/api/support/session'), aixCalls = count('/api/a-token/orderbook');
-  await release('/api/lottery/points'); await contains('#lottery-pts-num','123');
-  assert(await page.$eval('#fruit-start',n=>n.disabled));
-  await release('/api/lottery/config');
-  await page.waitForFunction(() => !document.getElementById('fruit-start').disabled);
-  await wait(400);
-  assert.equal(count('/api/support/session'),supportCalls);
-  assert.equal(count('/api/a-token/orderbook'),aixCalls);
-  mark('lottery sections render independently; hidden support/AIX polling stops');
-
-  holding.add('/api/lottery/leaderboard');
-  await page.evaluate(() => switchLotteryTab('leaderboard')); await pending('/api/lottery/leaderboard');
-  await page.evaluate(() => switchLotteryTab('points')); await contains('#lottery-tab-content','当前积分');
-  await release('/api/lottery/leaderboard'); await wait(100);
-  await contains('#lottery-tab-content','当前积分');
-  mark('late lottery subtab response cannot overwrite current tab');
-
   holding.add('/api/airdrop/points');
   await visit('referrals'); await pending('/api/airdrop/points'); await contains('#referrals-content','3 人');
   await release('/api/airdrop/points'); await contains('#airdrop-metrics','42');
-  const marqueeCalls = count('/api/lottery/recent'); await wait(400);
-  assert.equal(count('/api/lottery/recent'),marqueeCalls);
   await visit('leaderboard'); await contains('#leaderboard-content','合约跟单收益排名');
-  mark('referrals render before airdrop; leaderboard isolated; hidden lottery stops');
+  mark('referrals render before airdrop; leaderboard isolated');
 
   holding.add('validatorSummaries');
   await visit('staking'); await pending('validatorSummaries'); await contains('#staking-platform','99');
@@ -242,20 +200,8 @@ try {
   const copyCalls = count('/api/ai-managed/state'); await wait(400);
   assert.equal(count('/api/ai-managed/state'),copyCalls);
   await visit('ai'); await page.waitForFunction(() => window._aiCfgFilled);
-  await visit('community'); await contains('#community-links-grid','社群入口');
   const aiCalls = count('/api/ai/status'); await wait(400); assert.equal(count('/api/ai/status'),aiCalls);
-  await visit('whitepaper');
-  mark('copy-trade, ledger, AI, community, whitepaper load on demand; hidden AI polls stop');
-
-  for (const name of ['de','ex','rs']) {
-    await visit(name);
-    await contains(`#${name}-capital-available`,'789');
-    const live = await page.evaluate(() => mockStreams.filter(s=>s.readyState!==2 && s.url.includes('internal-strategy')).map(s=>s.url));
-    assert.deepEqual(live,[`/api/internal-strategy/${name}/stream`]);
-  }
-  await visit('earn');
-  assert.equal(await page.evaluate(() => mockStreams.filter(s=>s.readyState!==2 && s.url.includes('internal-strategy')).length),0);
-  mark('only selected strategy opens a stream; leaving closes all strategy streams');
+  mark('copy-trade, ledger, AI load on demand; hidden AI polls stop');
 
   holding.add('/api/ledger');
   await visit('ledger'); await pending('/api/ledger');

@@ -1,15 +1,15 @@
 /**
- * AIX 链上提取（AIXPool harvest 模式）
+ * SVX 链上提取（SolvexPool harvest 模式）
  *
- * 用户在资产页 AIX 行点"提取到钱包"按钮：
+ * 用户在资产页 SVX 行点"提取到钱包"按钮：
  *   1. 弹出 modal，输入提取数量
  *   2. 用户点"提取"，前端调 /api/a-token/claim-signature 拿签名
- *   3. 前端用 ethers 弹钱包签名请求调用 AIXPool.harvest(amount, nonce, signature)
+ *   3. 前端用 ethers 弹钱包签名请求调用 SolvexPool.harvest(amount, nonce, signature)
  *   4. 链上交易成功后调 /api/a-token/claim-confirm 通知平台
- *   5. 失败/取消签名时调 /api/a-token/claim-refund 退回账面余额
+ *   5. 授权一经签发仍可上链使用，失败或取消时保留记录以便核对
  */
 (() => {
-  const AIX_POOL_ABI = [
+  const SVX_POOL_ABI = [
     'function harvest(uint256 amount, uint256 nonce, bytes signature) external',
     'function totalReserve() view returns (uint256)',
     'function totalHarvested() view returns (uint256)',
@@ -70,14 +70,14 @@
     modal.innerHTML = `
       <div class="awd-card">
         <header class="awd-head">
-          <h3>提取 AIX 到钱包</h3>
+          <h3>提取 SVX 到钱包</h3>
           <button class="awd-close" type="button" data-close="1">×</button>
         </header>
         <div class="awd-body">
-          <div class="awd-row"><span>账面余额</span><b id="aix-claim-balance">— AIX</b></div>
-          <div class="awd-row"><span>合约储备</span><b id="aix-claim-reserve">— AIX</b></div>
-          <div class="awd-row"><span>已累计提取</span><b id="aix-claim-harvested">— AIX</b></div>
-          <label class="awd-label">提取数量（AIX）</label>
+          <div class="awd-row"><span>账面余额</span><b id="aix-claim-balance">— SVX</b></div>
+          <div class="awd-row"><span>合约储备</span><b id="aix-claim-reserve">— SVX</b></div>
+          <div class="awd-row"><span>已累计提取</span><b id="aix-claim-harvested">— SVX</b></div>
+          <label class="awd-label">提取数量（SVX）</label>
           <input id="aix-claim-amount" type="number" min="100" step="0.0001" placeholder="100" inputmode="decimal" />
           <div class="awd-pct" id="aix-claim-pct">
             <button type="button" data-pct="25">25%</button>
@@ -85,7 +85,9 @@
             <button type="button" data-pct="75">75%</button>
             <button type="button" data-pct="100">100%</button>
           </div>
-          <div class="awd-hint">提取到当前连接钱包地址，链上交易需支付 BNB Gas</div>
+          <div class="awd-row"><span>手续费（2%，进入LP）</span><b id="aix-claim-fee">— SVX</b></div>
+          <div class="awd-row"><span>合计扣款</span><b id="aix-claim-total">— SVX</b></div>
+          <div class="awd-hint">提取数量为到账数量，另收2%手续费；链上交易需支付 BNB Gas。授权生成后不能自动退款，请完成领取。</div>
           <div class="awd-status" id="aix-claim-status" hidden></div>
         </div>
         <footer class="awd-foot">
@@ -100,12 +102,28 @@
     });
     modal.querySelectorAll('#aix-claim-pct button').forEach(b => b.addEventListener('click', () => {
       const pct = Number(b.dataset.pct);
-      const bal = Number($('aix-claim-balance').dataset.units || 0);
-      const amount = (bal / 1e18) * pct / 100;
-      $('aix-claim-amount').value = amount.toFixed(4);
+      const bal = BigInt($('aix-claim-balance').dataset.units || '0');
+      const scaled = bal * BigInt(pct) / 102n / 100000000000000n;
+      $('aix-claim-amount').value = `${scaled / 10000n}.${String(scaled % 10000n).padStart(4,'0')}`;
+      updateQuote();
     }));
+    $('aix-claim-amount').addEventListener('input',updateQuote);
     $('aix-claim-submit').addEventListener('click', onClaimSubmit);
     return modal;
+  }
+
+  function updateQuote() {
+    const value = $('aix-claim-amount').value;
+    if (!/^\d+(?:\.\d{1,18})?$/.test(value)) {
+      $('aix-claim-fee').textContent = $('aix-claim-total').textContent = '— SVX';
+      return null;
+    }
+    const [whole, fraction=''] = value.split('.');
+    const amount = BigInt(whole)*10n**18n + BigInt(fraction.padEnd(18,'0'));
+    const fee = amount*200n/10000n;
+    $('aix-claim-fee').textContent = fmtA(fee)+' SVX';
+    $('aix-claim-total').textContent = fmtA(amount+fee)+' SVX';
+    return {amount,fee,total:amount+fee};
   }
 
   function setStatus(text, isError = false) {
@@ -127,24 +145,24 @@
       const res = await fetch('/api/a-token/claim/status', { credentials: 'include' });
       const data = await res.json();
       if (!data?.enabled) {
-        setStatus('AIX 链上提取未启用（平台未部署 AIXPool 合约）', true);
+        setStatus('SVX 链上提取未启用（平台未部署 SolvexPool 合约）', true);
         $('aix-claim-submit').disabled = true;
         return;
       }
-      const balUnits = String(data.balanceA || '0');
+      const balUnits = String(data.balanceUnits || '0');
       const balNum = Number(BigInt(balUnits)) / 1e18;
-      $('aix-claim-balance').textContent = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }) + ' AIX';
+      $('aix-claim-balance').textContent = balNum.toLocaleString('en-US', { maximumFractionDigits: 4 }) + ' SVX';
       $('aix-claim-balance').dataset.units = balUnits;
       // 从链上读取储备量
       try {
         const ethers = await loadEthers();
         const provider = new ethers.BrowserProvider(window.ethereum);
-        const pool = new ethers.Contract(data.contractAddress, AIX_POOL_ABI, provider);
+        const pool = new ethers.Contract(data.contractAddress, SVX_POOL_ABI, provider);
         const [reserve, harvested, paused] = await Promise.all([
           pool.totalReserve(), pool.totalHarvested(), pool.paused(),
         ]);
-        $('aix-claim-reserve').textContent = (Number(reserve) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 0}) + ' AIX';
-        $('aix-claim-harvested').textContent = (Number(harvested) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 0}) + ' AIX';
+        $('aix-claim-reserve').textContent = (Number(reserve) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 0}) + ' SVX';
+        $('aix-claim-harvested').textContent = (Number(harvested) / 1e18).toLocaleString('en-US', { maximumFractionDigits: 0}) + ' SVX';
         if (paused) {
           setStatus('合约已暂停提取（平台维护中）', true);
           $('aix-claim-submit').disabled = true;
@@ -161,9 +179,12 @@
   }
 
   async function onClaimSubmit() {
-    const amount = Number($('aix-claim-amount').value || 0);
+    const amountRaw = $('aix-claim-amount').value;
+    const quote = updateQuote();
+    const amount = Number(amountRaw || 0);
     if (!amount || amount <= 0) return setStatus('请输入提取数量', true);
-    if (amount < 100) return setStatus('最小提取数量为 100 AIX', true);
+    if (amount < 100) return setStatus('最小提取数量为 100 SVX', true);
+    if (!quote || quote.total > BigInt($('aix-claim-balance').dataset.units || '0')) return setStatus('余额不足，需包含2%手续费',true);
     const wallet = getWallet();
     if (!wallet) return setStatus('请先连接钱包', true);
     setBusy(true);
@@ -174,7 +195,7 @@
       const res = await fetch('/api/a-token/claim-signature', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'clm_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 8) },
-        body: JSON.stringify({ amount: String(amount) }),
+        body: JSON.stringify({ amount: amountRaw }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || '生成签名失败');
@@ -189,7 +210,7 @@
       const ethers = await loadEthers();
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
-      const pool = new ethers.Contract(contractAddress, AIX_POOL_ABI, signer);
+      const pool = new ethers.Contract(contractAddress, SVX_POOL_ABI, signer);
 
       // 预检：避免交易上链才发现已用
       const used = await pool.isClaimUsed(await signer.getAddress(), amountUnits, nonceBigInt);
@@ -208,7 +229,7 @@
         body: JSON.stringify({ claimId, txHash: tx.hash }),
       });
 
-      setStatus(`提取成功！${amount} AIX 已转入你的钱包`, false);
+      setStatus(`提取成功！${amount} SVX 已转入你的钱包`, false);
       // 刷新余额
       try { await refreshStatus(); } catch {}
       // 通知资产页刷新
@@ -216,18 +237,9 @@
     } catch (e) {
       const msg = e?.message || String(e);
       setStatus('提取失败：' + msg, true);
-      // 用户取消签名或链上失败 → 退款
+      // 授权仍可上链使用，不能因取消钱包操作或 RPC 错误退款。
       if (claimId) {
-        try {
-          await fetch('/api/a-token/claim-refund', {
-            method: 'POST', credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ claimId, reason: 'user_cancelled_or_failed' }),
-          });
-          console.log('[AIX提取] 已自动退回账面余额，claimId:', claimId);
-        } catch (refundErr) {
-          console.error('[AIX提取] 退款失败', refundErr);
-        }
+        setStatus(`领取尚未完成，授权记录 ${claimId} 已保留，请联系客服核对。`,true);
       }
     } finally {
       setBusy(false);
@@ -235,7 +247,7 @@
   }
 
   // ── 公开 API ──────────────────────────────────────────────
-  window.AixClaim = {
+  window.SvxClaim = {
     async open() {
       const modal = ensureModal();
       modal.hidden = false;

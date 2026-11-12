@@ -16,7 +16,7 @@ const beijingDay = value => {
 };
 const todayBeijing = () => beijingDay(Date.now());
 
-// 收益类型标签（仅 AIX 口径；USDT 类收益如跟单推荐/交易手续费推荐在「推荐」页展示）
+// 收益类型标签（仅 SVX 口径；USDT 类收益如跟单推荐/交易手续费推荐在「推荐」页展示）
 const KIND_LABELS = {
   miner: '矿机产出',
   stake: '质押收益',
@@ -35,9 +35,9 @@ const KIND_LABELS = {
   direct_count: '直推阶梯奖',
 };
 
-// 汇总用户的 AIX 收益流水（全部为 A 币、18 位精度）
+// 汇总用户的 SVX 收益流水（全部为 SVX、18 位精度）
 // 来源：矿机产出、质押收益、团队分润（直推/间推/级差/平级）、A10 分红、直推阶梯奖
-// 注意：AI 跟单推荐（10%）与交易手续费推荐（50%）发的是 USDT（6 位精度），不属于 AIX 收益，
+// 注意：AI 跟单推荐（10%）与交易手续费推荐（50%）发的是 USDT（6 位精度），不属于 SVX 收益，
 //       已在「推荐」页 /api/referrals/profile 按 USDT 展示，此处不再混入。
 export function createATokenRevenueService({ database }) {
   const db = database;
@@ -77,7 +77,7 @@ export function createATokenRevenueService({ database }) {
           detail: `${subject} · ${count} 笔到账`,
         });
       }
-    } catch (error) { throw new Error(`AIX 收益读取失败：${error.message}`); }
+    } catch (error) { throw new Error(`SVX 收益读取失败：${error.message}`); }
 
     // 定期到账中的返还本金独立列示，不计入收益。
     let returnedPrincipalUnits = 0n;
@@ -90,7 +90,7 @@ export function createATokenRevenueService({ database }) {
       returnedPrincipalUnits += principal;
       rows.push({ id:r.id, kind:'stake', label:'质押收益', amount:fmtA(interest), amountUnits:interest.toString(),
         createdAt:r.settledAt, principalReturned:fmtA(principal), creditedAmount:fmtA(amount),
-        detail: `${stake?.planId === 'current' ? '活期' : '定期'}质押${principal > 0n ? ' · 另返还 AIX ' + Number(fmtA(principal)).toFixed(2) : ''}` });
+        detail: `能量质押${principal > 0n ? ' · 返还本金 ' + Number(fmtA(principal)).toFixed(2) : ''}` });
     }
 
     // 3. 团队分润（矿机直推/间推/级差/平级 + A10 分红）
@@ -106,7 +106,7 @@ export function createATokenRevenueService({ database }) {
           rate: r.rateBps != null ? `${Number(r.rateBps) / 100}%` : null,
         });
       }
-    } catch (error) { throw new Error(`AIX 收益读取失败：${error.message}`); }
+    } catch (error) { throw new Error(`SVX 收益读取失败：${error.message}`); }
 
     // 4. 直推阶梯奖励
     try {
@@ -119,7 +119,7 @@ export function createATokenRevenueService({ database }) {
           detail: `直推 ${r.directCount} 人 · ${Number(r.rateBps) / 100}%`,
         });
       }
-    } catch (error) { throw new Error(`AIX 收益读取失败：${error.message}`); }
+    } catch (error) { throw new Error(`SVX 收益读取失败：${error.message}`); }
 
     // 按 kind 筛选
     let filtered = rows;

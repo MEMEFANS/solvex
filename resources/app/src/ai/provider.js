@@ -4,7 +4,6 @@ export function getAiConfig() {
   return {
     provider: 'rules',
     localOnly: true,
-    sentinelMin: Number(process.env.AI_SENTINEL_MINUTES ?? 5),
     marketMin: Number(process.env.AI_MARKET_MINUTES ?? 30),
     reportHour: Number(process.env.AI_REPORT_HOUR ?? 20),
     telegramToken: process.env.TELEGRAM_BOT_TOKEN || '',

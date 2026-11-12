@@ -47,7 +47,7 @@ const args = Object.fromEntries(
 const dataDir = path.resolve(String(args['data-dir'] || process.env.WG_DATA_DIR || APP_ROOT));
 const backupDir = path.resolve(String(args.out || process.env.WG_BACKUP_DIR || path.join(dataDir, 'backups')));
 const keepDays = Number(args.keep ?? process.env.WG_BACKUP_KEEP ?? 14);
-const useGzip = args.gzip !== false;
+const useGzip = !args['no-gzip'] && args.gzip !== 'false';
 
 // ── 日志（同时输出到 stdout 和备份目录日志文件） ──
 function ts() {
@@ -81,7 +81,7 @@ async function main() {
   }
   fs.mkdirSync(backupDir, { recursive: true });
 
-  const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-'); // YYYY-MM-DD-HHMMSS
+  const stamp = new Date().toISOString().replace(/[:T.]/g, '-');
   const tmpDb = path.join(backupDir, `.tmp-${stamp}.sqlite`);
   const outDb = path.join(backupDir, `wg-platform-${stamp}.sqlite${useGzip ? '.gz' : ''}`);
   const outLedger = path.join(backupDir, `ledger-${stamp}.json.gz`);
@@ -124,7 +124,7 @@ async function main() {
     const cutoff = Date.now() - keepDays * 24 * 60 * 60 * 1000;
     let cleaned = 0;
     for (const f of fs.readdirSync(backupDir)) {
-      if (!/^wg-platform-|\.sqlite|^ledger-/.test(f) || f === 'backup.log') continue;
+      if (!/^(wg-platform-[0-9TZ-]+\.sqlite(?:\.gz)?|ledger-[0-9TZ-]+\.json\.gz)$/.test(f)) continue;
       const fp = path.join(backupDir, f);
       try {
         if (fs.statSync(fp).mtimeMs < cutoff) { fs.rmSync(fp, { force: true }); cleaned++; }

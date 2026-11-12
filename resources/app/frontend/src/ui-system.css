@@ -1,0 +1,1553 @@
+/* ─────────────────────────────────────────────────────────────
+   Solvex UI system — layout, rhythm and surface rules.
+   Loaded last. Uses the tokens defined once in brand-theme.css;
+   this file never redefines theme variables.
+   Direction: editorial fintech dashboard — paper-white planes on a
+   soft tinted canvas, one violet accent, tabular numerals, hairline rules.
+   ───────────────────────────────────────────────────────────── */
+
+/* 1. Page canvas --------------------------------------------------------- */
+body.solvex-react {
+  background: #f4f6fb;
+  background-attachment: fixed;
+}
+body.solvex-react::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(circle at 1px 1px, #7034ef0d 1px, transparent 0);
+  background-size: 26px 26px;
+  mask-image: linear-gradient(180deg, #000 0, transparent 420px);
+  -webkit-mask-image: linear-gradient(180deg, #000 0, transparent 420px);
+}
+.solvex-react #legacy-root { position: relative; z-index: 1; }
+
+/* 2. Sidebar ------------------------------------------------------------- */
+.solvex-react .rx-sidebar {
+  width: 224px;
+  padding: 22px 14px 16px;
+  background: linear-gradient(180deg, #ffffff 0, #fdfdff 100%);
+  border-right: 1px solid #e7ebf3;
+  box-shadow: 1px 0 0 #ffffff;
+}
+.solvex-react .rx-brand {
+  gap: 10px;
+  margin: 0 6px 26px;
+  padding: 6px 6px;
+}
+.solvex-react .rx-brand img { width: 32px; height: 36px; }
+.solvex-react .rx-brand strong {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 25px;
+  font-weight: 600;
+  letter-spacing: -.4px;
+  color: #161c30;
+}
+.solvex-react .rx-brand span {
+  margin-top: 4px;
+  font-size: 6.5px;
+  letter-spacing: 2.1px;
+  color: #7a8399;
+}
+.solvex-react .rx-nav-label {
+  margin: 0 0 8px;
+  padding: 0 12px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1.6px;
+  color: #8a93a8;
+  text-transform: uppercase;
+}
+.solvex-react .rx-nav { gap: 2px; }
+.solvex-react .rx-nav button {
+  min-height: 42px;
+  gap: 11px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: #4d566c;
+  transition: background .16s ease, color .16s ease;
+}
+.solvex-react .rx-nav button:hover { background: #f4f2fd; color: #5f2bd9; transform: none; }
+.solvex-react .rx-nav button.is-active {
+  position: relative;
+  color: #3f1c9e;
+  background: linear-gradient(100deg, #f2ecff, #f7f4ff);
+  box-shadow: inset 0 0 0 1px #e6dcff;
+  font-weight: 650;
+}
+.solvex-react .rx-nav button.is-active::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 11px;
+  bottom: 11px;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #8b5cf6, #5f2bd9);
+}
+.solvex-react .rx-nav button.is-active svg { color: #5f2bd9; }
+.solvex-react .rx-nav-dot { width: 5px; height: 5px; background: #7034ef; box-shadow: none; }
+.solvex-react .rx-nav button.is-active .rx-nav-dot { display: none; }
+.solvex-react .rx-nav-separator { margin: 10px 12px; background: #edf0f7; }
+.solvex-react .rx-sidebar-bottom { padding-top: 20px; }
+.solvex-react .rx-sidebar-help {
+  margin: 0 2px;
+  padding: 16px 14px;
+  border-radius: 12px;
+  background: linear-gradient(150deg, #f6f2ff, #fbfaff 70%);
+  border: 1px solid #ece5fb;
+}
+.solvex-react .rx-sidebar-help > svg { margin-bottom: 8px; color: #6d4bd0; }
+.solvex-react .rx-sidebar-help strong { color: #2c2f45; font-size: 12px; line-height: 1.6; }
+.solvex-react .rx-sidebar-help p { color: #6b7288; font-size: 11px; line-height: 1.7; margin: 5px 0 10px; }
+.solvex-react .rx-sidebar-help button { color: #5f2bd9; }
+.solvex-react .rx-sidebar-foot { margin: 16px 6px 0; font-size: 10px; color: #8a91a6; }
+
+/* 3. Top bar ------------------------------------------------------------- */
+.solvex-react .rx-topbar {
+  left: 224px;
+  height: 66px;
+  padding: 0 32px;
+  background: #ffffffd9;
+  border-bottom: 1px solid #e7ebf3;
+  backdrop-filter: blur(18px) saturate(1.4);
+}
+.solvex-react .rx-breadcrumb { gap: 10px; font-size: 12px; color: #8a93a8; }
+.solvex-react .rx-breadcrumb strong { color: #2b3346; font-weight: 600; }
+.solvex-react .rx-session-state {
+  padding: 6px 11px;
+  border: 1px solid #e8ecf4;
+  border-radius: 999px;
+  background: #fbfcfe;
+  font-size: 11px;
+  color: #6b7488;
+}
+.solvex-react .rx-locale button { height: 36px; width: 36px; border-radius: 10px; border-color: #e3e8f1; color: #5b6378; }
+.solvex-react .rx-wallet #wallet-connect-btn,
+.solvex-react .rx-wallet #wallet-connect-btn.connected {
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  border: 0;
+  box-shadow: 0 6px 16px -8px #4d21b899;
+}
+.solvex-react .rx-wallet #wallet-connect-btn:hover { background: linear-gradient(110deg, #6330d8, #4b38d2); }
+
+/* 4. Page frame + heading ------------------------------------------------ */
+.solvex-react .rx-page {
+  max-width: 1460px;
+  padding: 28px 32px 56px;
+}
+.solvex-react .rx-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin: 0 0 18px;
+  padding: 0 0 18px;
+  border-bottom: 1px solid #e7ebf3;
+}
+.solvex-react .rx-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.9px;
+  color: #7b6aa8;
+}
+.solvex-react .rx-kicker::before {
+  content: "";
+  width: 18px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #7034ef, #279ff6);
+}
+.solvex-react .rx-heading h1 {
+  margin-top: 8px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: clamp(26px, 2.1vw, 34px);
+  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -.6px;
+  color: #131a2c;
+}
+.solvex-react .rx-heading p { margin-top: 7px; font-size: 13px; line-height: 1.7; color: #667086; }
+.solvex-react .rx-heading-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.solvex-react .rx-heading-actions .ui-button {
+  height: 38px;
+  font-size: 12.5px;
+  font-weight: 550;
+  border-radius: 10px;
+  padding-inline: 14px;
+  border-color: #e2e7f0;
+  color: #4a5266;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172808;
+}
+.solvex-react .rx-heading-actions .ui-button:hover { border-color: #cdbdf5; color: #5f2bd9; background: #fbfaff; }
+.solvex-react .rx-heading-actions .ui-button.size-10 { width: 38px; padding: 0; }
+
+/* 5. Tabs ---------------------------------------------------------------- */
+.solvex-react .ui-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 4px;
+  background: #eef1f7;
+  border: 1px solid #e4e8f1;
+  border-radius: 12px;
+  box-shadow: inset 0 1px 2px #10172805;
+}
+.solvex-react .ui-tab {
+  min-width: 84px;
+  padding: 9px 20px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 550;
+  color: #5d6579;
+  transition: color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+.solvex-react .ui-tab:hover { color: #33285a; background: #e6e9f2; }
+.solvex-react .ui-tab[data-state=active] {
+  color: #3f1c9e;
+  background: #fff;
+  box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
+}
+.solvex-react .rx-earn-tabs { margin-top: 2px; }
+
+/* 6. Cards + atoms ------------------------------------------------------- */
+.solvex-react .ui-card {
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
+}
+.solvex-react .rx-stack { gap: 20px; }
+.solvex-react .rx-tab-body { margin-top: 20px; }
+
+.solvex-react .rx-section-heading {
+  align-items: flex-end;
+  gap: 16px;
+  margin: 0 0 14px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid #edf0f7;
+}
+.solvex-react .rx-section-heading h2 {
+  margin-top: 6px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 21px;
+  font-weight: 600;
+  letter-spacing: -.2px;
+  color: #171d30;
+}
+.solvex-react .rx-section-heading > span { font-size: 12px; color: #6e778c; }
+
+.solvex-react .rx-badge {
+  padding: 4px 9px;
+  border: 1px solid #e2e7f0;
+  border-radius: 999px;
+  background: #f7f9fc;
+  color: #5f687d;
+  font-size: 11px;
+  font-weight: 550;
+}
+.solvex-react .rx-badge.is-positive { color: #056b56; background: #ecf8f3; border-color: #c9eadf; }
+.solvex-react .rx-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: #f3eeff;
+  border: 1px solid #e7ddff;
+  color: #5f2bd9;
+}
+.solvex-react .rx-muted { font-size: 12px; color: #6e778c; }
+.solvex-react .rx-note { font-size: 12.5px; line-height: 1.85; color: #626b80; }
+.solvex-react .rx-loading { color: #5f6880; }
+
+.solvex-react .rx-gate,
+.solvex-react .ui-card.rx-gate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  gap: 0;
+  padding: 48px 24px;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 50% 0, #f4efff 0, transparent 62%),
+    #fff;
+}
+.solvex-react .rx-gate .rx-icon { width: 48px; height: 48px; border-radius: 14px; margin-bottom: 18px; }
+.solvex-react .rx-gate h2 { font-size: 20px; font-weight: 650; color: #191f32; letter-spacing: -.2px; }
+.solvex-react .rx-gate p { max-width: 34ch; margin: 8px 0 22px; font-size: 13px; line-height: 1.75; color: #667086; }
+.solvex-react .rx-gate .ui-button { height: 42px; padding-inline: 20px; border-radius: 10px; }
+.solvex-react .rx-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 160px;
+  color: #6b7488;
+  font-size: 13px;
+}
+.solvex-react .rx-table-wrap { overflow-x: auto; border: 1px solid #e8ecf4; border-radius: 12px; }
+.solvex-react .rx-table { width: 100%; border-collapse: collapse; }
+.solvex-react .rx-table th {
+  padding: 11px 14px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e8ecf4;
+  color: #6b7488;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-align: left;
+  white-space: nowrap;
+}
+.solvex-react .rx-table td {
+  padding: 14px;
+  border-bottom: 1px solid #eef1f7;
+  color: #3a4256;
+  font-size: 12.5px;
+}
+/* 表头与单元格统一：首列左对齐，其余右对齐，数字列才能对齐成一条线 */
+.solvex-react .rx-table th + th,
+.solvex-react .rx-table td + td { text-align: right; }
+.solvex-react .rx-table tr:last-child td { border-bottom: 0; }
+.solvex-react .rx-table tbody tr:hover { background: #fafbfe; }
+
+/* 7. Buttons ------------------------------------------------------------- */
+.solvex-react .ui-button { border-radius: 10px; font-weight: 550; }
+.solvex-react .ui-button.bg-primary {
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  box-shadow: 0 8px 18px -12px #4d21b8cc;
+}
+.solvex-react .ui-button.bg-primary:hover { background: linear-gradient(110deg, #6330d8, #4b38d2); }
+.solvex-react .ui-button.border { border-color: #e2e7f0; color: #454d61; background: #fff; }
+.solvex-react .ui-button.border:hover { border-color: #cbb9f2; color: #5f2bd9; background: #fbfaff; }
+
+/* 8. 矿池：账户概览 ------------------------------------------------------ */
+.solvex-react .rx-pool-summary {
+  display: grid;
+  grid-template-columns: minmax(360px, 1.02fr) minmax(0, 1.6fr);
+  gap: 0;
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
+  overflow: hidden;
+}
+.solvex-react .rx-claim-strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  border: 0;
+  border-right: 1px solid #eef1f7;
+  border-radius: 0;
+  background: linear-gradient(135deg, #f7f2ff 0, #fbf9ff 58%, #ffffff 100%);
+  box-shadow: none;
+}
+.solvex-react .rx-claim-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
+.solvex-react .rx-claim-icon {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #fff;
+  border: 1px solid #e7ddff;
+  color: #5f2bd9;
+}
+.solvex-react .rx-claim-copy { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
+.solvex-react .rx-claim-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .03em;
+  color: #6b5a91;
+}
+.solvex-react .rx-claim-label .rx-status-dot { width: 6px; height: 6px; }
+.solvex-react .rx-claim-copy > strong {
+  margin-top: 1px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 26px;
+  line-height: 1.15;
+  font-weight: 600;
+  color: #241456;
+  letter-spacing: -.6px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.solvex-react .rx-claim-copy > strong small { margin-left: 4px; font-size: 11px; font-weight: 500; color: #6b6386; letter-spacing: 0; }
+.solvex-react .rx-claim-usdt { margin-top: 1px; color: #5f2bd9; font-size: 11px; }
+.solvex-react .rx-claim-actions { display: flex; align-items: center; gap: 6px; }
+.solvex-react .rx-claim-actions .ui-button { min-height: 36px; font-size: 12px; padding-inline: 13px; white-space: nowrap; }
+.solvex-react .rx-claim-actions .ui-button:first-child {
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 8px 16px -12px #4d21b8cc;
+}
+.solvex-react .rx-claim-actions .ui-button:last-child { color: #5f2bd9; background: transparent; }
+.solvex-react .rx-claim-actions .ui-button:last-child:hover { background: #f2ecff; }
+
+.solvex-react .rx-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0;
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
+  overflow: hidden;
+}
+.solvex-react .rx-pool-summary .rx-metrics { border: 0; border-radius: 0; box-shadow: none; }
+.solvex-react .rx-metric {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 14px 18px;
+  border: 0;
+  border-right: 1px solid #eef1f7;
+  border-bottom: 0;
+}
+.solvex-react .rx-metric:nth-child(2n) { border-right: 1px solid #eef1f7; }
+.solvex-react .rx-metric:nth-child(4n) { border-right: 0; }
+.solvex-react .rx-metrics:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.solvex-react .rx-note + .rx-table-wrap { margin-top: 12px; }
+.solvex-react .rx-metric > div > span,
+.solvex-react .rx-metric > span { font-size: 11.5px; font-weight: 550; color: #6b7488; letter-spacing: .01em; }
+.solvex-react .rx-metric > div > svg { color: #8b7ab5; }
+.solvex-react .rx-metric > strong {
+  margin: 6px 0 0;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 24px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -.4px;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .rx-metric strong small { margin-left: 5px; font-size: 10.5px; font-weight: 500; color: #78829a; letter-spacing: 0; }
+.solvex-react .rx-metric > p, .solvex-react .rx-metric > small { margin-top: 3px; font-size: 11px; color: #7a8499; }
+
+/* 9. 矿池：档位选择 ------------------------------------------------------ */
+.solvex-react .rx-pool-tiers-section { margin-top: 2px; }
+.solvex-react .rx-tiers { gap: 16px; }
+.solvex-react .rx-tier {
+  padding: 20px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid #e6eaf2;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+  overflow: hidden;
+}
+.solvex-react .rx-tier::before {
+  height: 3px;
+  border-radius: 16px 16px 0 0;
+  background: var(--metal-grad, linear-gradient(90deg, #dbe2ef, #c3cee2));
+}
+.solvex-react .rx-tier:hover {
+  transform: translateY(-3px);
+  border-color: var(--metal-line, #d5ddec);
+  box-shadow: 0 22px 44px -30px #1b254a5c;
+}
+.solvex-react .rx-tier .rx-tier-top { margin-bottom: 14px; }
+.solvex-react .rx-tier .rx-tier-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  background: var(--metal-chip, #f5f7fb);
+  border: 1px solid var(--metal-line, #e4e9f2);
+  color: var(--metal-deep, #5b6478);
+}
+.solvex-react .rx-tier .rx-tier-top > span:last-child {
+  padding: 4px 9px;
+  border: 1px solid #e8ecf4;
+  border-radius: 999px;
+  background: #fafbfd;
+  font-size: 11px;
+  color: #6b7488;
+}
+.solvex-react .rx-tier[data-tone] h3 {
+  width: auto;
+  margin: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  font-size: 15px;
+  font-weight: 650;
+  color: #20263a;
+}
+.solvex-react .rx-tier[data-tone] .rx-tier-rate {
+  margin-top: 4px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 46px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -1.6px;
+  color: var(--metal-deep, #1b2233);
+}
+.solvex-react .rx-tier[data-tone] .rx-tier-rate > span { margin-left: 2px; font-size: 19px; font-weight: 500; color: #77819a; }
+.solvex-react .rx-tier[data-tone] > p { margin-top: 2px; font-size: 11.5px; color: #7a8499; }
+.solvex-react .rx-tier[data-tone] .rx-tier-min {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid #eef1f7;
+  font-size: 11.5px;
+  color: #6b7488;
+}
+.solvex-react .rx-tier[data-tone] .rx-tier-min > strong {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 19px;
+  font-weight: 600;
+  color: #20263a;
+  letter-spacing: -.2px;
+}
+.solvex-react .rx-tier[data-tone] > small { display: block; margin-top: 4px; font-size: 11px; line-height: 1.6; color: #8a93a8; }
+.solvex-react .rx-tier[data-tone] .rx-tier-invest {
+  width: 100%;
+  min-height: 40px;
+  margin-top: 16px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--metal-btn, #5f2bd9);
+  border: 0;
+  border-radius: 10px;
+  box-shadow: inset 0 1px 0 #ffffff2e;
+}
+.solvex-react .rx-tier[data-tone] .rx-tier-invest:hover { background: var(--metal-btn-hover, #4d21b8); }
+.solvex-react .rx-pool-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px !important;
+  padding: 10px 14px;
+  border: 1px dashed #e4e9f2;
+  border-radius: 10px;
+  background: #fafbfd;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: #6b7488;
+}
+.solvex-react .rx-pool-note svg { margin-top: 2px; color: #8b7ab5; }
+
+/* 10. 矿池：场景 + 持仓 -------------------------------------------------- */
+.solvex-react .rx-pool-live {
+  display: grid;
+  grid-template-columns: minmax(0, 1.62fr) minmax(300px, .88fr);
+  gap: 20px;
+  align-items: stretch;
+}
+.solvex-react .rx-pool-live.is-guest { grid-template-columns: minmax(0, 1fr); }
+.solvex-react .rx-pool-live.is-panorama { grid-template-columns: minmax(0, 1fr); }
+.solvex-react .rx-pool-live-scene { min-width: 0; }
+.solvex-react .rx-pool-live .rx-cavern { height: auto; display: block; }
+.solvex-react .rx-pool-live .rx-cavern-viewport { display: block; }
+.solvex-react .rx-pool-live .rx-cavern-stage { aspect-ratio: 16/7.4; min-height: 0; width: 100%; }
+
+.solvex-react .rx-cavern {
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
+}
+.solvex-react .rx-cavern-heading { padding: 14px 18px; }
+.solvex-react .rx-cavern-icon { width: 36px; height: 36px; border-radius: 10px; }
+.solvex-react .rx-cavern-title { gap: 10px; }
+.solvex-react .rx-cavern-title h2 { font-size: 16px; font-weight: 650; }
+.solvex-react .rx-cavern-title p { font-size: 11px; }
+.solvex-react .rx-cavern-stage { border-radius: 0; }
+.solvex-react .rx-cavern-footer { padding: 12px 18px; gap: 12px; }
+.solvex-react .rx-cavern-footer p { font-size: 11px; }
+.solvex-react .rx-cavern-footer .ui-button { height: 34px; font-size: 11.5px; }
+
+.solvex-react .rx-pool-holdings { display: flex; flex-direction: column; height: 100%; }
+.solvex-react .rx-pool-holdings > div:last-child { flex: 1; display: flex; flex-direction: column; }
+.solvex-react .rx-pool-live .rx-pool-empty { flex: 1; }
+.solvex-react .rx-pool-holdings .p-6 { padding: 16px 18px 18px; }
+.solvex-react .rx-pool-holdings .p-6.pb-4 { padding: 16px 18px 12px; }
+.solvex-react .rx-pool-holdings .ui-card, .solvex-react .rx-pool-holdings .text-base { font-size: 14px; }
+.solvex-react .rx-pool-live .rx-positions { grid-template-columns: 1fr; gap: 10px; max-height: 420px; overflow-y: auto; scrollbar-width: thin; }
+.solvex-react .rx-position {
+  padding: 14px;
+  border: 1px solid #eef1f7;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+.solvex-react .rx-position:hover { border-color: #dcd2f6; }
+.solvex-react .rx-position-head { gap: 10px; }
+.solvex-react .rx-position-head .rx-icon { width: 32px; height: 32px; border-radius: 9px; }
+.solvex-react .rx-position-head h3 { font-size: 13.5px; font-weight: 600; color: #232a3d; }
+.solvex-react .rx-position-head small { font-size: 11px; color: #7a8499; }
+.solvex-react .rx-position-principal > span { font-size: 11px; color: #7a8499; }
+.solvex-react .rx-position-principal > strong {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  color: #171d31;
+  letter-spacing: -.3px;
+}
+.solvex-react .rx-position-principal small { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .rx-position-stats { margin-top: 12px; padding-top: 12px; border-color: #eef1f7; }
+.solvex-react .rx-position-stats span { font-size: 10.5px; color: #7a8499; }
+.solvex-react .rx-position-stats strong { font-size: 12px; font-weight: 600; color: #333b50; }
+.solvex-react .rx-progress { height: 4px; margin-top: 14px; background: #edf0f7; border-radius: 4px; overflow: hidden; }
+.solvex-react .rx-progress > i { background: linear-gradient(90deg, #a78bf5, #7034ef); border-radius: 4px; }
+.solvex-react .rx-position-foot { margin-top: 8px; font-size: 10.5px; color: #8a93a8; }
+.solvex-react .rx-claim-copy > strong,
+.solvex-react .rx-tier-rate,
+.solvex-react .rx-position-principal > strong,
+.solvex-react .rx-table td.rx-numeric,
+.solvex-react .rx-amount-form input {
+  font-variant-numeric: tabular-nums;
+}
+
+.solvex-react .rx-pool-empty { min-height: 210px; }
+.solvex-react .rx-pool-empty .rx-icon { width: 46px; height: 46px; border-radius: 13px; margin-bottom: 14px; }
+.solvex-react .rx-pool-empty h3 { font-size: 15px; font-weight: 650; color: #20263a; }
+.solvex-react .rx-pool-empty p { margin-top: 6px; font-size: 12px; line-height: 1.7; color: #6b7488; }
+.solvex-react .rx-pool-empty > div { margin-top: 16px; }
+
+/* 11. 矿池：新用户三步 --------------------------------------------------- */
+.solvex-react .rx-getting-started {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  padding: 4px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
+}
+.solvex-react .rx-getting-started > div {
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px 20px;
+  border-right: 1px solid #eef1f7;
+}
+.solvex-react .rx-getting-started > div:last-child { border-right: 0; }
+.solvex-react .rx-getting-started > div > span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #f3eeff;
+  color: #5f2bd9;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+.solvex-react .rx-getting-started h3 { font-size: 13.5px; font-weight: 650; color: #20263a; }
+.solvex-react .rx-getting-started p { margin-top: 3px; font-size: 11.5px; line-height: 1.6; color: #6b7488; }
+
+/* 13. 能量 ---------------------------------------------------------------- */
+.solvex-react .rx-energy-grid { gap: 20px; }
+.solvex-react .rx-energy-grid > .ui-card { overflow: hidden; }
+.solvex-react .rx-metrics-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.solvex-react .rx-metrics-3 .rx-metric { border-bottom: 0; }
+.solvex-react .rx-metrics-3 .rx-metric:nth-child(3) { border-right: 0; }
+.solvex-react .rx-metrics-3 .rx-metric:nth-child(2n) { border-right: 1px solid #eef1f7; }
+.solvex-react .rx-form-balance {
+  padding: 14px 16px;
+  border: 1px solid #e8edf5;
+  border-radius: 12px;
+  background: #fafbfe;
+}
+.solvex-react .rx-form-balance > span { font-size: 11px; color: #6b7488; }
+.solvex-react .rx-form-balance > strong {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: #171d31;
+}
+.solvex-react .rx-input-group { height: 48px; border-color: #e2e7f0; border-radius: 10px; background: #fff; }
+.solvex-react .rx-input-group:focus-within { border-color: #9d7cf0; box-shadow: 0 0 0 3px #7034ef14; }
+.solvex-react .rx-input-group input { font-size: 15px; }
+.solvex-react .rx-input-group button { color: #5f2bd9; font-size: 11px; font-weight: 650; }
+.solvex-react .rx-amount-form label { font-size: 12px; color: #4a5266; }
+.solvex-react .rx-quote, .solvex-react .rx-form-trust { font-size: 11.5px; line-height: 1.7; color: #6b7488; }
+
+/* 14. 玩法页 -------------------------------------------------------------- */
+.solvex-react .rx-play-page { gap: 28px; }
+.solvex-react .rx-play-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px;
+  border: 1px solid #e6eaf2;
+  border-radius: 12px;
+  background: #fff;
+}
+.solvex-react .rx-play-nav button {
+  min-height: 34px;
+  padding: 7px 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #5d6579;
+  font-size: 12px;
+  font-weight: 550;
+}
+.solvex-react .rx-play-nav button:hover { color: #5f2bd9; background: #f5f1ff; }
+.solvex-react .rx-play-section { gap: 12px; }
+.solvex-react .rx-play-section + .rx-play-section { padding-top: 28px; border-top: 1px solid #edf0f7; }
+.solvex-react .rx-play-section > .rx-stack { gap: 16px; }
+.solvex-react .rx-blindbox-hero {
+  padding: 22px;
+  border: 1px solid #e6dcfb;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #f8f4ff, #fff 58%);
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #4d21b866;
+}
+.solvex-react .rx-blindbox-hero h3 { font-size: 20px; font-weight: 650; }
+.solvex-react .rx-blindbox-range { font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 40px; font-weight: 600; }
+.solvex-react .rx-stat-row > div { border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; }
+.solvex-react .rx-record-group h4 { font-size: 12px; color: #5d6579; }
+
+/* 15. 团队页 -------------------------------------------------------------- */
+.solvex-react .rx-team-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  align-items: center;
+  gap: 32px;
+  padding: 34px 38px;
+  border: 1px solid #e6dcfb;
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 88% 8%, #7034ef14 0, transparent 58%),
+    linear-gradient(118deg, #f7f3ff, #fff 58%);
+  box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
+}
+.solvex-react .rx-team-hero .rx-kicker { color: #6b53a6; }
+.solvex-react .rx-sidebar-help > svg,
+.solvex-react .rx-sidebar-help button { color: #5f2bd9; }
+.solvex-react .rx-sidebar-help strong { color: #2c2f45; }
+.solvex-react .rx-sidebar-help p { color: #6b7288; }
+.solvex-react .rx-team-hero h2 {
+  margin-top: 10px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 31px;
+  line-height: 1.24;
+  font-weight: 600;
+  letter-spacing: -.5px;
+  color: #151b2e;
+}
+.solvex-react .rx-team-hero p { margin-top: 9px; max-width: 40ch; font-size: 13px; line-height: 1.75; color: #667086; }
+.solvex-react .rx-team-hero .ui-button {
+  margin-top: 20px;
+  height: 40px;
+  padding-inline: 18px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  box-shadow: 0 10px 22px -14px #4d21b8cc;
+}
+.solvex-react .rx-level-orbit > span { border-color: #ded1fb; box-shadow: none; }
+.solvex-react .rx-level-orbit > div {
+  border-color: #c9b6f8;
+  background: linear-gradient(145deg, #8b5cf6, #5f2bd9 72%);
+  box-shadow: 0 20px 36px -20px #4d21b8aa, inset 0 0 0 6px #ffffff1f;
+}
+.solvex-react .rx-level-orbit strong { color: #fff; }
+.solvex-react .rx-level-orbit small { color: #ede6ff; }
+.solvex-react .rx-team-grid { grid-template-columns: minmax(0, 1.42fr) minmax(300px, 1fr); gap: 20px; }
+.solvex-react .rx-team-grid .rx-table th { padding-block: 9px; }
+.solvex-react .rx-team-grid .rx-table td { padding-block: 9px; font-size: 12.5px; }
+.solvex-react .rx-team-grid .rx-table tr.is-current td { background: #faf7ff; }
+.solvex-react .rx-team-next .rx-next-level { margin-top: 4px; font-size: 40px; }
+.solvex-react .rx-team-next .rx-target { margin: 17px 0; }
+.solvex-react .rx-invite-grid { grid-template-columns: minmax(0, .95fr) minmax(0, 1.35fr); gap: 20px; }
+.solvex-react .rx-invite-hero { padding: 30px; background: linear-gradient(130deg, #f7f4ff, #fff 62%); }
+.solvex-react .rx-invite-hero h2 { font-size: 29px; line-height: 1.42; color: #171d30; letter-spacing: -.4px; }
+.solvex-react .rx-invite-hero p { font-size: 12.5px; }
+.solvex-react .rx-invite-code { margin: 26px 0 14px; font-size: 27px; letter-spacing: 4px; color: #5f2bd9; }
+.solvex-react .rx-invite-link { height: 84px; font-size: 12px; }
+.solvex-react .rx-info-block p { font-size: 12px; line-height: 1.85; }
+
+/* 16. 资产页 -------------------------------------------------------------- */
+.solvex-react .account-shell { max-width: 1460px; margin: 0 auto; padding: 28px 32px 56px; }
+.solvex-react .assets-header { align-items: flex-start; padding-bottom: 18px; border-bottom: 1px solid #e7ebf3; }
+.solvex-react .assets-header h2 {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 30px;
+  line-height: 1.18;
+  font-weight: 600;
+  letter-spacing: -.6px;
+  color: #131a2c;
+}
+.solvex-react .assets-header h2::before {
+  content: "SOLVEX · ASSETS";
+  display: block;
+  margin-bottom: 9px;
+  font-family: "Segoe UI", "PingFang SC", sans-serif;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.9px;
+  color: #7b6aa8;
+}
+.solvex-react .assets-wallet { flex: 0 1 auto; max-width: 100%; margin-top: 8px; font-size: 11.5px; color: #6b7488; }
+.solvex-react .assets-wallet code { font-family: "Bahnschrift", ui-monospace, monospace; font-size: 11.5px; color: #4d566c; letter-spacing: .02em; }
+.solvex-react .assets-wallet-dot { background: #7034ef; box-shadow: 0 0 0 3px #7034ef1f; }
+.solvex-react .assets-uid { display: inline-flex; align-items: center; gap: 6px; width: auto; margin-top: 8px; padding: 3px 9px; border: 1px solid #e3e8f1; border-radius: 7px; background: #fff; color: #5f2bd9; font-size: 11px; }
+.solvex-react .assets-uid-label { color: #8a93a8; font-size: 10.5px; }
+.solvex-react .assets-uid-copy { color: #5f2bd9; font-size: 11px; font-weight: 600; }
+.solvex-react .partner-badge { margin-top: 8px; padding: 4px 10px; border: 1px solid #e0d3ff; border-radius: 999px; background: #f5f1ff; color: #5f2bd9; font-size: 11px; font-weight: 600; }
+
+.solvex-react .assets-overview {
+  grid-template-columns: minmax(320px, .92fr) minmax(0, 1.5fr);
+  gap: 0;
+  margin-top: 20px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+}
+.solvex-react .assets-total {
+  padding: 26px 30px;
+  border-right: 1px solid #eef1f7;
+  background:
+    radial-gradient(ellipse at 84% 0, #7034ef12 0, transparent 62%),
+    linear-gradient(120deg, #f7f4ff, #fff 72%);
+}
+.solvex-react .assets-header > div { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
+.solvex-react .assets-header > div > div:first-child { width: 100%; }
+.solvex-react .assets-label { font-size: 10.5px; font-weight: 650; letter-spacing: 1.5px; text-transform: uppercase; color: #7b6aa8; }
+.solvex-react .assets-overview .assets-total strong,
+.solvex-react .assets-overview .assets-total strong span {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 42px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -1px;
+  color: #131a2c;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .assets-overview .assets-total .assets-label { color: #7b6aa8; }
+.solvex-react .assets-overview .assets-total .assets-subvalue,
+.solvex-react .assets-overview .assets-total .assets-subvalue span { margin-top: 6px; font-size: 12px; color: #6b7488; }
+.solvex-react .assets-overview .assets-total .assets-subvalue b { color: #3d465c; font-weight: 600; }
+.solvex-react .assets-overview .assets-total strong small { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: #6b7488; }
+.solvex-react .assets-overview .assets-total .assets-secondary-action { color: #4a5266; background: #fff; border-color: #e2e7f0; }
+.solvex-react .assets-overview .assets-metrics span { font-size: 11px; color: #6b7488; }
+.solvex-react .assets-overview .assets-metrics small { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .assets-overview .assets-metrics b {
+  margin-top: 7px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -.3px;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .assets-subvalue { margin-top: 6px; font-size: 12px; color: #6b7488; }
+.solvex-react .assets-quick-actions { gap: 8px; margin-top: 22px; }
+.solvex-react .assets-primary-action {
+  height: 38px;
+  padding-inline: 16px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 20px -14px #4d21b8cc;
+}
+.solvex-react .assets-secondary-action {
+  height: 38px;
+  padding-inline: 16px;
+  border: 1px solid #e2e7f0;
+  border-radius: 10px;
+  background: #fff;
+  color: #4a5266;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.solvex-react .assets-secondary-action:hover { border-color: #cdbdf5; color: #5f2bd9; background: #fbfaff; }
+.solvex-react .assets-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
+.solvex-react .assets-metrics > div {
+  display: flex;
+  flex-direction: column;
+  padding: 21px 26px;
+  border: 0;
+  border-right: 1px solid #eef1f7;
+  border-bottom: 1px solid #eef1f7;
+  background: #fff;
+}
+.solvex-react .assets-metrics > div:nth-child(2n) { border-right: 0; }
+.solvex-react .assets-metrics > div:nth-child(n+3) { border-bottom: 0; }
+.solvex-react .assets-metrics span { font-size: 11px; color: #6b7488; }
+.solvex-react .assets-metrics b {
+  margin-top: 7px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -.3px;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .assets-metrics small { margin-top: 3px; font-size: 10.5px; color: #8a93a8; }
+
+.solvex-react .assets-distribution {
+  margin-top: 20px;
+  padding: 22px 26px 24px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+}
+.solvex-react .assets-section-heading h3 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; color: #171d30; }
+.solvex-react .assets-section-heading > span { font-size: 11px; letter-spacing: .04em; color: #8a93a8; }
+.solvex-react .assets-allocation { gap: 22px; margin-top: 18px; }
+.solvex-react .assets-allocation-name { margin-bottom: 9px; font-size: 11.5px; color: #6b7488; }
+.solvex-react .assets-allocation-name b {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .assets-allocation-track { height: 5px; border-radius: 3px; background: #eef1f7; }
+.solvex-react .assets-allocation-fill { border-radius: 3px; }
+
+.solvex-react .assets-main {
+  margin-top: 20px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+  overflow: hidden;
+}
+.solvex-react .assets-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin: 18px 22px 0;
+  padding: 4px;
+  border: 1px solid #e4e8f1;
+  border-radius: 12px;
+  background: #eef1f7;
+}
+.solvex-react .assets-tabs button {
+  min-width: 84px;
+  padding: 9px 18px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: #5d6579;
+  font-family: inherit;
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.solvex-react .assets-tabs button:hover { color: #33285a; background: #e6e9f2; }
+.solvex-react .assets-tabs button.active {
+  color: #3f1c9e;
+  background: #fff;
+  box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
+}
+.solvex-react .assets-tabs button::after { display: none; }
+.solvex-react .assets-list-tools { padding: 16px 22px 12px; }
+.solvex-react .assets-search {
+  width: 240px;
+  height: 36px;
+  border: 1px solid #e2e7f0;
+  border-radius: 10px;
+  background: #fbfcfe;
+  color: #8a93a8;
+}
+.solvex-react .assets-search input { font-size: 12.5px; color: #3d465c; }
+.solvex-react .assets-search:focus-within { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #7034ef14; }
+.solvex-react .assets-zero-filter { font-size: 11.5px; color: #6b7488; }
+.solvex-react .assets-zero-filter input { accent-color: #7034ef; }
+.solvex-react .assets-table-wrap { margin: 0 22px 22px; border: 1px solid #e8ecf4; border-radius: 12px; overflow-x: auto; }
+.solvex-react .assets-table { min-width: 720px; }
+.solvex-react .assets-table th {
+  padding: 11px 16px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e8ecf4;
+  color: #7a8499;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .06em;
+}
+.solvex-react .assets-table th:first-child { padding-left: 20px; }
+.solvex-react .assets-table td {
+  padding: 13px 16px;
+  border-top: 1px solid #eef1f7;
+  color: #3d465c;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .assets-table td:first-child { padding-left: 20px; }
+.solvex-react .assets-table tbody tr:hover td { background: #fbfcff; }
+.solvex-react .assets-coin b { font-size: 12.5px; color: #161d31; }
+.solvex-react .assets-coin small { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .assets-coin-icon { width: 32px; height: 32px; flex-basis: 32px; }
+.solvex-react .assets-row-actions button {
+  padding: 4px 8px;
+  border-radius: 6px;
+  color: #5f2bd9;
+  font-size: 11.5px;
+  font-weight: 550;
+}
+.solvex-react .assets-row-actions button:hover { background: #f5f1ff; }
+.solvex-react .assets-record-block { padding: 22px 24px; }
+.solvex-react .assets-record-block + .assets-record-block { border-top: 1px solid #edf0f7; }
+.solvex-react .assets-record-block h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; color: #171d30; }
+.solvex-react .account-history { border: 1px solid #e8ecf4; border-radius: 12px; }
+.solvex-react .account-history table { width: 100%; min-width: 860px; }
+.solvex-react .account-history thead th {
+  padding: 11px 14px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e8ecf4;
+  color: #7a8499;
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: .06em;
+}
+.solvex-react .account-history td {
+  padding: 11px 14px;
+  border-top: 1px solid #eef1f7;
+  color: #3d465c;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .account-history tbody tr:hover td { background: #fbfcff; }
+.solvex-react .account-history td.up { color: #0f7b5e; }
+.solvex-react .account-history td.down { color: #c2334a; }
+.solvex-react .aix-revenue-summary { gap: 12px; }
+.solvex-react .aix-rev-total {
+  padding: 20px 24px;
+  border: 1px solid #e6dcfb;
+  border-radius: 14px;
+  background: linear-gradient(118deg, #f7f3ff, #fff 65%);
+}
+.solvex-react .aix-rev-total .lbl { font-size: 12px; color: #6b7488; }
+.solvex-react .aix-rev-total .val {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -.5px;
+  color: #5f2bd9;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .aix-rev-total .val small { color: #8a93a8; }
+.solvex-react .aix-rev-item { padding: 16px 18px; border: 1px solid #e8ecf4; border-radius: 12px; background: #fff; }
+.solvex-react .aix-rev-item .lbl { margin-bottom: 8px; font-size: 11px; color: #6b7488; }
+.solvex-react .aix-rev-item .val {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 20px;
+  font-weight: 600;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .aix-rev-item .cnt { font-size: 10.5px; color: #8a93a8; }
+
+/* 17. 排行页 -------------------------------------------------------------- */
+.solvex-react .rx-table code { font-family: "Bahnschrift", ui-monospace, monospace; font-size: 11.5px; color: #3d465c; }
+.solvex-react body[data-page=leaderboard] .rx-table td:first-child { width: 68px; }
+.solvex-react .rx-table .rx-badge { display: inline-flex; justify-content: center; min-width: 30px; }
+.solvex-react .rx-table-wrap + .rx-note { margin-top: 16px; padding-top: 14px; border-top: 1px solid #edf0f7; }
+.solvex-react body[data-page=leaderboard] .rx-table td { font-variant-numeric: tabular-nums; }
+.solvex-react body[data-page=leaderboard] .rx-table th:nth-child(2),
+.solvex-react body[data-page=leaderboard] .rx-table td:nth-child(2) { text-align: center; }
+
+/* 18. 客服页 -------------------------------------------------------------- */
+.solvex-react .support-chat-wrap { max-width: 960px; margin: 0; }
+.solvex-react .support-chat-card {
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+}
+.solvex-react .support-chat-head { padding: 15px 22px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; }
+.solvex-react .support-chat-avatar {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, #8b5cf6, #5f2bd9);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 650;
+}
+.solvex-react .support-chat-title strong { font-size: 14.5px; font-weight: 650; color: #161d31; }
+.solvex-react .support-chat-title small { font-size: 11.5px; color: #6b7488; }
+.solvex-react .support-online-dot { width: 6px; height: 6px; background: #12a06f; box-shadow: none; }
+.solvex-react .support-chat-quick { gap: 8px; padding: 12px 22px; background: #fff; border-bottom: 1px solid #edf0f7; }
+.solvex-react .support-chat-quick button { padding: 6px 12px; border: 1px solid #e2d9fb; border-radius: 999px; background: #faf8ff; color: #5f2bd9; font-size: 11.5px; }
+.solvex-react .support-chat-quick button:hover { background: #f2ecff; border-color: #cdbdf5; }
+.solvex-react .support-chat-messages { gap: 16px; height: 442px; padding: 22px; background: #f7f9fc; }
+.solvex-react .support-msg-bubble { padding: 10px 14px; border-radius: 12px; font-size: 12.5px; line-height: 1.78; }
+.solvex-react .support-msg.me .support-msg-bubble {
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+  font-weight: 500;
+  box-shadow: 0 10px 20px -16px #4d21b8cc;
+}
+.solvex-react .support-msg.them .support-msg-bubble { background: #fff; color: #2c3448; border: 1px solid #e8ecf4; border-bottom-left-radius: 4px; }
+.solvex-react .support-msg-time { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .support-chat-input { gap: 12px; padding: 14px 22px; background: #fff; border-top: 1px solid #edf0f7; }
+.solvex-react .support-chat-input textarea { min-height: 42px; padding: 11px 13px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
+.solvex-react .support-chat-input textarea:focus { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #7034ef14; }
+.solvex-react .support-chat-input .ui-button {
+  height: 42px;
+  padding-inline: 22px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  box-shadow: 0 10px 20px -14px #4d21b8cc;
+}
+.solvex-react .support-empty { color: #6b7488; font-size: 12.5px; }
+
+/* 19. 群聊页 -------------------------------------------------------------- */
+.solvex-react .cc-shell { max-width: none; margin: 0; }
+.solvex-react .cc-shell > .cc-toolbar label { white-space: nowrap; }
+.solvex-react .cc-shell > .cc-toolbar {
+  justify-content: flex-start;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border: 1px solid #e6eaf2;
+  border-radius: 12px;
+  background: #fff;
+  font-size: 12px;
+  color: #6b7488;
+  box-shadow: 0 1px 2px #10172805;
+}
+.solvex-react .cc-shell > .cc-toolbar label { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: #6b7488; }
+.solvex-react .cc-shell > .cc-toolbar select {
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #e2e7f0;
+  border-radius: 9px;
+  background: #fbfcfe;
+  color: #2c3448;
+  font-size: 12px;
+}
+.solvex-react .cc-shell > .cc-toolbar > span:last-child { margin-left: auto; font-size: 11px; color: #8a93a8; }
+.solvex-react .cc-ghost { height: 34px; padding: 0 13px; border: 1px solid #e2e7f0; border-radius: 9px; background: #fff; color: #4a5266; font-size: 11.5px; font-weight: 550; }
+.solvex-react .cc-ghost:hover { border-color: #cdbdf5; color: #5f2bd9; background: #fbfaff; }
+.solvex-react .cc-layout { grid-template-columns: minmax(0, 1fr) 292px; gap: 16px; }
+.solvex-react .cc-main { border: 1px solid #e6eaf2; border-radius: 16px; box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d; }
+.solvex-react .cc-main > .cc-toolbar { padding: 12px 18px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
+.solvex-react .cc-unread { border-color: #e0d3ff; background: #f5f1ff; color: #5f2bd9; }
+.solvex-react .cc-messages { gap: 16px; height: 480px; padding: 20px 18px; background: #f7f9fc; }
+.solvex-react .cc-avatar {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  background: #efe8ff;
+  color: #5f2bd9;
+  font-size: 12.5px;
+  font-weight: 650;
+}
+.solvex-react .cc-avatar.sm { width: 28px; height: 28px; border-radius: 9px; font-size: 11px; }
+.solvex-react .cc-msg-name { font-size: 11.5px; font-weight: 600; color: #4a5266; }
+.solvex-react .cc-msg-time { font-size: 10px; color: #98a0b3; }
+.solvex-react .cc-msg-body {
+  padding: 9px 13px;
+  border: 1px solid #e8ecf4;
+  border-radius: 12px;
+  background: #fff;
+  color: #2c3448;
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+.solvex-react .cc-msg.me .cc-msg-body {
+  border-color: transparent;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  color: #fff;
+  box-shadow: 0 10px 20px -16px #4d21b8cc;
+}
+.solvex-react .cc-composer { gap: 10px; padding: 12px 16px; border-top: 1px solid #edf0f7; background: #fff; }
+.solvex-react .cc-composer textarea { min-height: 42px; padding: 10px 12px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
+.solvex-react .cc-composer textarea:focus { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #7034ef14; }
+.solvex-react .cc-composer button {
+  height: 42px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  font-size: 12.5px;
+  font-weight: 600;
+  box-shadow: 0 10px 20px -14px #4d21b8cc;
+}
+.solvex-react .cc-side { border: 1px solid #e6eaf2; border-radius: 16px; box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d; }
+.solvex-react .cc-side-head { padding: 12px 16px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
+.solvex-react .cc-side-head span { color: #5f2bd9; font-weight: 650; }
+.solvex-react .cc-members { gap: 2px; max-height: 480px; padding: 6px; }
+.solvex-react .cc-member { padding: 8px 10px; border-radius: 10px; }
+.solvex-react .cc-member:hover { background: #faf8ff; }
+.solvex-react .cc-member-info strong { font-size: 12.5px; color: #161d31; }
+.solvex-react .cc-member-info small { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .cc-member-tag { border-color: #e0d3ff; color: #5f2bd9; }
+.solvex-react .cc-empty, .solvex-react .cc-loading { color: #6b7488; font-size: 12.5px; }
+.solvex-react .cc-packet {
+  min-width: 250px;
+  border: 1px solid #c31c41;
+  border-radius: 14px;
+  background: linear-gradient(152deg, #f4543f, #d31f49 78%);
+  color: #fff;
+  box-shadow: 0 14px 28px -20px #c31c4180;
+}
+.solvex-react .cc-packet.live { box-shadow: 0 0 0 1px #c31c4140, 0 16px 30px -18px #c31c4180; }
+.solvex-react .cc-packet-head { gap: 11px; padding: 15px 16px 9px; }
+.solvex-react .cc-packet-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border-color: #ffffff45;
+  background: #ffffff1f;
+  color: #fff;
+  font-size: 14px;
+}
+.solvex-react .cc-packet-title strong { font-size: 13.5px; color: #fff; }
+.solvex-react .cc-packet-title small { margin-top: 3px; font-size: 10.5px; color: #ffffffc4; }
+.solvex-react .cc-packet-foot { padding: 10px 16px 13px; border-top: 1px dashed #ffffff3d; }
+.solvex-react .cc-packet-total { font-size: 13.5px; color: #fff; }
+.solvex-react .cc-packet-grab { padding: 6px 14px; background: #fff; color: #c31c41; font-size: 11px; font-weight: 650; }
+.solvex-react .cc-packet-grab:disabled { background: #ffffff26; color: #ffffffb8; }
+.solvex-react .cc-red-btn {
+  height: 42px;
+  padding: 0 14px;
+  border: 1px solid #f3c9c1;
+  border-radius: 10px;
+  background: #fff5f3;
+  color: #c0392b;
+  font-size: 12px;
+  font-weight: 600;
+}
+.solvex-react .cc-red-btn:hover { background: #ffece8; filter: none; }
+
+/* 20. AI 量化页 ----------------------------------------------------------- */
+.solvex-react .aim-page { max-width: 1460px; margin: 0 auto; padding: 28px 32px 56px; }
+.solvex-react .aim-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  min-height: 0;
+  padding: 32px 38px;
+  border: 1px solid #e6dcfb;
+  border-radius: 18px;
+  background:
+    radial-gradient(ellipse at 86% 0, #7034ef12 0, transparent 60%),
+    linear-gradient(118deg, #f7f3ff, #fff 60%);
+  box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
+}
+.solvex-react .aim-topbar h1 {
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  font-size: 32px;
+  line-height: 1.16;
+  font-weight: 600;
+  letter-spacing: -.6px;
+  color: #131a2c;
+}
+.solvex-react .aim-topbar h1::before {
+  content: "SOLVEX · AI QUANT";
+  display: block;
+  margin-bottom: 9px;
+  font-family: "Segoe UI", "PingFang SC", sans-serif;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.9px;
+  color: #7b6aa8;
+}
+.solvex-react .aim-topbar p { margin-top: 8px; font-size: 12.5px; line-height: 1.7; color: #667086; }
+.solvex-react .aim-title-row { gap: 12px; }
+.solvex-react .aim-status { padding: 4px 11px; border: 1px solid #e2e7f0; border-radius: 999px; background: #fff; color: #6b7488; font-size: 11px; font-weight: 600; }
+.solvex-react .aim-status.running { border-color: #c9eadf; background: #ecf8f3; color: #056b56; }
+.solvex-react .aim-robot { opacity: .42; }
+.solvex-react .aim-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin-top: 20px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+}
+.solvex-react .aim-metrics > div { padding: 20px 24px; border: 0; border-left: 1px solid #eef1f7; background: #fff; }
+.solvex-react .aim-metrics > div:first-child { border-left: 0; }
+.solvex-react .aim-metrics span { font-size: 11px; letter-spacing: .04em; color: #6b7488; }
+.solvex-react .aim-metrics strong {
+  margin-top: 8px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -.4px;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .aim-metrics strong.aim-positive { color: #0f7b5e; }
+.solvex-react .aim-metrics small { margin-top: 4px; font-size: 10.5px; color: #8a93a8; }
+.solvex-react .aim-workspace { grid-template-columns: minmax(0, 1.32fr) minmax(0, 1fr); gap: 20px; margin-top: 20px; margin-bottom: 0; align-items: start; }
+.solvex-react .aim-panel {
+  padding: 24px;
+  border: 1px solid #e6eaf2;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
+}
+.solvex-react .aim-panel-head { align-items: flex-start; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid #edf0f7; }
+.solvex-react .aim-panel-head h2 { font-size: 16px; font-weight: 650; letter-spacing: -.2px; color: #171d30; }
+.solvex-react .aim-panel-head p { margin-top: 5px; font-size: 11.5px; color: #6b7488; }
+.solvex-react .aim-panel-head > span { font-size: 11px; color: #8a93a8; }
+.solvex-react .aim-vip-card {
+  gap: 14px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border: 1px solid #e6dcfb;
+  border-radius: 14px;
+  background: linear-gradient(118deg, #f7f3ff, #fff 68%);
+}
+.solvex-react .aim-vip-badge { padding: 4px 9px; border-radius: 999px; background: #7034ef; color: #fff; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; }
+.solvex-react .aim-vip-body b { font-size: 13px; font-weight: 650; color: #171d30; }
+.solvex-react .aim-vip-body span { margin-top: 4px; font-size: 11.5px; line-height: 1.7; color: #667086; }
+.solvex-react .aim-vip-btn { height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: #5f2bd9; color: #fff; font-size: 11.5px; font-weight: 600; }
+.solvex-react .aim-vip-btn:disabled { background: #ece5fb; color: #7a6ba8; }
+.solvex-react .aim-amount-block { margin-top: 20px; }
+.solvex-react .aim-amount-block > label { font-size: 11.5px; color: #6b7488; }
+.solvex-react .aim-amount-field { height: 50px; margin-top: 9px; border: 1px solid #e2e7f0; border-radius: 12px; background: #fbfcfe; }
+.solvex-react .aim-amount-field input { padding: 0 16px; font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 19px; font-weight: 600; color: #161d31; font-variant-numeric: tabular-nums; }
+.solvex-react .aim-amount-field > span { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; color: #8a93a8; }
+.solvex-react .aim-amount-field > button { height: 30px; padding: 0 11px; border: 1px solid #e0d3ff; border-radius: 8px; background: #f7f3ff; color: #5f2bd9; font-size: 11.5px; font-weight: 600; }
+.solvex-react .aim-actions { display: grid; grid-template-columns: 1.15fr 1fr; gap: 10px; margin-top: 18px; }
+.solvex-react .aim-primary {
+  height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(110deg, #7034ef, #5a45e6);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 10px 22px -14px #4d21b8cc;
+}
+.solvex-react .aim-primary:disabled { background: #ece9f6; color: #9ba3b6; box-shadow: none; }
+.solvex-react .aim-secondary { height: 42px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fff; color: #4a5266; font-size: 13px; font-weight: 550; }
+.solvex-react .aim-secondary:hover:not(:disabled) { border-color: #cdbdf5; color: #5f2bd9; background: #fbfaff; }
+.solvex-react .aim-notice { gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; font-size: 11.5px; color: #6b7488; }
+.solvex-react .aim-notice b { color: #3d465c; }
+.solvex-react .aim-analysis-panel { align-self: start; }
+.solvex-react .aim-analysis-content { gap: 14px; margin-top: 16px; }
+.solvex-react .aim-analysis-grid { gap: 8px; }
+.solvex-react .aim-analysis-grid > div { padding: 11px 13px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; }
+.solvex-react .aim-analysis-grid dt { font-size: 10.5px; color: #8a93a8; }
+.solvex-react .aim-analysis-grid dd {
+  margin-top: 4px;
+  font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #161d31;
+  font-variant-numeric: tabular-nums;
+}
+.solvex-react .aim-analysis-summary { padding: 13px 15px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; font-size: 12px; line-height: 1.8; color: #4d566c; }
+.solvex-react .aim-card-panel { margin-top: 20px; }
+.solvex-react .aim-card-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
+.solvex-react .aim-batch-card { padding: 16px 17px; border: 1px solid #eef1f7; border-radius: 12px; background: #fbfcfe; }
+.solvex-react .aim-batch-card:hover { border-color: #e0d3ff; background: #fdfbff; }
+.solvex-react .aim-batch-card h3 { font-size: 12.5px; font-weight: 650; color: #171d30; }
+.solvex-react .aim-batch-card .aim-kv { font-size: 11.5px; color: #6b7488; }
+.solvex-react .aim-batch-card .aim-kv b { font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 12px; font-weight: 600; color: #3d465c; font-variant-numeric: tabular-nums; }
+
+@media (max-width: 1100px) {
+  .solvex-react .aim-workspace { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .aim-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .solvex-react .rx-team-grid { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .assets-overview { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .assets-total { border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .cc-layout { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .cc-side { order: 2; }
+  .solvex-react .cc-members { max-height: 260px; }
+}
+@media (max-width: 900px) {
+  /* legacy 的 .wrap / .account-shell 带 8px !important，这里用同权重更高特异性锁回统一外框 */
+  .solvex-react .account-shell { padding: 22px 20px 96px !important; }
+  .solvex-react .rx-team-hero { grid-template-columns: minmax(0, 1fr); padding: 26px; }
+  .solvex-react .rx-level-orbit { width: 100%; justify-self: center; }
+  .solvex-react .rx-invite-grid { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .support-chat-messages, .solvex-react .cc-messages { height: 62vh; }
+}
+@media (max-width: 700px) {
+  .solvex-react .rx-team-hero { min-height: 0; padding: 24px 20px; }
+  .solvex-react .rx-team-hero .rx-kicker { font-size: 9px; letter-spacing: 1.5px; }
+  .solvex-react .rx-team-hero h2 { width: auto; margin-top: 8px; font-size: 25px; line-height: 1.36; }
+  .solvex-react .rx-team-hero p { width: auto; font-size: 12px; line-height: 1.7; }
+  .solvex-react .rx-level-orbit { position: static; right: auto; top: auto; transform: none; width: auto; max-width: 210px; margin: 6px auto 0; opacity: 1; }
+  .solvex-react .rx-team-hero .ui-button { width: 100%; }
+  .solvex-react .aim-topbar { padding: 24px 20px; }
+  .solvex-react .aim-topbar h1 { font-size: 26px; }
+  .solvex-react .aim-robot { display: none; }
+  .solvex-react .aim-metrics { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .aim-metrics > div { border-left: 0; border-top: 1px solid #eef1f7; }
+  .solvex-react .aim-metrics > div:first-child { border-top: 0; }
+  .solvex-react .aim-panel { padding: 18px; }
+  .solvex-react .aim-card-list { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .aim-actions { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .assets-overview .assets-total strong,
+  .solvex-react .assets-overview .assets-total strong span { font-size: 34px; }
+  .solvex-react .assets-metrics { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .assets-metrics > div { border-right: 0; border-bottom: 0; }
+  .solvex-react .assets-metrics > div:nth-child(n+2) { border-top: 1px solid #eef1f7; }
+  .solvex-react .assets-tabs { margin: 14px 16px 0; width: calc(100% - 32px); }
+  .solvex-react .assets-tabs button { flex: 1; min-width: 0; }
+  .solvex-react .assets-list-tools { padding: 12px 16px 10px; }
+  .solvex-react .assets-search { width: 100%; }
+  .solvex-react .assets-table-wrap { margin: 0 16px 16px; }
+  .solvex-react .assets-table { min-width: 0; table-layout: fixed; }
+  .solvex-react .assets-table th, .solvex-react .assets-table td { padding: 12px 6px; font-size: 11px; }
+  .solvex-react .assets-table th:first-child, .solvex-react .assets-table td:first-child { width: 30%; padding-left: 12px; padding-right: 4px; }
+  .solvex-react .assets-table th:nth-child(2), .solvex-react .assets-table td:nth-child(2),
+  .solvex-react .assets-table th:nth-child(3), .solvex-react .assets-table td:nth-child(3) { width: 24%; font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; }
+  .solvex-react .assets-table th:last-child, .solvex-react .assets-table td:last-child { width: 22%; padding-right: 12px; }
+  .solvex-react .assets-coin { gap: 7px; min-width: 0; }
+  .solvex-react .assets-coin > div { min-width: 0; }
+  .solvex-react .assets-coin-icon { width: 26px; height: 26px; flex: 0 0 26px; }
+  .solvex-react .assets-coin b, .solvex-react .assets-coin small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .solvex-react .assets-table td { white-space: nowrap; }
+  .solvex-react .assets-row-actions button { padding: 3px 2px; font-size: 10.5px; }
+  .solvex-react .assets-allocation { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
+  .solvex-react .assets-allocation-track { height: 6px; }
+  /* 表格保持表格式（不再逐格堆叠），窄屏在卡片内横向滚动 */
+  .solvex-react .rx-table th, .solvex-react .rx-table td { white-space: nowrap; padding: 11px 9px; font-size: 11.5px; }
+  .solvex-react .rx-table th { font-size: 9.5px; }
+  .solvex-react .rx-table th:first-child, .solvex-react .rx-table td:first-child { padding-left: 12px; }
+  .solvex-react .rx-table th:last-child, .solvex-react .rx-table td:last-child { padding-right: 12px; }
+  .solvex-react .assets-record-block { padding: 18px 16px; }
+  .solvex-react .support-chat-wrap { max-width: none; }
+  .solvex-react .support-chat-messages { padding: 16px; }
+  .solvex-react .support-chat-quick { padding: 10px 16px; }
+  .solvex-react .support-chat-input { padding: 12px 16px; }
+  .solvex-react .cc-shell > .cc-toolbar { padding: 10px; }
+  .solvex-react .cc-shell > .cc-toolbar > span:last-child { display: none; }
+  .solvex-react .cc-messages { padding: 16px 12px; }
+}
+
+/* 21. 响应式 -------------------------------------------------------------- */
+@media (max-width: 1280px) {
+  .solvex-react .rx-pool-summary { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .rx-claim-strip { border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-pool-live { grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); }
+}
+@media (max-width: 1100px) {
+  .solvex-react .rx-pool-live { grid-template-columns: minmax(0, 1fr); }
+  .solvex-react .rx-pool-live .rx-cavern-stage { aspect-ratio: 16/7; }
+  .solvex-react .rx-pool-live .rx-positions { grid-template-columns: repeat(2, minmax(0, 1fr)); max-height: none; }
+}
+/* 旧版在 1250px 下把内容区缩到 198px，与固定 224px 的侧边栏错位，这里锁回同一基准线 */
+@media (min-width: 901px) and (max-width: 1250px) {
+  .solvex-react #legacy-root { margin-left: 224px; }
+}
+@media (max-width: 1024px) {
+  .solvex-react .rx-pool-live .rx-positions { grid-template-columns: 1fr; }
+  .solvex-react .rx-getting-started > div { padding: 14px; }
+}
+@media (max-width: 900px) {
+  .solvex-react .rx-topbar { left: 0; padding: 0 16px; }
+  .solvex-react .rx-topbar-brand {
+    font-family: "Bahnschrift", "DIN Alternate", "Segoe UI Variable Display", "Segoe UI", sans-serif;
+    font-size: 21px;
+    font-weight: 600;
+    letter-spacing: -.4px;
+    color: #161c30;
+  }
+  .solvex-react .rx-mobile-menu { width: 34px; height: 34px; border: 1px solid #e7ebf3; border-radius: 10px; }
+  .solvex-react .rx-page { padding: 22px 20px 96px; }
+  .solvex-react .rx-heading { align-items: flex-start; gap: 12px; }
+  .solvex-react .rx-heading-actions .ui-button { height: 34px; font-size: 11.5px; padding-inline: 11px; }
+}
+@media (max-width: 600px) {
+  .solvex-react .rx-page { padding: 16px 14px 92px; }
+  .solvex-react .account-shell { padding: 16px 14px 92px !important; }
+  .solvex-react .rx-heading { margin-bottom: 12px; padding-bottom: 12px; gap: 10px; }
+  .solvex-react .rx-heading h1 { margin-top: 5px; font-size: 24px; }
+  .solvex-react .rx-heading p { margin-top: 4px; font-size: 11px; line-height: 1.55; }
+  .solvex-react .rx-kicker { font-size: 8.5px; letter-spacing: 1.5px; }
+  .solvex-react .rx-kicker::before { width: 12px; }
+  .solvex-react .ui-tab { min-width: 0; flex: 1; padding: 8px 10px; font-size: 12px; }
+  .solvex-react .rx-tab-body { margin-top: 14px; }
+  .solvex-react .rx-stack { gap: 14px; }
+  .solvex-react .rx-pool-summary { gap: 0; }
+  .solvex-react .rx-claim-strip { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; border-radius: 0; }
+  .solvex-react .rx-claim-actions { width: 100%; gap: 8px; }
+  .solvex-react .rx-claim-actions .ui-button { flex: 1; justify-content: center; }
+  .solvex-react .rx-claim-actions .ui-button:last-child { border: 1px solid #e7ddff; background: #fff; }
+  .solvex-react .rx-claim-icon { width: 32px; height: 32px; border-radius: 9px; }
+  .solvex-react .rx-claim-copy > strong { font-size: 22px; }
+  .solvex-react .rx-claim-actions .ui-button { min-height: 32px; font-size: 11.5px; padding-inline: 10px; }
+  .solvex-react .rx-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .solvex-react .rx-metric { padding: 11px 12px; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-metric:nth-child(2n) { border-right: 0; }
+  .solvex-react .rx-metric:nth-last-child(-n+2) { border-bottom: 0; }
+  .solvex-react .rx-metric > strong { font-size: 19px; }
+  .solvex-react .rx-metric > div > span { font-size: 10.5px; }
+  .solvex-react .rx-metric > div > svg { display: none; }
+  .solvex-react .rx-section-heading { margin-bottom: 10px; padding-bottom: 8px; gap: 4px; align-items: flex-start; flex-direction: column; }
+  .solvex-react .rx-section-heading h2 { margin-top: 3px; font-size: 17px; }
+  .solvex-react .rx-section-heading > span { font-size: 10.5px; }
+  .solvex-react .rx-section-heading .rx-kicker { display: none; }
+  .solvex-react .rx-heading-actions .ui-button:not(.size-10) { display: none; }
+  .solvex-react .rx-tiers { grid-template-columns: 1fr; gap: 10px; }
+  .solvex-react .rx-tier { border-radius: 13px; }
+  .solvex-react .rx-getting-started { order: 2; grid-template-columns: 1fr; }
+  .solvex-react .rx-pool-tiers-section { order: 3; }
+  .solvex-react .rx-pool-summary { order: 1; }
+  .solvex-react .rx-pool-live { order: 2; }
+  .solvex-react .rx-pool-holdings { order: 4; }
+  .solvex-react .rx-play-section { order: 4; }
+  .solvex-react .rx-metric:nth-child(4n) { border-right: 0; }
+  .solvex-react .rx-pool-note { margin-top: 10px !important; padding: 8px 12px; font-size: 10.5px; }
+  .solvex-react .rx-cavern { border-radius: 13px; }
+  .solvex-react .rx-cavern-heading { padding: 12px 14px; }
+  .solvex-react .rx-cavern-title h2 { font-size: 14px; }
+  .solvex-react .rx-cavern-title p { display: none; }
+  .solvex-react .rx-cavern-icon { width: 30px; height: 30px; border-radius: 9px; }
+  .solvex-react .rx-cavern-state { font-size: 9.5px; padding: 4px 8px; }
+  .solvex-react .rx-cavern-toggle { width: 28px; height: 28px; }
+  .solvex-react .rx-cavern-footer { padding: 10px 14px; }
+  .solvex-react .rx-cavern-footer p { font-size: 10px; line-height: 1.6; }
+  .solvex-react .rx-cavern-footer small { display: none; }
+  .solvex-react .rx-cavern-footer .ui-button { height: 30px; font-size: 10.5px; }
+  .solvex-react .rx-cavern-stage { aspect-ratio: 16/10; }
+  .solvex-react .rx-getting-started { grid-template-columns: 1fr; }
+  .solvex-react .rx-getting-started > div { padding: 12px 14px; border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-getting-started > div:last-child { border-bottom: 0; }
+  .solvex-react .rx-getting-started > div > span { width: 24px; height: 24px; font-size: 11px; }
+  .solvex-react .rx-getting-started h3 { font-size: 12.5px; }
+  .solvex-react .rx-getting-started p { font-size: 11px; }
+  .solvex-react .rx-energy-grid { grid-template-columns: 1fr; gap: 12px; }
+  .solvex-react .rx-play-page { gap: 20px; }
+  .solvex-react .rx-blindbox-hero { grid-template-columns: 1fr; padding: 16px; }
+  .solvex-react .rx-position-principal > strong { font-size: 20px; }
+  .solvex-react .rx-pool-live { gap: 12px; }
+}

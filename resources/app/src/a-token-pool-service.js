@@ -1,7 +1,8 @@
 import { formatUnits } from 'ethers';
 import { A_TOKEN_DECIMALS, USDT_DECIMALS } from './a-token-service.js';
+import { BUY_FEE_BPS } from './a-token-shareholder-service.js';
 
-// A 币池报价服务：仅供交易页市价单的费用/到账预估（只读，不执行交易）。
+// SVX池报价服务：仅供交易页市价单的费用/到账预估（只读，不执行交易）。
 // 实际买卖一律走挂单撮合（order-service），历史 AMM 即时买卖已移除。
 const BPS = 10000n;
 
@@ -26,24 +27,30 @@ export function createATokenPoolService({ aTokenService, sellFeeProfile = null }
     const priceStr = formatUnits(price, USDT_DECIMALS);
     if (side === 'buy') {
       const usdt = aTokenService.parseUsdt(inputAmount, 'USDT 数量');
-      const aReceive = aTokenService.usdtToA(usdt, price); // 买方无手续费
+      const aReceive = aTokenService.usdtToA(usdt, price);
+      const feeUsdt = usdt * BUY_FEE_BPS / BPS;   // 买入 0 手续费：按标的价实付
       return {
         side, priceUsdt: priceStr,
         usdtIn: formatUnits(usdt, USDT_DECIMALS),
         aOut: formatUnits(aReceive, A_TOKEN_DECIMALS),
+        feeUsdt: formatUnits(feeUsdt, USDT_DECIMALS),
+        totalUsdt: formatUnits(usdt + feeUsdt, USDT_DECIMALS),
         feeA: '0', burnA: '0', dividendA: '0',
+        feeRateBps: Number(BUY_FEE_BPS), feePct: '0%',
       };
     }
-    const a = aTokenService.parseA(inputAmount, 'A 币数量');
-    const feeA = a * feeRateBps / BPS;
-    const netA = a - feeA;
-    const usdtOut = aTokenService.aToUsdt(netA, price);
+    const a = aTokenService.parseA(inputAmount, 'SVX数量');
+    // 卖方 5%：按成交 USDT 金额从应收里扣，币数不扣；全部进股东池
+    const grossUsdt = aTokenService.aToUsdt(a, price);
+    const feeUsdt = grossUsdt * feeRateBps / BPS;
     return {
       side, priceUsdt: priceStr,
       aIn: formatUnits(a, A_TOKEN_DECIMALS),
-      aNet: formatUnits(netA, A_TOKEN_DECIMALS),
-      usdtOut: formatUnits(usdtOut, USDT_DECIMALS),
-      feeA: formatUnits(feeA, A_TOKEN_DECIMALS),
+      aNet: formatUnits(a, A_TOKEN_DECIMALS),
+      grossUsdt: formatUnits(grossUsdt, USDT_DECIMALS),
+      usdtOut: formatUnits(grossUsdt - feeUsdt, USDT_DECIMALS),
+      feeUsdt: formatUnits(feeUsdt, USDT_DECIMALS),
+      feeA: '0', burnA: '0', dividendA: '0',
       feeRateBps: Number(feeRateBps),
       feePct: (Number(feeRateBps) / 100).toFixed(0) + '%',
       directCount,

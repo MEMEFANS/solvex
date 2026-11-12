@@ -1,13 +1,14 @@
 /**
- * 本地一键编译 A.sol（AToken）与 AIXPool.sol → bytecode + ABI。
+ * 本地一键编译 SolvexToken.sol、SolvexPool.sol 与 SolvexAutoLp.sol → bytecode + ABI。
  * 替代 Remix 手动编译流程，产物直接写入 contracts/ 目录，可重复执行。
  *
  * 用法（在 resources/app 目录下）：
  *   node scripts/compile-contracts.js
  *
  * 产物：
- *   contracts/AToken.bytecode  + contracts/AToken.abi.json   （deploy-a-token.js 使用）
- *   contracts/AIXPool.bytecode + contracts/AIXPool.abi.json  （deploy-aix-pool.js 使用）
+ *   contracts/SolvexPool.bytecode     + contracts/SolvexPool.abi.json     （deploy-solvex-pool.js 使用）
+ *   contracts/SolvexAutoLp.bytecode + contracts/SolvexAutoLp.abi.json（deploy-auto-lp.js 使用）
+ *   contracts/SolvexToken.bytecode + contracts/SolvexToken.abi.json（deploy-solvex-token.js 使用）
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve, dirname, join } from 'node:path';
@@ -20,8 +21,9 @@ const CONTRACTS = resolve(APP_ROOT, 'contracts');
 const NODE_MODULES = resolve(APP_ROOT, 'node_modules');
 
 const TARGETS = [
-  { file: 'A.sol', contract: 'AToken', bytecodeOut: 'AToken.bytecode', abiOut: 'AToken.abi.json' },
-  { file: 'AIXPool.sol', contract: 'AIXPool', bytecodeOut: 'AIXPool.bytecode', abiOut: 'AIXPool.abi.json' },
+  { file: 'SolvexPool.sol', contract: 'SolvexPool', bytecodeOut: 'SolvexPool.bytecode', abiOut: 'SolvexPool.abi.json' },
+  { file: 'SolvexAutoLp.sol', contract: 'SolvexAutoLp', bytecodeOut: 'SolvexAutoLp.bytecode', abiOut: 'SolvexAutoLp.abi.json' },
+  { file: 'SolvexToken.sol', contract: 'SolvexToken', bytecodeOut: 'SolvexToken.bytecode', abiOut: 'SolvexToken.abi.json' },
 ];
 
 // 解析 @openzeppelin/... 导入 → node_modules；相对导入 → contracts 目录
@@ -67,6 +69,9 @@ for (const t of TARGETS) {
 }
 
 if (failed) process.exit(1);
-console.log('\n🎉 全部编译完成。部署顺序：');
-console.log('  1) node scripts/deploy-a-token.js   → 得到 A_TOKEN_CONTRACT_ADDRESS');
-console.log('  2) node scripts/deploy-aix-pool.js  → 得到 AIX_POOL_CONTRACT_ADDRESS');
+console.log('\n🎉 全部编译完成。SVX 上线顺序：');
+console.log('  1) node scripts/deploy-solvex-token.js --dry-run  → 核对参数后正式部署，得到 SVX 合约地址');
+console.log('  2) 在 PancakeSwap 建 SVX/USDT 池，拿到 Pair 地址');
+console.log('  3) node scripts/deploy-auto-lp.js --dry-run       → 部署加 LP 合约并注资');
+console.log('  4) token.setPair(pair,true) → token.setTradingEnabled(true) → 回填 .env');
+console.log('  详见 contracts/README-SVX-TOKEN.md 与 contracts/README-AUTO-LP.md');

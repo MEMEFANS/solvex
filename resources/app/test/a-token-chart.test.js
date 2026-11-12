@@ -4,9 +4,9 @@ import path from 'node:path';
 import puppeteer from 'puppeteer';
 
 const publicDir = path.resolve(import.meta.dirname, '../public');
-const auditDir = path.resolve(import.meta.dirname, '../../../tools/aix-chart-20261011');
+const auditDir = path.resolve(import.meta.dirname, '../../../tools/svx-chart-20261011');
 fs.mkdirSync(auditDir, { recursive:true });
-const baseline = process.env.AIX_CHART_BASELINE === '1';
+const baseline = process.env.SVX_CHART_BASELINE === '1';
 const source = baseline ? path.join(auditDir, 'before/public/js/a-token-trade.js') : path.join(publicDir, 'js/a-token-trade.js');
 const steps = { '1m':60, '5m':300, '15m':900, '1h':3600, '4h':14400, '1d':86400 };
 function candles(period, count) {
@@ -170,12 +170,14 @@ try {
     mark(`${viewport.width}px: stale refresh and rapid period switching cannot overwrite new data`);
 
     await page.evaluate(() => { fixtures['1d'] = []; return atradeSwitchPeriod('1d'); });
-    assert.equal(await page.evaluate(() => testSeries.data().length), 0);
+    // 内盘阶段（未接链上）没有成交 K 线时，用内盘指导价铺满最近 60 个周期，图表不再空白
+    const emptyState = await page.evaluate(() => testSeries.data());
+    assert.equal(emptyState.length, 60);
+    assert(emptyState.every(c => c.open > 0 && c.close === c.open && c.high === c.low));
     await page.evaluate(data => { fixtures['1d'] = data; return atradeRefreshKline(); }, candles('1d', 1));
     await paint(page);
-    assert.equal((await measure(page)).count, 1);
-    assert.equal((await measure(page)).spacing, 9);
-    mark(`${viewport.width}px: empty periods clear old candles and can receive their first live candle`);
+    assert((await measure(page)).count >= 60);
+    mark(`${viewport.width}px: empty periods show an internal-market base candle and can receive live candles`);
     await page.evaluate(() => aixPage.deactivate());
     await page.close();
   }

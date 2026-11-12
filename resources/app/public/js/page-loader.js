@@ -1,13 +1,13 @@
 // Independent pages download concurrently; only real dependencies order execution.
 (() => {
   const scripts = new Map(), pages = new Map(), ready = new Set();
-  const version = '20261011-pages-1';
-  const versions = { 'support-chat':'20261011-security-2', 'a-token-trade':'20261101-nosell-1', 'a-token-transfer':'20261101-fee3-1', 'platform-client':'20261012-assets-1', assets:'20261101-wd1-2', 'wallet-funds':'20261101-wd1-3', 'ai-managed':'20261025-wquota-1' };
+  const version = '20261111-domain-svxfree-1';
+  const versions = { 'a-token-trade':'20261112-internal-kline-8', 'mobile-trade':'20261112-mobile-ui-1', 'a-token-transfer':'20261111-domain-light-3', 'platform-client':'20261111-domain-light-3', assets:'20261111-domain-brand-1', 'wallet-funds':'20261111-domain-light-3', earn:'20261111-buyfee0-1' };
   const js = name => `/js/${name}.js?v=${versions[name] || version}`;
-  const chart = '/vendor/lightweight-charts.js?v=1';
+  const chart = '/vendor/lightweight-charts.js?v=20261111-domain-light-3';
   const deps = {
     'trade-account': ['platform-client'], assets: ['trade-account', 'wallet-funds'],
-    'ai-managed': ['trade-account'], strategy: ['trade-account'], staking: ['trade-account', 'hyperliquid-client'],
+    staking: ['trade-account', 'hyperliquid-client'],
     portfolio: ['hyperliquid-client'], vaults: ['hyperliquid-client'],
     'mobile-trade': ['trade-chart'], 'trade-alerts': ['trade-chart'],
     'trade-history': ['trade-account'],
@@ -15,13 +15,10 @@
   const groups = {
     trade: ['trade-account', 'trade-chart', 'trade-history', 'trade-funding', 'trade-favorites',
       'trade-trades', 'trade-depth', 'trade-book-tabs', 'trade-alerts', 'mobile-trade'],
-    account: ['assets'], 'ai-managed': ['ai-managed'], overview: ['strategy'],
-    'a-token-trade': ['a-token-trade'], points: ['lottery'], referrals: ['referrals'],
-    leaderboard: ['leaderboard'], community: ['community-links'], support: ['support-chat'],
+    account: ['assets'],
+    'a-token-trade': ['a-token-trade'], referrals: ['referrals'],
     portfolio: ['portfolio'], vaults: ['vaults'], staking: ['staking'], ledger: ['ledger'], ai: ['ai'],
   };
-  for (const name of ['de','ex','rs']) groups[name] = groups.overview;
-
   function loadScript(name) {
     const src = name.startsWith('/') ? name : js(name);
     if (scripts.has(src)) return scripts.get(src);
@@ -41,6 +38,8 @@
   window.loadPageCharts = () => loadScript(chart);
   window.loadPageFeature = name => loadScript(name);
   window.loadPageModule = name => {
+    // referrals / account / leaderboard / support / community-chat / ai-managed 已迁到 React，由 React 自行取数，不再加载 legacy 页面脚本
+    if (window.WG_REACT_APP && (name === 'referrals' || name === 'account' || name === 'leaderboard' || name === 'support' || name === 'community-chat' || name === 'ai-managed')) return Promise.resolve();
     if (!groups[name]) return Promise.resolve();
     if (pages.has(name)) return pages.get(name);
     const promise = Promise.all(groups[name].map(loadScript)).then(() => {
@@ -54,5 +53,5 @@
     promise.catch(() => pages.delete(name));
     return promise;
   };
-  window.isPageModuleReady = name => !groups[name] || ready.has(name);
+  window.isPageModuleReady = name => (window.WG_REACT_APP && (name === 'referrals' || name === 'account' || name === 'leaderboard' || name === 'support' || name === 'community-chat' || name === 'ai-managed')) || !groups[name] || ready.has(name);
 })();

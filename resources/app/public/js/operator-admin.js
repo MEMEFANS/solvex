@@ -25,6 +25,8 @@
   let usersOffset = 0, usersTotal = 0, usersRequestSeq = 0, overviewRequestSeq = 0, depositsRequestSeq = 0, minerRequestSeq = 0, klineRequestSeq = 0;
   let adminGeneration = 0, userSearchTimer = null;
   const pendingReads = new Map();
+  let blindboxSnapshot = null, blindboxRequestSeq = 0;
+  let freeTradingEnabled = false;
 
   function setLoginError(message = '') { byId('admin-login-error').textContent = message; }
   function toast(message = '') {
@@ -62,11 +64,13 @@
     if (!response.ok) {
       const isAdminAuthRequired = response.status === 401;
       if (isAdminAuthRequired && path !== '/api/admin/login' && generation === adminGeneration) showLogin();
-      throw new Error(
+      const error = new Error(
         (payload && payload.error)
           ? payload.error
           : (response.status === 401 ? '后台登录已失效，请重新登录' : `请求失败 (${response.status})`),
       );
+      error.payload = payload;
+      throw error;
     }
     return payload;
   }
@@ -266,7 +270,7 @@
     const teamStatsEditor = `
       <div class="admin-detail-section ats-editor${storedOv ? ' is-set' : ''}">
         ${subHead(storedOv ? `📊 团队展示数据 · 已手动设置（更新于 ${date(storedOv.updatedAt)}${storedOv.updatedBy ? ` · ${esc(storedOv.updatedBy)}` : ''}）` : '📊 团队展示数据（仅前端展示）')}
-        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；该地址的真实上级打开团队页时，团队人数 / 开通矿机 / 团队业绩（Mini 100 AIX、Pro 1500 AIX）会按真实推荐链自动叠加，页面展示等级也会按虚拟业绩相应提升。仅用于前端展示，不影响手续费率、真实等级与分润等实际权益。</p>
+        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；该地址的真实上级打开团队页时，团队人数 / 开通矿机 / 团队业绩（Mini 100 SVX、Pro 1500 SVX）会按真实推荐链自动叠加，页面展示等级也会按虚拟业绩相应提升。仅用于前端展示，不影响手续费率、真实等级与分润等实际权益。</p>
         <div class="ats-grid">
           ${atsField('ats-direct', '直推人数', d.direct?.count, d.statsOverride?.real?.directCount)}
           ${atsField('ats-indirect', '间推人数', d.indirect?.count, d.statsOverride?.real?.indirectCount)}
@@ -290,7 +294,7 @@
     const withdrawFreezeCard = `
       <div class="admin-detail-section ats-editor${wfr ? ' is-set' : ''}">
         ${subHead(wfr ? `❄️ USDT 提现 · 已冻结（${date(wfr.frozenAt)}${wfr.frozenBy ? ` · ${esc(wfr.frozenBy)}` : ''}）` : '❄️ USDT 提现冻结（账户级风控）')}
-        <p class="ats-tip">冻结后该账户无法发起新的 USDT 提现申请（已提交的提现单不受影响，AIX 提现/互转不受影响）。</p>
+        <p class="ats-tip">冻结后该账户无法发起新的 USDT 提现申请（已提交的提现单不受影响，SVX 提现/互转不受影响）。</p>
         <div class="ats-grid">
           <label class="ats-field ats-note-field">
             <span>冻结原因（可选，冻结时保存）</span>
@@ -316,7 +320,7 @@
       <td><code>${esc(String(m.id||'').slice(-8))}</code></td>
       <td>${esc(m.plan || '-')}</td>
       <td><span class="admin-status ${m.status==='active'?'good':''}">${m.status==='active'?'运行中':m.status==='expired'?'已到期':m.status==='redeemed'?'已赎回':m.status}</span></td>
-      <td>${amount(m.totalEarnedUnits || 0)} / ${amount(m.totalUnits || 0)} AIX</td>
+      <td>${amount(m.totalEarnedUnits || 0)} / ${amount(m.totalUnits || 0)} SVX</td>
       <td>${date(m.startedAt)}</td>
     </tr>`).join('') || emptyRow(5, '暂无矿机');
     // 质押列表
@@ -324,26 +328,26 @@
       <td><code>${esc(String(s.id||'').slice(-8))}</code></td>
       <td>${esc(s.planId || '-')}</td>
       <td><span class="admin-status ${s.status==='active'?'good':''}">${s.status==='active'?'运行中':s.status}</span></td>
-      <td>${amount(s.principalUnits || 0)} AIX</td>
-      <td>${amount(s.interestEarnedUnits || 0)} AIX</td>
-      <td>${amount(s.principalReturnedUnits || 0)} AIX</td>
-      <td>${amount(s.outstandingPrincipalUnits || 0)} AIX</td>
+      <td>${amount(s.principalUnits || 0)} SVX</td>
+      <td>${amount(s.interestEarnedUnits || 0)} SVX</td>
+      <td>${amount(s.principalReturnedUnits || 0)} SVX</td>
+      <td>${amount(s.outstandingPrincipalUnits || 0)} SVX</td>
     </tr>`).join('') || emptyRow(7, '暂无质押');
     // 激活记录
     const actRows = (d.activations || []).map(a => `<tr>
       <td><code>${esc(String(a.id||'').slice(-10))}</code></td>
-      <td>${a.plan === '1' ? 'Mini' : 'Pro'} · ${a.paymentAsset === 'AIX' ? esc(a.payload?.aix || '') + ' AIX（已销毁）' : (a.plan === '1' ? '0.002' : '0.05') + ' BNB（历史）'}</td>
+      <td>${a.plan === '1' ? 'Mini' : 'Pro'} · ${['SVX','AIX'].includes(a.paymentAsset) ? esc(a.payload?.svx || a.payload?.aix || '') + ' SVX（已销毁）' : (a.plan === '1' ? '0.002' : '0.05') + ' BNB（历史）'}</td>
       <td><span class="admin-status ${a.status==='confirmed'?'good':a.status==='rejected'?'bad':'warn'}">${a.status==='confirmed'?'已确认':a.status==='rejected'?'已拒绝':'待确认'}</span></td>
       <td>${date(a.createdAt)}</td>
     </tr>`).join('') || emptyRow(4, '暂无激活记录');
     // 订单（inputA/inputUsdt 为剩余冻结量）：挂单中显示「剩余」，已结束显示原始委托量；另列已成交
     const orderRows = (d.orders || []).slice(0, 50).map(o => {
       const isBuy = o.side === 'buy';
-      const remain = isBuy ? `${amount(o.inputUsdt || 0)} USDT` : `${amount(o.inputA || 0)} AIX`;
+      const remain = isBuy ? `${amount(o.inputUsdt || 0)} USDT` : `${amount(o.inputA || 0)} SVX`;
       const total = isBuy
         ? `${amount(Number(o.inputUsdt || 0) + Number(o.filledUsdt || 0))} USDT`
-        : `${amount(Number(o.inputA || 0) + Number(o.filledA || 0))} AIX`;
-      const filled = isBuy ? `${amount(o.filledUsdt || 0)} USDT` : `${amount(o.filledA || 0)} AIX`;
+        : `${amount(Number(o.inputA || 0) + Number(o.filledA || 0))} SVX`;
+      const filled = isBuy ? `${amount(o.filledUsdt || 0)} USDT` : `${amount(o.filledA || 0)} SVX`;
       const size = o.orderStatus === 'OPEN' ? remain : total;
       return `<tr>
       <td><code>${esc(String(o.orderId||'').slice(-10))}</code></td>
@@ -359,23 +363,23 @@
     const xferRows = (d.transfers || []).slice(0, 50).map(t => `<tr>
       <td><code>${esc(String(t.id||'').slice(-10))}</code></td>
       <td><span class="admin-status ${t.direction==='out'?'warn':'good'}">${t.direction === 'out' ? '转出' : '转入'}</span></td>
-      <td>${amount(t.amountA || t.amount || 0)} AIX</td>
-      <td>${amount(t.feeA || t.fee || 0)} AIX</td>
+      <td>${amount(t.amountA || t.amount || 0)} SVX</td>
+      <td>${amount(t.feeA || t.fee || 0)} SVX</td>
       <td>${date(t.createdAt)}</td>
     </tr>`).join('') || emptyRow(5, '暂无互转记录');
     // 团队收益分布
-    const byKindRows = Object.entries(d.teamRewards?.byKind || {}).map(([k, v]) => `<tr><td>${esc(KIND_LABELS[k] || k)}</td><td>${amount(v)} AIX</td></tr>`).join('') || emptyRow(2, '暂无团队分润');
+    const byKindRows = Object.entries(d.teamRewards?.byKind || {}).map(([k, v]) => `<tr><td>${esc(KIND_LABELS[k] || k)}</td><td>${amount(v)} SVX</td></tr>`).join('') || emptyRow(2, '暂无团队分润');
 
     return `
       <div class="admin-detail-section">
         ${subHead('基本信息')}
         <div class="admin-detail-grid">
           <div><span>钱包地址</span><b><code>${esc(d.address)}</code></b></div>
-          <div><span>等级${Number(d.displayLevel) > Number(d.level || 0) ? '（真实 / 展示）' : ''}</span><b>A${d.level || 0}${Number(d.displayLevel) > Number(d.level || 0) ? ` <span style="color:#4fd1b5">/ A${d.displayLevel}</span>` : ''}</b></div>
+          <div><span>等级${Number(d.displayLevel) > Number(d.level || 0) ? '（真实 / 展示）' : ''}</span><b>A${d.level || 0}${Number(d.displayLevel) > Number(d.level || 0) ? ` <span style="color:#0e9c88">/ A${d.displayLevel}</span>` : ''}</b></div>
           <div><span>USDT 余额</span><b>${amount(d.usdtBalance)} USDT</b></div>
-          <div><span>AIX 余额</span><b>${amount(d.aixBalance)} AIX</b></div>
-          <div><span>个人业绩</span><b>${amount(d.personalHeld)} AIX</b></div>
-          <div><span>团队业绩</span><b>${amount(d.teamHeld)} AIX</b></div>
+          <div><span>SVX 余额</span><b>${amount(d.aixBalance)} SVX</b></div>
+          <div><span>个人业绩</span><b>${amount(d.personalHeld)} SVX</b></div>
+          <div><span>团队业绩</span><b>${amount(d.teamHeld)} SVX</b></div>
           <div><span>推荐人</span><b>${d.referrerWallet ? `<code>${esc(shortAddress(d.referrerWallet))}</code>` : '无'}</b></div>
         </div>
       </div>
@@ -393,7 +397,7 @@
           <span>已拒绝：<b>${d.direct?.rejected || 0}</b> 笔</span>
         </div>
         <div class="admin-detail-stats">
-          <span>直推总业绩：<b>${amount(d.direct?.holdA || 0)} AIX</b>${Number(d.direct?.virtualHoldA || 0) > 0 ? ` <span style="color:#4fd1b5;font-size:11px">（真实 ${amount(d.direct?.realHoldA || 0)} + 虚拟 ${amount(d.direct?.virtualHoldA || 0)}）</span>` : ''}</span>
+          <span>直推总业绩：<b>${amount(d.direct?.holdA || 0)} SVX</b>${Number(d.direct?.virtualHoldA || 0) > 0 ? ` <span style="color:#0e9c88;font-size:11px">（真实 ${amount(d.direct?.realHoldA || 0)} + 虚拟 ${amount(d.direct?.virtualHoldA || 0)}）</span>` : ''}</span>
         </div>
         <div class="admin-table-scroll"><table><thead><tr><th>直推地址</th><th>加入时间</th><th>Mini</th><th>Pro</th><th>矿机数</th></tr></thead><tbody>${directRows}</tbody></table></div>
       </div>
@@ -405,18 +409,18 @@
           <span>团队激活 Pro：<b>${effPeople(d.team?.actPro, d.team?.realActPro)}</b></span>
         </div>
         <div class="admin-detail-stats">
-          <span>团队总业绩：<b>${amount(Number(d.teamHeld || 0) + Number(d.team?.virtualHoldA || 0))} AIX</b>${Number(d.team?.virtualHoldA || 0) > 0 ? ` <span style="color:#4fd1b5;font-size:11px">（真实 ${amount(d.teamHeld || 0)} + 虚拟 ${amount(d.team?.virtualHoldA || 0)}）</span>` : ''}</span>
+          <span>团队总业绩：<b>${amount(Number(d.teamHeld || 0) + Number(d.team?.virtualHoldA || 0))} SVX</b>${Number(d.team?.virtualHoldA || 0) > 0 ? ` <span style="color:#0e9c88;font-size:11px">（真实 ${amount(d.teamHeld || 0)} + 虚拟 ${amount(d.team?.virtualHoldA || 0)}）</span>` : ''}</span>
         </div>
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`矿机（${d.miners?.count || 0} 台 · 累计产出 ${amount(d.miners?.totalReleased || 0)} AIX）`)}
+        ${subHead(`矿机（${d.miners?.count || 0} 台 · 累计产出 ${amount(d.miners?.totalReleased || 0)} SVX）`)}
         <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>已产/总额</th><th>开始时间</th></tr></thead><tbody>${minerRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`质押（${d.stakes?.count || 0} 笔 · 累计利息 ${amount(d.stakes?.totalEarned || 0)} AIX · 已返本金 ${amount(d.stakes?.principalReturned || 0)} AIX · 累计到账 ${amount(d.stakes?.totalCredited || 0)} AIX）`)}
-        <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>质押 AIX</th><th>累计利息</th><th>已返本金</th><th>质押中本金</th></tr></thead><tbody>${stakeRows}</tbody></table></div>
+        ${subHead(`质押（${d.stakes?.count || 0} 笔 · 累计利息 ${amount(d.stakes?.totalEarned || 0)} SVX · 已返本金 ${amount(d.stakes?.principalReturned || 0)} SVX · 累计到账 ${amount(d.stakes?.totalCredited || 0)} SVX）`)}
+        <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>质押 SVX</th><th>累计利息</th><th>已返本金</th><th>质押中本金</th></tr></thead><tbody>${stakeRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
@@ -425,17 +429,17 @@
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`AIX 交易订单（近 ${Math.min((d.orders||[]).length, 50)} 条）`)}
+        ${subHead(`SVX 交易订单（近 ${Math.min((d.orders||[]).length, 50)} 条）`)}
         <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>方向</th><th>状态</th><th>委托量</th><th>已成交</th><th>价格(USDT)</th><th>时间</th></tr></thead><tbody>${orderRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`AIX 互转记录（近 ${Math.min((d.transfers||[]).length, 50)} 条）`)}
+        ${subHead(`SVX 互转记录（近 ${Math.min((d.transfers||[]).length, 50)} 条）`)}
         <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>方向</th><th>数量</th><th>手续费</th><th>时间</th></tr></thead><tbody>${xferRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`团队分润收益（${d.teamRewards?.count || 0} 条 · 合计 ${amount(d.teamRewards?.total || 0)} AIX）`)}
+        ${subHead(`团队分润收益（${d.teamRewards?.count || 0} 条 · 合计 ${amount(d.teamRewards?.total || 0)} SVX）`)}
         <div class="admin-table-scroll"><table><thead><tr><th>类型</th><th>金额</th></tr></thead><tbody>${byKindRows}</tbody></table></div>
       </div>
     `;
@@ -472,7 +476,7 @@
   }
   function stockLogoCell(token) {
     const sym = esc(token.symbol);
-    const local = `/assets/tokens/${sym.toLowerCase()}.png?v=5`;
+    const local = `/assets/tokens/${sym.toLowerCase()}.png?v=20261111-domain-solvex-1`;
     const remote = `https://bin.bnbstatic.com/static/stock/${sym}.png`;
     return `<img class="admin-token-logo" src="${local}" alt="" data-stock-logo data-remote="${remote}" data-fallback="${esc(stockLetterLogo(token.symbol))}">`;
   }
@@ -526,11 +530,12 @@
         if (generation !== adminGeneration || currentPage !== page) return;
         dashboard.tokens = result.tokens || [];
         if (page === 'tokens') renderTokens(); else renderStocks();
-      } else if (page === 'community') await window.AdminCommunity?.load();
-      else if (page === 'agents') await window.AdminAgents?.load();
-      else if (page === 'lottery') await window.AdminLottery?.load();
+      } else if (page === 'community-admin') await window.AdminCommunityAdmin?.load();
+      else if (page === 'devices') await window.AdminDevices?.load();
       else if (page === 'a-kline') await loadAKline();
       else if (page === 'a-miner') await loadAMiner();
+      else if (page === 'a-token-balance') { await loadFreeTrading(); }
+      else if (page === 'blindbox') await loadBlindbox();
       else if (page === 'support') await loadSupportTickets();
       else if (page === 'announcement') await loadAnnouncement();
       if (generation !== adminGeneration || currentPage !== page) return;
@@ -569,7 +574,7 @@
     ++usersRequestSeq;
     clearTimeout(userSearchTimer);
     currentPage = page;
-    const titles = { overview:'首页总览', users:'用户管理', deposits:'充值记录', tokens:'代币管理', stocks:'股票管理', agents:'代理管理', mall:'商城商户审核', support:'在线客服', community:'社群链接', 'a-kline':'AIX 行情调控', 'a-token-balance':'AIX 代币管理', 'a-miner':'AIX 矿机管理', 'team-activations':'团队激活查询', lottery:'抽奖管理', announcement:'平台公告' };
+    const titles = { overview:'首页总览', users:'用户管理', devices:'设备管理', deposits:'充值记录', tokens:'代币管理', stocks:'股票管理', mall:'商城商户审核', support:'在线客服', 'community-admin':'群聊管理', 'a-kline':'SVX 行情调控', 'a-token-balance':'SVX 代币管理', 'a-miner':'SVX 矿机管理', blindbox:'盲盒概率', 'team-activations':'团队激活查询', announcement:'平台公告' };
     document.querySelectorAll('[data-admin-page]').forEach(button => button.classList.toggle('active', button.dataset.adminPage === page));
     document.querySelectorAll('[data-admin-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.adminPanel === page));
     byId('admin-page-title').textContent = titles[page] || '管理后台';
@@ -724,7 +729,7 @@
   byId('admin-token-form').addEventListener('submit', submitToken);
   byId('admin-stock-form').addEventListener('submit', submitStock);
 
-  // 查询用户 AIX 余额
+  // 查询用户 SVX 余额
   byId('admin-aix-query-btn')?.addEventListener('click', async () => {
     const wallet = byId('admin-aix-query-wallet').value.trim();
     if (!wallet) { byId('admin-aix-balance-result').textContent = '请输入钱包地址'; return; }
@@ -736,9 +741,10 @@
       if (!user) { byId('admin-aix-balance-result').textContent = '该钱包在平台无记录'; return; }
       const aBal = Number(user.A || 0).toLocaleString('en-US', { maximumFractionDigits: 4 });
       const usdtBal = Number(user.USDT || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
-      byId('admin-aix-balance-result').innerHTML = `<b>AIX 余额：${aBal}</b>　|　USDT 余额：${usdtBal}`;
+      byId('admin-aix-balance-result').innerHTML = `<b>SVX 余额：${aBal}</b>　|　USDT 余额：${usdtBal}`;
     } catch (error) { byId('admin-aix-balance-result').textContent = error.message; }
   });
+  byId('admin-free-trading-toggle')?.addEventListener('click', toggleFreeTrading);
   // 团队激活查询：整棵下线的 Mini/Pro 激活数，可按直推排除后看净数
   let teamQueryData = null;
   function teamCard(label, value, sub, color) {
@@ -1059,7 +1065,7 @@
   }
 
   /* ============================================================
-   * AIX 行情 / 矿机管理 后台模块（嵌入 admin 后台，走 cookie 鉴权）
+   * SVX 行情 / 矿机管理 后台模块（嵌入 admin 后台，走 cookie 鉴权）
    * ============================================================ */
   const PERIOD_LABELS = { '1m':'1 分', '5m':'5 分', '15m':'15 分', '1h':'1 时', '4h':'4 时', '1d':'日线' };
   let aKlineStatus = null;
@@ -1091,25 +1097,25 @@
     // 五种模式：白话标签 + 一句话说明，点一下立即生效
     const modes = [['daily','🎯 每天涨跌固定','#f6c454'],['sideways','〰 基本走平','#50d2c2'],['up','📈 慢慢涨','#50d2a8'],['down','📉 慢慢跌','#f26c78'],['manual','⏸ 价格固定不动','#81918e']];
     const modeDesc = {
-      daily: '每天按下方“每天涨跌多少 %”匀速走完，第二天北京时间 00:00 自动重新开始。',
+      daily: '每天按下方“每天涨跌多少 %”缓慢走完，过程中只保留小幅波动，第二天北京时间 00:00 自动重新开始。',
       sideways: '价格小幅波动，总体基本走平。',
       up: '价格缓慢上涨（约每分钟 +0.08%），K 线自动生成。',
       down: '价格缓慢下跌（约每分钟 -0.08%），K 线自动生成。',
       manual: '价格完全固定不动，K 线停止推进。点“重置开盘”后会自动切到这个模式。',
     };
-    const tip = (html) => `<div style="font-size:12px;color:#81918e;margin:6px 0 10px">${html}</div>`;
+    const tip = (html) => `<div style="font-size:12px;color:#5b6b66;margin:6px 0 10px">${html}</div>`;
     const stat = (label, value, color) => `<div class="admin-a-stat"><small>${esc(label)}</small><b style="color:${color}">${esc(value)}</b></div>`;
     const pct = Number(settings.dailyChangePct ?? 1);
     const dp = s.dailyProgress || null;
     const dailyLine = dp ? (dp.fixed
-      ? tip(`🎯 阶梯恒定价：今日全天恒定 <b style="color:#50d2c2">$${Number(dp.targetEodPrice).toFixed(4)}</b>（锚定 $${Number(dp.startPrice).toFixed(4)} ${pct >= 0 ? '+' : ''}${pct}%），每天北京时间 00:00 跳到下一档价位`)
-      : tip(`🎯 今日行程：起点 $${Number(dp.startPrice).toFixed(4)} → 目标 <b style="color:#50d2c2">$${Number(dp.targetEodPrice).toFixed(4)}</b>（${pct >= 0 ? '+' : ''}${pct}%），已推进 <b style="color:#f6c454">${Number(dp.progressPct).toFixed(1)}%</b>，每天北京时间 00:00 自动换日重新起算`)) : '';
+      ? tip(`🎯 阶梯恒定价：今日全天恒定 <b style="color:#0e9c88">$${Number(dp.targetEodPrice).toFixed(4)}</b>（锚定 $${Number(dp.startPrice).toFixed(4)} ${pct >= 0 ? '+' : ''}${pct}%），每天北京时间 00:00 跳到下一档价位`)
+      : tip(`🎯 今日行程：起点 $${Number(dp.startPrice).toFixed(4)} → 目标 <b style="color:#0e9c88">$${Number(dp.targetEodPrice).toFixed(4)}</b>（${pct >= 0 ? '+' : ''}${pct}%），已推进 <b style="color:#a8700a">${Number(dp.progressPct).toFixed(1)}%</b>，每天北京时间 00:00 自动换日重新起算`)) : '';
     root.innerHTML = `
       <div class="admin-a-grid">
         ${stat('当前价 (USDT)', aFmt(pool.priceUsdt, 4), '#50d2c2')}
-        ${stat('今日成交量 (AIX)', aFmt(pool.todayVolumeA, 0), '#8a7dff')}
+        ${stat('今日成交量 (SVX)', aFmt(pool.todayVolumeA, 0), '#8a7dff')}
         ${stat('今日成交额 (U)', aFmt(pool.todayVolumeUsdt, 2), '#f6c454')}
-        ${stat('分红池 (AIX)', aFmt(pool.dividendPool, 0), '#50d2a8')}
+        ${stat('分红池 (SVX)', aFmt(pool.dividendPool, 0), '#50d2a8')}
       </div>
       <div class="admin-a-card">
         <h3>📈 行情模式（点一下立即生效）</h3>
@@ -1134,7 +1140,7 @@
         <h3>🔥 每日固定销毁补足</h3>
         ${tip('只控制「每日固定补足销毁」：开启后，当天各类销毁累计不足 100 万枚时，跨日结算自动补足到 100 万枚；关闭则暂停补足。交易/互转手续费固定「50% 销毁 + 50% 进 A10 池」，VIP 开通/续费销毁 100 枚，均不受此开关影响。')}
         <div class="admin-a-form-grid">
-          <label>当前状态：${pool.burnEnabled ? '<b style="color:#50d2c2">✅ 每日补足销毁已开启（不足100万枚自动补足）</b>' : '<b style="color:#f6c454">⏸ 每日补足销毁已暂停（不做补足）</b>'}</label>
+          <label>当前状态：${pool.burnEnabled ? '<b style="color:#0e9c88">✅ 每日补足销毁已开启（不足100万枚自动补足）</b>' : '<b style="color:#a8700a">⏸ 每日补足销毁已暂停（不做补足）</b>'}</label>
           <label style="align-self:flex-end">${aBtn(pool.burnEnabled ? '⏸ 暂停补足' : '🔥 开启补足', { id:'a-burn-toggle' })}</label>
         </div>
       </div>
@@ -1142,15 +1148,15 @@
         <h3>⛏ 矿机激活开关</h3>
         ${tip('关闭时：用户无法激活（购买）矿机，提交时提示「矿机激活暂未开放」。已运行的矿机产出不受影响。')}
         <div class="admin-a-form-grid">
-          <label>当前状态：${pool.activationEnabled ? '<b style="color:#50d2c2">✅ 激活已开放（用户可购买矿机）</b>' : '<b style="color:#f6c454">⛔ 激活已关闭（用户不可购买矿机）</b>'}</label>
+          <label>当前状态：${pool.activationEnabled ? '<b style="color:#0e9c88">✅ 激活已开放（用户可购买矿机）</b>' : '<b style="color:#a8700a">⛔ 激活已关闭（用户不可购买矿机）</b>'}</label>
           <label style="align-self:flex-end">${aBtn(pool.activationEnabled ? '⛔ 关闭激活' : '⛏ 开放激活', { id:'a-activation-toggle' })}</label>
         </div>
       </div>
       <div class="admin-a-card">
-        <h3>💸 AIX 提现开关</h3>
-        ${tip('关闭时：用户无法发起 AIX 链上提现，提交时提示「AIX 提现暂未开放」。已提交的提现单照常处理。')}
+        <h3>💸 SVX 提现开关</h3>
+        ${tip('关闭时：用户无法发起 SVX 链上提现，提交时提示「SVX 提现暂未开放」。已提交的提现单照常处理。')}
         <div class="admin-a-form-grid">
-          <label>当前状态：${pool.withdrawEnabled ? '<b style="color:#50d2c2">✅ 提现已开放</b>' : '<b style="color:#f6c454">⛔ 提现已关闭</b>'}</label>
+          <label>当前状态：${pool.withdrawEnabled ? '<b style="color:#0e9c88">✅ 提现已开放</b>' : '<b style="color:#a8700a">⛔ 提现已关闭</b>'}</label>
           <label style="align-self:flex-end">${aBtn(pool.withdrawEnabled ? '⛔ 关闭提现' : '💸 开放提现', { id:'a-withdraw-toggle' })}</label>
         </div>
       </div>
@@ -1204,8 +1210,8 @@
     $id('a-withdraw-toggle')?.addEventListener('click', async ()=>{
       const turningOn = !pool.withdrawEnabled;
       const msg = turningOn
-        ? '确定开放 AIX 提现？开放后用户可正常发起 AIX 链上提现。'
-        : '⚠ 确定关闭 AIX 提现？关闭后用户将无法发起新的 AIX 提现，已提交的提现单照常处理。';
+        ? '确定开放 SVX 提现？开放后用户可正常发起 SVX 链上提现。'
+        : '⚠ 确定关闭 SVX 提现？关闭后用户将无法发起新的 SVX 提现，已提交的提现单照常处理。';
       if (!await confirmDialog(msg)) return;
       try { await aApi('/withdraw/mode', { method:'POST', body:JSON.stringify({ enabled: turningOn }) }); aSetBtn('a-withdraw-toggle', turningOn?'✓ 已开放提现':'✓ 已关闭提现'); await loadAKline(); }
       catch(e){ toast(e.message); }
@@ -1243,9 +1249,9 @@
             <td><code title="${esc(r.wallet||'')}">${esc(walletShort(r.wallet))}</code></td>
             <td>${r.plan==='mini120'?aPill('#50d2c2','Mini 矿机'):r.plan==='pro1500'?aPill('#8a7dff','Pro 矿机'):esc(r.plan)}</td>
             <td style="text-align:right">${r.status==='active'?aPill('#50d2a8','● active'):aPill('#81918e','● completed')}</td>
-            <td style="text-align:right">${aFmt(r.dailyTarget,2)} <small>AIX/日</small></td>
-            <td style="text-align:right">${aFmt(r.total,0)} AIX</td>
-            <td style="text-align:right">${aFmt(r.totalEarned,2)}<br><small style="color:#50d2c2">${aFmt(r.remaining,2)} 待 · ${Number(r.progressPct||0).toFixed(1)}%</small></td>
+            <td style="text-align:right">${aFmt(r.dailyTarget,2)} <small>SVX/日</small></td>
+            <td style="text-align:right">${aFmt(r.total,0)} SVX</td>
+            <td style="text-align:right">${aFmt(r.totalEarned,2)}<br><small style="color:#0e9c88">${aFmt(r.remaining,2)} 待 · ${Number(r.progressPct||0).toFixed(1)}%</small></td>
             <td style="text-align:right">${new Date(r.startedAt||0).toLocaleDateString('zh-CN')}</td>
             <td style="text-align:right">${r.expiresAt ? new Date(r.expiresAt).toLocaleDateString('zh-CN') + (warn ? ' <b style="color:var(--admin-red)">'+dl+'天</b>' : '') : '-'}</td>
             <td style="white-space:nowrap">${r.status==='active' ? `<button type="button" class="admin-table-action reject" data-mact="expire">⏹ 过期</button>` : '-'}</td>
@@ -1273,7 +1279,7 @@
           <label style="align-self:flex-end">${aBtn('👤 设置等级', { id:'am-level-set' })}</label>
         </div>
       </div>
-      <div class="admin-a-card"><h3>AIX 激活规则</h3><p>Mini：20 AIX，终身限一次，30 天产出 100 AIX。Pro：400 AIX，可重复激活、同时持有多台，90 天产出 1500 AIX。无激活名额上限；激活费用全额计入销毁。</p></div>
+      <div class="admin-a-card"><h3>SVX 激活规则</h3><p>Mini：20 SVX，终身限一次，30 天产出 100 SVX。Pro：400 SVX，可重复激活、同时持有多台，90 天产出 1500 SVX。无激活名额上限；激活费用全额计入销毁。</p></div>
       <div class="admin-a-card">
         <h3>🔎 搜索筛选</h3>
         <div class="admin-a-form-grid" style="grid-template-columns: 2fr 1fr 1fr auto;gap:12px;align-items:flex-end">
@@ -1318,11 +1324,203 @@
     });
   }
 
+  // ── 盲盒概率配置（存 service_settings: blindbox_probability）──
+  async function loadBlindbox() {
+    const generation = adminGeneration, seq = ++blindboxRequestSeq;
+    try {
+      const result = await aApi('/blindbox/config');
+      if (generation !== adminGeneration || seq !== blindboxRequestSeq || currentPage !== 'blindbox') return;
+      blindboxSnapshot = result;
+      renderBlindbox();
+    } catch (e) {
+      const root = byId('admin-blindbox-root');
+      if (root && generation === adminGeneration && seq === blindboxRequestSeq) {
+        root.innerHTML = `<div class="admin-inline-status" style="color:var(--admin-red)">加载失败：${esc(e.message)}</div>`;
+      }
+    }
+  }
+
+  // ── 自由交易手动开关（service_settings: free_trading_enabled）──
+  function renderFreeTrading() {
+    const state = byId('admin-free-trading-state'), btn = byId('admin-free-trading-toggle');
+    if (!state || !btn) return;
+    state.textContent = freeTradingEnabled ? '当前状态：已开放自由交易' : '当前状态：待开放（自由交易已拦截）';
+    state.style.color = freeTradingEnabled ? 'var(--admin-green)' : 'var(--admin-red)';
+    btn.textContent = freeTradingEnabled ? '关闭自由交易' : '开启自由交易';
+    btn.disabled = false;
+  }
+  async function loadFreeTrading() {
+    const result = await aApi('/free-trading/config');
+    freeTradingEnabled = result.enabled === true;
+    renderFreeTrading();
+  }
+  async function toggleFreeTrading() {
+    const next = !freeTradingEnabled, btn = byId('admin-free-trading-toggle');
+    btn.disabled = true;
+    try {
+      const result = await aApi('/free-trading/config', { method:'POST', body:JSON.stringify({ enabled:next }) });
+      freeTradingEnabled = result.enabled === true;
+      renderFreeTrading();
+      toast(`自由交易已${freeTradingEnabled ? '开放' : '关闭'}`);
+    } catch (error) { toast(error.message); btn.disabled = false; }
+  }
+
+  function blindboxRows() {
+    const root = byId('admin-blindbox-root');
+    if (!root) return [];
+    return Array.from(root.querySelectorAll('[data-bbx-row]')).map(row => ({
+      coins: Number(row.querySelector('[data-bbx-coins]')?.value ?? ''),
+      weight: Number(row.querySelector('[data-bbx-weight]')?.value ?? ''),
+    }));
+  }
+
+  function updateBlindboxSum() {
+    const node = byId('admin-bbx-sum');
+    if (!node) return;
+    const sum = blindboxRows().reduce((total, row) => total + (Number.isFinite(row.weight) ? row.weight : 0), 0);
+    node.textContent = `${sum.toFixed(2)}%`;
+    node.style.color = Math.abs(sum - 100) < 1e-6 ? 'var(--admin-green)' : 'var(--admin-red)';
+  }
+
+  function renumberBlindboxRows() {
+    const root = byId('admin-blindbox-root');
+    if (!root) return;
+    root.querySelectorAll('[data-bbx-row]').forEach((row, index) => {
+      const cell = row.firstElementChild;
+      if (cell) cell.textContent = String(index + 1);
+    });
+  }
+
+  function addBlindboxRow(coins = '', weight = '') {
+    const root = byId('admin-blindbox-root');
+    if (!root) return;
+    const tbody = root.querySelector('tbody');
+    if (!tbody) return;
+    const empty = tbody.querySelector('.admin-empty');
+    if (empty) tbody.innerHTML = '';
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-bbx-row', '');
+    tr.innerHTML = `<td></td>
+      <td><input type="number" min="100" max="500" step="1" data-bbx-coins value="${esc(coins)}" style="width:120px"></td>
+      <td><input type="number" min="0.01" max="100" step="0.01" data-bbx-weight value="${esc(weight)}" style="width:120px"> %</td>
+      <td><button type="button" class="admin-secondary-button" data-bbx-remove>删除</button></td>`;
+    tbody.appendChild(tr);
+    renumberBlindboxRows();
+    updateBlindboxSum();
+    tr.querySelector('[data-bbx-coins]')?.focus();
+  }
+
+  async function saveBlindboxConfig() {
+    const status = byId('admin-bbx-status');
+    const setStatus = (message, error = false) => {
+      if (!status) return;
+      status.textContent = message;
+      status.style.color = error ? 'var(--admin-red)' : 'var(--admin-green)';
+    };
+    const tiers = blindboxRows();
+    if (!tiers.length) { setStatus('请至少添加 1 个档位', true); return; }
+    setStatus('正在保存...');
+    try {
+      const result = await aApi('/blindbox/config', { method:'POST', body: JSON.stringify({ tiers }) });
+      blindboxSnapshot = result;
+      renderBlindbox();
+      const nextStatus = byId('admin-bbx-status');
+      if (nextStatus) {
+        nextStatus.textContent = '✓ 已保存，新开的盲盒按新权重生效';
+        nextStatus.style.color = 'var(--admin-green)';
+      }
+      toast('盲盒概率已保存');
+    } catch (e) {
+      const reasons = Array.isArray(e.payload?.errors) ? e.payload.errors : [];
+      setStatus(reasons.length ? reasons.join('；') : (e.message || '保存失败'), true);
+    }
+  }
+
+  function renderBlindbox() {
+    const root = byId('admin-blindbox-root');
+    if (!root) return;
+    const snap = blindboxSnapshot || {};
+    const cfg = snap.config || {};
+    const tiers = Array.isArray(cfg.tiers) ? cfg.tiers : [];
+    const effective = snap.effective || { source:'uniform' };
+    const rows = tiers.map((tier, index) => `
+      <tr data-bbx-row>
+        <td>${index + 1}</td>
+        <td><input type="number" min="100" max="500" step="1" value="${Number(tier.coins)}" data-bbx-coins style="width:120px"></td>
+        <td><input type="number" min="0.01" max="100" step="0.01" value="${Number(tier.weightPct)}" data-bbx-weight style="width:120px"> %</td>
+        <td><button type="button" class="admin-secondary-button" data-bbx-remove>删除</button></td>
+      </tr>`).join('');
+    const errorText = Array.isArray(cfg.errors) && cfg.errors.length
+      ? `<div class="admin-inline-status" style="color:var(--admin-red);margin-bottom:8px">当前配置不可用：${cfg.errors.map(esc).join('；')}</div>`
+      : '';
+    root.innerHTML = `
+      <div class="admin-inline-status" style="margin-bottom:10px">
+        生效方式：${effective.source === 'config' ? '<b style="color:var(--admin-green)">按权重档位抽取</b>' : '<b>无有效配置，100–500 均匀随机</b>'}
+        ${cfg.updatedAt ? ` · 最近保存 ${date(cfg.updatedAt)}` : ''}
+      </div>
+      ${errorText}
+      <div class="admin-table-scroll"><table>
+        <thead><tr><th>档位</th><th>币数（100–500）</th><th>权重（%）</th><th>操作</th></tr></thead>
+        <tbody>${rows || emptyRow(4, '尚未配置档位，当前开盒为 100–500 均匀随机')}</tbody>
+      </table></div>
+      <div style="display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:12px">
+        <button type="button" class="admin-secondary-button" data-bbx-add>＋ 添加档位</button>
+        <span>权重合计：<b id="admin-bbx-sum">0.00%</b></span>
+        <button type="button" class="admin-primary-button" data-bbx-save>保存配置</button>
+        <span id="admin-bbx-status" class="admin-inline-status"></span>
+      </div>`;
+    updateBlindboxSum();
+    renderBlindboxDistribution();
+  }
+
+  function renderBlindboxDistribution() {
+    const host = byId('admin-blindbox-dist');
+    if (!host) return;
+    const dist = blindboxSnapshot?.distribution || { total:0, tiers:[], other:0 };
+    const total = Number(dist.total) || 0;
+    const rows = (dist.tiers || []).map(tier => {
+      const count = Number(tier.count) || 0;
+      return `<tr>
+        <td>${Number(tier.coins)} 枚</td>
+        <td>${Number(tier.weightPct).toFixed(2)}%</td>
+        <td>${count} 次</td>
+        <td>${total ? ((count / total) * 100).toFixed(2) : '0.00'}%</td>
+      </tr>`;
+    }).join('');
+    host.innerHTML = `
+      <div class="admin-inline-status" style="margin-bottom:10px">样本：最近 ${total} 个盲盒${Number(dist.other) ? ` · 其他/历史结果 ${Number(dist.other)} 条` : ''}</div>
+      <div class="admin-table-scroll"><table>
+        <thead><tr><th>档位币数</th><th>配置权重</th><th>开出次数</th><th>实际占比</th></tr></thead>
+        <tbody>${rows || emptyRow(4, '暂无开盒记录')}</tbody>
+      </table></div>`;
+  }
+
+  function initBlindboxPanel() {
+    const root = byId('admin-blindbox-root');
+    if (!root) return;
+    root.addEventListener('input', event => {
+      if (event.target.matches?.('[data-bbx-coins],[data-bbx-weight]')) updateBlindboxSum();
+    });
+    root.addEventListener('click', event => {
+      if (event.target.closest('[data-bbx-remove]')) {
+        event.target.closest('[data-bbx-row]')?.remove();
+        const tbody = root.querySelector('tbody');
+        if (tbody && !tbody.querySelector('[data-bbx-row]')) tbody.innerHTML = emptyRow(4, '尚未配置档位，当前开盒为 100–500 均匀随机');
+        renumberBlindboxRows();
+        updateBlindboxSum();
+        return;
+      }
+      if (event.target.closest('[data-bbx-add]')) { addBlindboxRow(); return; }
+      if (event.target.closest('[data-bbx-save]')) saveBlindboxConfig();
+    });
+  }
+
   // 刷新按钮
   byId('admin-a-kline-refresh')?.addEventListener('click', loadAKline);
   byId('admin-a-miner-refresh')?.addEventListener('click', () => loadAMiner());
+  byId('admin-blindbox-refresh')?.addEventListener('click', loadBlindbox);
+  initBlindboxPanel();
 
-  window.AdminCommunity?.init({api,toast});
-  window.AdminLottery?.init({api,toast});
+  window.AdminCommunityAdmin?.init({api,toast});
   api('/api/admin/session').then(session => session.authenticated ? showApp(session) : showLogin()).catch(showLogin);
 })();

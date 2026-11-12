@@ -33,7 +33,13 @@ function makeEnv(matchSmallFirstWindow, matchSmallFirstCount) {
   const orderService = createATokenOrderService({
     aTokenService: at, database, teamService, referralService, matchSmallFirstWindow, matchSmallFirstCount,
   });
-  at.setPrice('0.1'); // 1 AIX = 0.1 USDT
+  at.setPrice('0.1'); // 1 SVX = 0.1 USDT
+  // 撮合受自由交易手动开关 + LP 准备金门槛双重约束：补齐门槛并打开开关，让排序逻辑可被验证
+  database.insertATokenLpPoolEntryRow({
+    id: 'seed_lp', source: 'adjustment', refId: 'seed_lp', direction: 'in',
+    usdtUnits: U6(500000).toString(), aUnits: '0', createdAt: Date.now(),
+  });
+  at.setFreeTradingEnabled(true);
   const wallets = {};
   for (const key of ['a', 'b', 'c']) {
     wallets[key] = Wallet.createRandom().address.toLowerCase();
@@ -52,7 +58,7 @@ function seed(env, { id, wallet, side, a = 0, usdt = 0, createdAt, priceUsdt = '
     inputUsdtUnits: side === 'buy' ? U6(usdt).toString() : '0',
     inputAUnits: side === 'sell' ? A(a).toString() : '0',
     status: 'OPEN', createdAt, updatedAt: createdAt,
-    payload: { orderType: 'limit', feeRateBps: 5000, burnRateBps: 0, divRateBps: 0 },
+    payload: { orderType: 'limit', feeRateBps: 500, buyFeeRateBps: 0, buyFeeUnits: '0', buyFeeRemainingUnits: '0' },
   });
 }
 
@@ -80,10 +86,9 @@ const remainUsdt = (env, id) => BigInt(env.database.getATokenOrder(id)?.input_us
 }
 
 // ── 场景 2：买单按金额小者优先（小额买家先成交，与挂单时间无关）──
-// 小额买单挂得更晚、大额买单挂得更早。卖 30 A，扣 50% 手续费后净成交 15 A = 1.5 USDT，
-// 只够吃掉小额买单的一部分。
-// 小额优先 → 小额买单先被吃到 1.5 USDT（剩 0.5），大额买单原封不动（3 USDT）；
-// 若大额优先或时间优先 → 大额买单会先被吃，小额买单原封不动（2 USDT）。
+// 小额买单挂得更晚、大额买单挂得更早。卖 30 A @0.1 = 3 USDT，
+// 小额买单 2 USDT 先成交 20 A；剩余 10 A 被大额买单吃掉 1 USDT。
+// 若大额优先或时间优先 → 大额买单会先成交 3 USDT，小买单原封不动。
 {
   const env = makeEnv(1, 0); // 纯默认轮（卖单走时间优先，不影响买单排序）
   const { wallets } = env;
@@ -94,9 +99,9 @@ const remainUsdt = (env, id) => BigInt(env.database.getATokenOrder(id)?.input_us
   env.orderService.matchOpenOrders();
 
   assert.equal(statusOf(env, 'sell_1'), 'FILLED', '卖单被吃满');
-  assert.equal(statusOf(env, 'buy_small'), 'OPEN', '小额买单部分成交（仍在挂单）');
-  assert.equal(remainUsdt(env, 'buy_small'), 500000n, '小额买单先被吃到 1.5 USDT，剩余 0.5 USDT');
-  assert.equal(remainUsdt(env, 'buy_big'), U6(3), '大额买单应原封不动（3 USDT）');
+  assert.equal(statusOf(env, 'buy_small'), 'FILLED', '小额买单先被吃满（2 USDT = 20 SVX）');
+  assert.equal(statusOf(env, 'buy_big'), 'OPEN', '大额买单仅部分成交');
+  assert.equal(remainUsdt(env, 'buy_big'), U6(2), '大额买单剩余 2 USDT（只吃到 1 USDT）');
   pass('买单：同价档内金额小者优先（小额先成交）');
   closeDatabase(env.root);
 }
@@ -134,7 +139,7 @@ const remainUsdt = (env, id) => BigInt(env.database.getATokenOrder(id)?.input_us
 
   assert.equal(statusOf(env, 'sell_1'), 'FILLED', '小卖单成交');
   assert.equal(remainUsdt(env, 'buy_big'), U6(5), '大额买单应原封不动（5 USDT）');
-  assert.equal(remainUsdt(env, 'buy_small'), 500000n, '小额买单被吃掉一半（0.5 USDT）');
+  assert.equal(remainUsdt(env, 'buy_small'), 0n, '小额买单被吃满（1 USDT = 10 SVX）');
   pass('小额轮：小卖单配给小买单');
   closeDatabase(env.root);
 }

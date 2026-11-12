@@ -15,6 +15,14 @@ let connectorRestoring = true;
 let pendingWalletSwitch = null;   // 进站恢复期间用户切了钱包，记下来等恢复结束后补签名
 let connectorReadyPromise = null;
 
+// React 页面的钱包桥：provider / 配置 / 会话都从这里取，避免第二套钱包状态。
+window.solvexWalletBridge = {
+  provider: () => connectedProvider,
+  config: () => walletConfig,
+  address: () => connectedWalletAddress || window.currentWalletConnection?.address || '',
+  ensureSession: trigger => ensurePlatformSession(trigger),
+};
+
 function walletWithTimeout(operation, timeoutMs, message) {
   let timer;
   return Promise.race([
@@ -127,7 +135,9 @@ async function verifyWalletFromMenu(btn) {
       closeWalletMenu();
       return;
     }
-    showToast(error?.message?.includes('请') ? error.message : '身份验证失败', 'error');
+    const message = window.WGDevice?.localizedError?.(error) || error?.message || '';
+    showToast(message.includes('请') || message.includes('Please') || error?.code === 'DEVICE_LIMIT_EXCEEDED'
+      ? message : '身份验证失败', 'error');
   }
   closeWalletMenu();
 }
@@ -155,6 +165,9 @@ async function walletApi(url, options = {}) {
     });
     if (response.status === 401 && revision === walletStateRevision) clearPlatformSession();
     if (!response.ok) throw Object.assign(new Error(data.error || '请求失败，请重试'), {
+      code:data.code || '',
+      messages:data.messages || null,
+      details:data.details || null,
       retryable:response.status === 408 || response.status >= 500,
     });
     return data;
@@ -189,7 +202,6 @@ function refreshWalletDependents() {
   if ($('tab-trade')?.classList.contains('active') && window.__tradeDeferredReady && typeof setTradeProduct === 'function') setTradeProduct(typeof tradeProduct === 'string' ? tradeProduct : 'perp');
   if (typeof renderTradeAccount === 'function') renderTradeAccount();
   if (window.__tradeDeferredReady && $('trade-order-btn') && typeof updateTradeOrderButton === 'function') updateTradeOrderButton();
-  window.resetInternalStrategiesForWallet?.();
   window.AiManaged?.reset();
   if ($('tab-ai-managed')?.classList.contains('active') && window.currentWalletProfile?.authenticated) {
     window.AiManaged?.refresh();
@@ -198,10 +210,6 @@ function refreshWalletDependents() {
   else Object.values(window.Portal?.pages || {}).forEach(page => { page.loaded = false; });
   const activePortal = document.querySelector('.portal-page.active')?.id?.replace('tab-', '');
   if (activePortal) window.Portal?.load(activePortal, true);
-  if ($('tab-overview')?.classList.contains('active')) window.InternalStrategyOverview?.activate?.();
-  for (const name of ['de', 'ex', 'rs']) {
-    if ($('tab-' + name)?.classList.contains('active')) window.exchangeCtrls?.[name]?.activate?.();
-  }
   if ($('tab-ledger')?.classList.contains('active') && typeof loadLedger === 'function') loadLedger(true);
 }
 
@@ -214,8 +222,9 @@ function renderWalletDisconnected() {
   window.currentWalletConnection = null;
   window.currentWalletProfile = null;
   emitWalletStateChange();
-  $('account-locked').style.display = '';
-  $('account-content').style.display = 'none';
+  // 我的资产页已迁到 React，账号区节点可能不存在
+  if ($('account-locked')) $('account-locked').style.display = '';
+  if ($('account-content')) $('account-content').style.display = 'none';
   const lockedTitle = $('account-locked')?.querySelector('h2');
   const lockedText = $('account-locked')?.querySelector('p');
   if (lockedTitle) lockedTitle.textContent = '连接钱包进入个人中心';
@@ -247,8 +256,8 @@ function renderWalletConnection(connection) {
   setWalletMenuAuthVisibility(!walletProfile?.authenticated);  // 态 ②：已连接未登录 → 显示「身份验证」
   if ($('account-address')) $('account-address').textContent = connection.address;
   if (!walletProfile?.authenticated) {
-    $('account-locked').style.display = 'none';
-    $('account-content').style.display = '';
+    if ($('account-locked')) $('account-locked').style.display = 'none';
+    if ($('account-content')) $('account-content').style.display = '';
     if (typeof renderWalletFunds === 'function') {
       renderWalletFunds({ balances:{ USDT:'0' }, deposits:[], withdrawals:[] });
     }
@@ -288,9 +297,9 @@ function renderWalletProfile(profile) {
   window.currentWalletProfile = profile;
   connectedWalletAddress = profile.address;
   emitWalletStateChange();
-  $('account-locked').style.display = 'none';
-  $('account-content').style.display = '';
-  $('account-address').textContent = profile.address;
+  if ($('account-locked')) $('account-locked').style.display = 'none';
+  if ($('account-content')) $('account-content').style.display = '';
+  if ($('account-address')) $('account-address').textContent = profile.address;
   $('wallet-connect-btn').textContent = shortWallet(profile.address);
   $('wallet-connect-btn').classList.add('connected');
   setWalletMenuAuthVisibility(false);   // 态 ③：已登录 → 隐藏「身份验证」菜单
@@ -319,7 +328,28 @@ async function loadAccountUid() {
       el.textContent = uid;
       row.hidden = false;
     }
+    renderPartnerBadge(prof?.shareholder);
   } catch { /* 用户ID获取失败不阻塞页面 */ }
+}
+
+// 资产页合伙人档位徽章：500U 档金色、1,000U 档紫色；1,000U 档未开放时置灰并标注
+function renderPartnerBadge(overview) {
+  const host = $('account-partner-badge');
+  if (!host) return;
+  const member = overview?.member;
+  if (!member || member.status !== 'active') {
+    host.hidden = true;
+    host.textContent = '';
+    return;
+  }
+  const tier = (overview.tiers || []).find(item => item.key === member.tier) || {};
+  const enabled = tier.enabled !== false;
+  const label = member.tier === 't1000'
+    ? (enabled ? '合伙人 · 1,000U 档' : '合伙人 · 1,000U 档（未开放）')
+    : '合伙人 · 500U 档';
+  host.className = `partner-badge ${member.tier === 't1000' ? (enabled ? 't1000' : 't1000 locked') : 't500'}`;
+  host.textContent = label;
+  host.hidden = false;
 }
 
 // 复制用户ID（按钮文案短暂反馈，不弹 toast）
@@ -422,7 +452,11 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
       try {
         await walletApi('/api/wallet/login-sign', {
           method:'POST',
-          body:JSON.stringify({ message:loginMessage, signature:loginSig }),
+          body:JSON.stringify({
+            message:loginMessage,
+            signature:loginSig,
+            device:window.WGDevice?.payload?.() || null,
+          }),
         });
       } catch (error) {
         // A lost response may have already set the session cookie. Check it without resubmitting the signature.
@@ -455,7 +489,9 @@ async function openPlatformAccount(button = null) {
   try { return await ensurePlatformSession(button); }
   catch (error) {
     if (Number(error?.code) === 4001 || /denied|rejected|cancel/i.test(error?.message || '')) return null;
-    showToast(error?.message?.includes('请') ? error.message : '操作失败，请重试', 'error');
+    const message = window.WGDevice?.localizedError?.(error) || error?.message || '';
+    showToast(message.includes('请') || message.includes('Please') || error?.code === 'DEVICE_LIMIT_EXCEEDED'
+      ? message : '操作失败，请重试', 'error');
     return null;
   }
 }
@@ -521,7 +557,7 @@ async function connectWallet(triggerButton = null) {
       if (/BSC|BNB|网络/.test(String(error?.message || ''))) showToast(error.message, 'error');
       return null;
     }
-    showToast(error?.message || '连接失败', 'error');
+    showToast(window.WGDevice?.localizedError?.(error) || error?.message || '连接失败', 'error');
     return null;
   } finally {
     walletConnectInProgress = false;
@@ -635,7 +671,7 @@ async function prepareWalletConnector() {
 
 function reportWalletLoginError(error) {
   if (Number(error?.code) === 4001 || /denied|rejected|cancel/i.test(error?.message || '')) return;
-  showToast(error?.message || '身份验证失败', 'error');
+  showToast(window.WGDevice?.localizedError?.(error) || error?.message || '身份验证失败', 'error');
 }
 
 async function initializeWallet() {
@@ -643,15 +679,14 @@ async function initializeWallet() {
   await prepareWalletConnector();
 
   // 自动恢复连接：进入/刷新页面时用 eth_accounts 静默恢复账户（不弹授权窗口），
-  // 随后无论会话 Cookie 是否有效，都强制发起一次登录签名，钱包里确认后才进入登录态。
+  // 有效会话与恢复的钱包地址一致时直接沿用，避免刷新页面重复签名。
   try {
     walletConnectInProgress = true;
     const restored = await restoreWithRetry();
     if (restored) {
       renderWalletConnection(restored);
-      // 每次进站都强制重新签名确认：即使 Cookie 会话仍有效也不沿用旧会话。
-      // 用户取消签名则停留在已连接未登录态，可从菜单「身份验证」手动重试。
-      await ensurePlatformSession(null, { force:true }).catch(reportWalletLoginError);
+      // 会话失效或地址不匹配时才签名；取消后仍可从菜单「身份验证」重试。
+      await ensurePlatformSession().catch(reportWalletLoginError);
     } else {
       renderWalletDisconnected();
       // 静默恢复拿不到账户时，主动发起「连接授权 + 登录签名」：
@@ -670,8 +705,8 @@ async function initializeWallet() {
         }
         if (conn) {
           renderWalletConnection(conn);
-          // 每次进站强制签名确认，不沿用上一次的会话
-          await ensurePlatformSession(null, { force:true }).catch(reportWalletLoginError);
+          // 手机钱包重新授权后，也先恢复与该钱包一致的有效会话。
+          await ensurePlatformSession().catch(reportWalletLoginError);
         } else {
           renderWalletDisconnected();
         }
@@ -690,7 +725,7 @@ async function initializeWallet() {
         renderWalletConnection(conn);
       }
       if (connectedWalletAddress && !walletProfile?.authenticated) {
-        await ensurePlatformSession(null, { force:true }).catch(reportWalletLoginError);
+        await ensurePlatformSession().catch(reportWalletLoginError);
       }
     }
   }

@@ -1,4 +1,4 @@
-/* AxiX Service Worker —— 静态资源缓存加速
+/* Solvex Service Worker —— 静态资源缓存加速
  * 策略：
  *  - /api/*          → 永远直连网络，绝不缓存（数据实时性优先）
  *  - 页面导航 (HTML)  → 网络优先，缓存兜底（离线也能打开壳）
@@ -6,8 +6,8 @@
  *  - 其余同源 GET     → 不接管，走浏览器默认行为
  * 注意：修改静态文件需升级对应 ?v= 版本号，或递增 SW_VERSION 重建缓存。
  */
-const SW_VERSION = 'axix-static-v18';
-const STATIC_PREFIXES = ['/js/', '/styles/', '/vendor/', '/assets/'];
+const SW_VERSION = 'solvex-static-v48-assets-header';
+const STATIC_PREFIXES = ['/app/assets/', '/js/', '/styles/', '/vendor/', '/assets/'];
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -59,7 +59,7 @@ self.addEventListener('fetch', (event) => {
         + '<meta name="viewport" content="width=device-width,initial-scale=1">'
         + '<title>网络繁忙</title>'
         + '<style>body{margin:0;font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;'
-        + 'background:#0e1512;color:#e7f1ef;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}'
+        + 'background:#f4f7f6;color:#16211e;display:flex;min-height:100vh;align-items:center;justify-content:center;padding:24px}'
         + '.box{text-align:center;max-width:320px}'
         + 'h1{font-size:20px;margin:0 0 10px;font-weight:700}'
         + 'p{font-size:13px;line-height:1.7;color:#9fb3ae;margin:0 0 20px}'

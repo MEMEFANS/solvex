@@ -1,4 +1,4 @@
-// AIX 代币链上提现（BSC）· 钱包页内嵌 modal · 前端统一以 AIX 为显示单位
+// SVX 代币链上提现（BSC）· 钱包页内嵌 modal · 前端统一以 SVX 为显示单位
 // 依赖：window.atradeApi（或通用 fetch + 钱包 session）；用 window.WalletApi 也可
 // 全部用原生 JS 自渲染 modal，不依赖 portal 现有组件
 (function () {
@@ -18,6 +18,20 @@
   function shortAddr(a) { a = String(a || ''); return a.length > 12 ? `${a.slice(0,6)}…${a.slice(-4)}` : a; }
   function fmtTime(t) { return t ? new Date(Number(t)).toLocaleString('zh-CN', { hour12:false }) : '-'; }
   function fmtA(s) { const n = Number(s || '0'); return n.toLocaleString('en-US', { maximumFractionDigits:4 }); }
+
+  // SVX 链上代币元数据（合约地址 / 浏览器），用于在提现弹窗展示可核对的合约
+  let tokenInfo = null;
+  function loadTokenInfo() {
+    if (tokenInfo) return Promise.resolve(tokenInfo);
+    return api('/api/a-token/token-info').then(info => { tokenInfo = info || null; return tokenInfo; }).catch(() => null);
+  }
+  function applyTokenInfo() {
+    const el = $('awd-q-contract');
+    if (!el) return;
+    if (!tokenInfo?.address) { el.textContent = '未配置'; return; }
+    const base = String(tokenInfo.explorerUrl || 'https://bscscan.com').replace(/\/$/, '');
+    el.innerHTML = `<a href="${escapeHtml(base)}/token/${escapeHtml(tokenInfo.address)}" target="_blank" rel="noopener" style="color:#1c5cad">${escapeHtml(shortAddr(tokenInfo.address))}</a>`;
+  }
 
   async function api(path, options = {}) {
     const headers = options.headers || {};
@@ -39,7 +53,7 @@
       <div class="awd-backdrop" data-awd-close="1"></div>
       <div class="awd-dialog">
         <div class="awd-header">
-          <h3>AIX 链上提现</h3>
+          <h3>SVX 链上提现</h3>
           <button class="awd-close" data-awd-close="1" aria-label="关闭">×</button>
         </div>
         <div class="awd-body">
@@ -50,9 +64,9 @@
           <div class="awd-pane" data-awd-pane="form">
             <div class="awd-status" id="awd-status"></div>
             <div class="awd-field">
-              <label>提现数量（AIX）</label>
-              <input id="awd-amount" type="number" step="0.0001" min="0" placeholder="最小 100 AIX">
-              <div class="awd-hint">单笔 100 - 500,000 AIX · 单日累计上限 2,000,000 AIX</div>
+              <label>提现数量（SVX）</label>
+              <input id="awd-amount" type="number" step="0.0001" min="0" placeholder="最小 100 SVX">
+              <div class="awd-hint">单笔 100 - 500,000 SVX · 单日累计上限 2,000,000 SVX</div>
             </div>
             <div class="awd-field">
               <label>BSC 收款地址（当前连接钱包）</label>
@@ -61,12 +75,13 @@
             </div>
             <div class="awd-quote" id="awd-quote">
               <div class="awd-quote-row"><span>提现金额</span><b id="awd-q-amount">-</b></div>
-              <div class="awd-quote-row"><span>手续费（0.5%, ≥5 AIX）</span><b id="awd-q-fee">-</b></div>
+              <div class="awd-quote-row"><span>手续费（SVX 提现免费）</span><b id="awd-q-fee">-</b></div>
               <div class="awd-quote-row"><span>实际到账（链上）</span><b id="awd-q-receive">-</b></div>
               <div class="awd-quote-row"><span>本次扣减内盘余额</span><b id="awd-q-need">-</b></div>
-              <div class="awd-quote-row"><span>可用 AIX 余额</span><b id="awd-q-balance">-</b></div>
+              <div class="awd-quote-row"><span>可用 SVX 余额</span><b id="awd-q-balance">-</b></div>
               <div class="awd-quote-row"><span>预计到账时间</span><b id="awd-q-eta">~36 秒</b></div>
-              <div class="awd-quote-row"><span>路径</span><b>BSC（AIX BEP-20 代币）</b></div>
+              <div class="awd-quote-row"><span>路径</span><b>BSC（SVX BEP-20 代币）</b></div>
+              <div class="awd-quote-row"><span>SVX 合约</span><b id="awd-q-contract">-</b></div>
             </div>
             <button id="awd-submit" class="awd-submit">确认提现</button>
           </div>
@@ -131,11 +146,11 @@
         setStatus(q.error || '报价失败', 'error');
         return;
       }
-      $('awd-q-amount').textContent = fmtA(q.amountA) + ' A';
-      $('awd-q-fee').textContent = fmtA(q.feeA) + ' A';
-      $('awd-q-receive').textContent = fmtA(q.receiveA) + ' A';
-      $('awd-q-need').textContent = fmtA(q.needBalanceA) + ' A';
-      $('awd-q-balance').textContent = fmtA(q.balanceA) + ' A';
+      $('awd-q-amount').textContent = fmtA(q.amountA) + ' SVX';
+      $('awd-q-fee').textContent = fmtA(q.feeA) + ' SVX';
+      $('awd-q-receive').textContent = fmtA(q.receiveA) + ' SVX';
+      $('awd-q-need').textContent = fmtA(q.needBalanceA) + ' SVX';
+      $('awd-q-balance').textContent = fmtA(q.balanceA) + ' SVX';
       $('awd-q-eta').textContent = `~${q.estimatedSeconds || 36} 秒`;
       setStatus('');
     } catch (e) {
@@ -151,7 +166,7 @@
       // 提现地址强制取当前连接钱包（后端会再次校验 toAddress === session.address）
       const toAddress = String(window.currentWalletConnection?.address || '').trim();
       if (!amount || amount <= 0) throw new Error('请输入提现金额');
-      if (amount < 100) throw new Error('最小提现金额为 100 AIX');
+      if (amount < 100) throw new Error('最小提现金额为 100 SVX');
       if (!/^0x[a-fA-F0-9]{40}$/.test(toAddress)) throw new Error('请先连接钱包再提现');
       setStatus('正在提交...', 'info');
       // 钱包签名确认提现（签名绑定幂等编号，后端按编号幂等防重放/双扣款）
@@ -159,7 +174,7 @@
       setStatus('请在钱包中签名确认提现...', 'info');
       const timestamp = String(Date.now());
       const idempotencyKey = `awd_${Date.now()}_${Math.random().toString(16).slice(2,10)}`;
-      const message = `AxiX AIX提现确认：数量 ${String(amount)} AIX，编号 ${idempotencyKey}，时间：${timestamp}`;
+      const message = `Solvex SVX提现确认：数量 ${String(amount)} SVX，编号 ${idempotencyKey}，时间：${timestamp}`;
       let signature;
       try {
         signature = await connectedProvider.request({ method: 'personal_sign', params: [message, connectedWalletAddress] });
@@ -173,7 +188,7 @@
         idempotencyKey,
       });
       const w = result.withdrawal;
-      setStatus(`已提交，正在自动出款 ${fmtA(w.amountA)} AIX 到 ${shortAddr(w.toAddress)}`, 'ok');
+      setStatus(`已提交，正在自动出款 ${fmtA(w.amountA)} SVX 到 ${shortAddr(w.toAddress)}`, 'ok');
       $('awd-amount').value = '';
       loadQuote();
       if (typeof loadWalletProfile === 'function') loadWalletProfile();
@@ -200,14 +215,14 @@
       body.innerHTML = list.map(r => {
         const statusLabel = STATUS_LABEL[r.status] || r.status;
         const statusClass = STATUS_CLASS[r.status] || 'pending';
-        const tx = r.txHash ? `<a href="https://bscscan.com/tx/${escapeHtml(r.txHash)}" target="_blank" rel="noopener" style="color:#93c5fd">${escapeHtml(shortAddr(r.txHash))}</a>` : '-';
+        const tx = r.txHash ? `<a href="https://bscscan.com/tx/${escapeHtml(r.txHash)}" target="_blank" rel="noopener" style="color:#1c5cad">${escapeHtml(shortAddr(r.txHash))}</a>` : '-';
         const canCancel = ['pending', 'manual_review'].includes(r.status);
         const cancelBtn = canCancel ? `<button class="awd-cancel" data-id="${escapeHtml(r.id)}">撤销</button>` : '-';
         const failNote = r.failReason ? `<div class="awd-fail" title="${escapeHtml(r.failReason)}">${escapeHtml(r.failReason)}</div>` : '';
         return `<tr>
           <td>${escapeHtml(fmtTime(r.createdAt))}</td>
-          <td>${escapeHtml(fmtA(r.amountA))} AIX</td>
-          <td>${escapeHtml(fmtA(r.feeA))} AIX</td>
+          <td>${escapeHtml(fmtA(r.amountA))} SVX</td>
+          <td>${escapeHtml(fmtA(r.feeA))} SVX</td>
           <td><code title="${escapeHtml(r.toAddress)}">${escapeHtml(shortAddr(r.toAddress))}</code></td>
           <td><span class="status-chip ${escapeHtml(statusClass)}">${escapeHtml(statusLabel)}</span>${failNote}</td>
           <td>${tx}</td>
@@ -224,11 +239,11 @@
   }
 
   async function cancelWithdrawal(id) {
-    if (!await confirmDialog('确定撤销这笔 AIX 提现申请吗？撤销后 AIX 余额立即返回。')) return;
+    if (!await confirmDialog('确定撤销这笔 SVX 提现申请吗？撤销后 SVX 余额立即返回。')) return;
     try {
       setStatus('正在撤销...', 'info');
       await api(`/api/a-token/withdraw/${encodeURIComponent(id)}`, { method: 'DELETE' });
-      setStatus('已撤销，AIX 余额已返回', 'ok');
+      setStatus('已撤销，SVX 余额已返回', 'ok');
       loadRecords();
       if (typeof loadWalletProfile === 'function') loadWalletProfile();
     } catch (e) {
@@ -241,12 +256,13 @@
     try {
       const pool = await api('/api/a-token/pool');
       if (pool.withdrawEnabled === false) {
-        if (typeof showToast === 'function') showToast('AIX 提现暂未开放，请留意平台公告', 'error');
-        else alert('AIX 提现暂未开放，请留意平台公告');
+        if (typeof showToast === 'function') showToast('SVX 提现暂未开放，请留意平台公告', 'error');
+        else alert('SVX 提现暂未开放，请留意平台公告');
         return;
       }
     } catch {}
     ensureModal();
+    loadTokenInfo().then(applyTokenInfo).catch(() => {});
     document.getElementById('atoken-withdrawal-modal').classList.add('awd-show');
     switchTab('form');
     // 填充当前连接钱包地址（只读）

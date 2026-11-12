@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 420" role="img" aria-labelledby="title desc">
-  <title id="title">AIX 矿机</title>
+  <title id="title">SVX 矿机</title>
   <desc id="desc">一台带有发光风扇和绿色状态灯的现代化加密货币矿机插画</desc>
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
@@ -82,7 +82,7 @@
   <circle cx="322" cy="140" r="6" fill="#f6c454"/>
   <path d="M360 132h106M490 121h160" stroke="#9adbd0" stroke-width="4" stroke-linecap="round" opacity=".5"/>
   <text x="715" y="127" fill="#78ead5" font-family="Arial,sans-serif" font-size="13" letter-spacing="2">MINING NODE</text>
-  <text x="118" y="108" fill="#dffaf3" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="4">AIX  ·  HASHPOWER</text>
+  <text x="118" y="108" fill="#dffaf3" font-family="Arial,sans-serif" font-size="22" font-weight="700" letter-spacing="4">SVX  ·  HASHPOWER</text>
   <text x="118" y="135" fill="#7ea29d" font-family="Arial,sans-serif" font-size="13">自动日结 · BSC 链上 · 透明可查</text>
 
   <!-- side vents -->

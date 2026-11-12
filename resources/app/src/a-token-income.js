@@ -1,7 +1,7 @@
 import { formatUnits } from 'ethers';
 
-export const AIX_DAY_MS = 86400000;
-export const beijingDayStart = time => Math.floor((Number(time) + 28800000) / AIX_DAY_MS) * AIX_DAY_MS - 28800000;
+export const SVX_DAY_MS = 86400000;
+export const beijingDayStart = time => Math.floor((Number(time) + 28800000) / SVX_DAY_MS) * SVX_DAY_MS - 28800000;
 export const formatAix = value => formatUnits(BigInt(value || '0'), 18);
 const parse = value => { try { return JSON.parse(value || '{}'); } catch { return {}; } };
 
@@ -15,7 +15,7 @@ export function readAixIncome(database, wallet, kind) {
     direct: ['a_token_direct_count_rewards', 'recipient_wallet', 'created_at'],
   };
   const source = sources[kind];
-  if (!source) throw new Error('无效的 AIX 收益类型');
+  if (!source) throw new Error('无效的 SVX 收益类型');
   const [table, owner, time] = source;
   return database.db.prepare(`SELECT * FROM ${table} WHERE ${owner} = ? COLLATE NOCASE ORDER BY ${time}, id`).all(wallet).map(row => ({
     ...parse(row.payload_json), id:row.id, wallet:row.wallet || row.recipient_wallet,
@@ -27,28 +27,20 @@ export function readAixIncome(database, wallet, kind) {
   }));
 }
 
-// Existing fixed packages drip principal and interest together. Separate that
-// payment for reporting without changing credited amounts or historic records.
+// 能量释放即本金返还，不产生利息；记录里若已存显式拆分，以显式字段为准。
 export function splitStakePayment(stake, paidUnits) {
   const paid = BigInt(paidUnits || '0');
   const principal = BigInt(stake.principalUnits || '0');
-  const days = { s30:30, s60:60, s90:90 }[stake.planId] || 0;
   if (stake.principalReturnedUnits != null && stake.interestEarnedUnits != null && paid === BigInt(stake.totalEarnedUnits || '0')) {
     const returned = BigInt(stake.principalReturnedUnits);
     return { principal:returned, interest:BigInt(stake.interestEarnedUnits), outstanding:stake.status === 'active' ? principal - returned : 0n };
   }
-  if (!days) return { principal:0n, interest:paid, outstanding:stake.status === 'active' ? principal : 0n };
-  const dailyPrincipal = principal / BigInt(days);
-  const dailyInterest = principal * BigInt(stake.dailyRateBps || '0') / 10000n;
-  const daily = dailyPrincipal + dailyInterest;
-  const maxTotal = principal + principal * BigInt(stake.dailyRateBps || '0') * BigInt(days) / 10000n;
-  let returned = paid >= maxTotal ? principal : daily > 0n ? (paid / daily) * dailyPrincipal + (paid % daily) * dailyPrincipal / daily : 0n;
-  if (returned > principal) returned = principal;
+  const returned = paid > principal ? principal : paid;
   return { principal:returned, interest:paid - returned, outstanding:stake.status === 'active' ? principal - returned : 0n };
 }
 
-// Use the same principal/interest split in user revenue and admin totals. Legacy
-// rows need cumulative reconstruction; explicit splits remain authoritative.
+// Use the same principal/interest split in user revenue and admin totals. Rows
+// without an explicit split are reconstructed cumulatively from their rewards.
 export function readStakePayments(database, wallet, stakes = database.listATokenStakes(wallet)) {
   const stakesById = new Map(stakes.map(stake => [stake.id, stake]));
   const paidByStake = new Map();
@@ -73,8 +65,8 @@ export function minerIncomeSummary(database, wallet, now) {
     const summary = summaries.get(row.minerId) || { total:0n, today:0n, yesterday:0n };
     const amount = BigInt(row.amountUnits || '0');
     summary.total += amount;
-    if (row.createdAt >= day && row.createdAt < day + AIX_DAY_MS) summary.today += amount;
-    if (row.createdAt >= day - AIX_DAY_MS && row.createdAt < day) summary.yesterday += amount;
+    if (row.createdAt >= day && row.createdAt < day + SVX_DAY_MS) summary.today += amount;
+    if (row.createdAt >= day - SVX_DAY_MS && row.createdAt < day) summary.yesterday += amount;
     summaries.set(row.minerId, summary);
   }
   return summaries;

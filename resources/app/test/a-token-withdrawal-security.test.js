@@ -12,6 +12,8 @@ const user = Wallet.createRandom(), contract = Wallet.createRandom().address;
 const walletService = createWalletService({ dataRoot: root, networks: [] });
 const database = walletService.database;
 walletService.creditBalance(user.address, 'A', parseUnits('1000000', 18));
+// 2026-11-09 P2 卖单额度闸门：链上提现需有匹配池转换出的流通额度
+database.addATokenUsableQuota(user.address, parseUnits('1000000', 18));
 let receipt = null, block = 100;
 const service = createATokenWithdrawalService({
   walletService, database, contractAddress: contract,
@@ -29,6 +31,8 @@ const service = createATokenWithdrawalService({
   },
 });
 try {
+  assert.equal(service.quote({amount:'100'}).feeA,'0.0');
+  assert.equal(service.quote({amount:'100'}).needBalanceA,'100.0');
   const original = database.upsertATokenWithdrawalRow;
   const initial = walletService.balanceUnits(user.address, 'A');
   database.upsertATokenWithdrawalRow({ id: 'yesterday', wallet: user.address, requestId: 'yesterday', amountUnits: parseUnits('100000', 18).toString(), feeUnits: '0', needUnits: '0', status: 'paid', createdAt: Date.now()-86400000 });

@@ -79,8 +79,8 @@ const dRewards = database.listATokenTeamRewards(D, 50).filter(r => r.kind === 'm
 const iRewards = database.listATokenTeamRewards(I, 50).filter(r => r.kind === 'miner_indirect');
 console.log(`直推 D 的分润流水条数: ${dRewards.length}（每分钟 1 条，实时落库）`);
 console.log(`间推 I 的分润流水条数: ${iRewards.length}`);
-console.log(`直推 D 累计收益: ${fA(at.balanceA(D))} AIX（= 矿主总产出 × 15%）`);
-console.log(`间推 I 累计收益: ${fA(at.balanceA(I))} AIX（= 矿主总产出 × 10%）`);
+console.log(`直推 D 累计收益: ${fA(at.balanceA(D))} SVX（= 矿主总产出 × 15%）`);
+console.log(`间推 I 累计收益: ${fA(at.balanceA(I))} SVX（= 矿主总产出 × 10%）`);
 console.log(allSynced ? '\n结论：✅ 矿机产出与直推/间推/团队收益【分钟级实时同步】到账，无需等 00:00。'
                      : '\n结论：❌ 存在不同步！');
 

@@ -9,6 +9,7 @@ import {USER_COUNT, fixtureWallet, seedAdminSpeedFixture} from './admin-speed-fi
 
 const app = path.resolve(import.meta.dirname, '..');
 const artifact = path.resolve(app, '../../tools/admin-speed-20261012');
+fs.mkdirSync(artifact, {recursive:true});
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wg-admin-speed-browser-'));
 const result = {isolatedSyntheticData:true, userCount:USER_COUNT, scenarios:[], runtimeErrors:[], unexpectedWrites:[]};
 const mark = message => {result.scenarios.push(message); console.log('PASS: ' + message);};
@@ -43,7 +44,8 @@ try {
       if (url.origin !== base) return request.abort();
       if (!['GET','HEAD','OPTIONS'].includes(request.method()) && !['/api/admin/login','/api/admin/logout'].includes(url.pathname)) {result.unexpectedWrites.push(url.pathname); return request.abort();}
       if (url.pathname.startsWith('/api/')) requests.push(url.pathname + url.search);
-      if (baseline && url.pathname === '/js/operator-admin.js') return request.respond({contentType:'application/javascript', body:fs.readFileSync(path.join(artifact,'before/public/js/operator-admin.js'),'utf8')});
+      const baselineScript = path.join(artifact,'before/public/js/operator-admin.js');
+      if (baseline && fs.existsSync(baselineScript) && url.pathname === '/js/operator-admin.js') return request.respond({contentType:'application/javascript', body:fs.readFileSync(baselineScript,'utf8')});
       if (holdRule?.(url)) {held.set(url.pathname + url.search, request); return;}
       return request.continue();
     });
@@ -66,7 +68,7 @@ try {
   assert.equal(candidate.metrics.hiddenUserRows, 0); assert.equal(candidate.metrics.hiddenDepositRows, 0);
   assert(candidate.metrics.nodes < 2000);
   assert(requests.includes('/api/admin/dashboard?view=overview'));
-  assert(!requests.some(url => /^\/api\/admin\/(users|deposits|lottery|a-token)\b/.test(url)));
+  assert(!requests.some(url => /^\/api\/admin\/(users|deposits|a-token)\b/.test(url)));
   assert.equal(await page.$eval('#metric-wallet-users', node => node.textContent), String(USER_COUNT));
   mark('overview loads only its own data and creates no hidden user/deposit tables');
   const rowCount = count => page.waitForFunction(count => document.querySelector('[data-admin-panel="users"]').classList.contains('active') && document.querySelectorAll('#admin-users-body [data-detail-btn]').length === count && !document.getElementById('admin-user-count').textContent.includes('正在'), {}, count);
@@ -113,25 +115,11 @@ try {
   assert.equal(held.size,1);
   await held.values().next().value.continue(); held.clear(); hold(null);
   await page.waitForFunction(() => document.getElementById('am-tbody')?.childElementCount > 0);
-  mark('AIX kline/miner pages remain functional and simultaneous refreshes share one request');
-  let lotteryStart = requests.length;
-  await page.click('[data-admin-page="lottery"]'); await page.waitForSelector('[data-prob]');
-  assert.deepEqual(requests.slice(lotteryStart).filter(url => url.startsWith('/api/admin/lottery/')), ['/api/admin/lottery/prizes']);
-  lotteryStart = requests.length;
-  await page.click('[data-al-tab="social"]'); await page.waitForSelector('#al-social-status');
-  assert.deepEqual(requests.slice(lotteryStart).filter(url => url.startsWith('/api/admin/lottery/')), ['/api/admin/lottery/social?status=pending']);
-  lotteryStart = requests.length;
-  await page.click('[data-al-tab="topup"]'); await page.waitForSelector('#al-topup-wallet');
-  assert.equal(requests.slice(lotteryStart).filter(url => url.startsWith('/api/admin/lottery/')).length,0);
-  await page.click('[data-al-tab="assigned"]'); await page.waitForSelector('#al-assign-wallet');
-  assert(requests.slice(lotteryStart).includes('/api/admin/lottery/assigned?status=pending'));
-  mark('lottery loads only selected subtab data; assigned awards also load the prize list');
+  mark('SVX kline/miner pages remain functional and simultaneous refreshes share one request');
   await page.click('[data-admin-page="support"]'); await page.waitForFunction(() => document.getElementById('admin-support-ticket-list').textContent.includes('暂无会话'));
-  await page.click('[data-admin-page="agents"]'); await page.waitForFunction(() => document.getElementById('admin-agents-list').textContent.includes('暂无代理'));
-  const agentStart = requests.length; await page.click('#admin-refresh');
-  await page.waitForFunction(() => document.getElementById('admin-agents-list-status').textContent === '');
-  assert(requests.slice(agentStart).includes('/api/admin/agents'));
-  mark('support and agents load independently and the global refresh updates agents');
+  assert.equal(await page.$('[data-admin-page="agents"]'), null);
+  assert(!requests.includes('/api/admin/agents'));
+  mark('support loads independently and removed agents admin stays absent');
   await setSearch(''); await page.click('[data-admin-page="users"]'); await rowCount(50);
   await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
   await page.waitForFunction(() => !document.getElementById('admin-app').hidden && document.getElementById('admin-updated').textContent.startsWith('更新于'));

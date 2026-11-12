@@ -4,7 +4,7 @@
 
 ## 1. 目标对象定位（结论）
 
-前台位置：导航「AxiX矿机」→ 子标签「激活」页顶部的「**激活名额进度**」进度条（含文案「激活用户赠送矿机，满额后关闭赠送」）。
+前台位置：导航「SVX 矿池」→ 子标签「激活」页顶部的「**激活名额进度**」进度条（含文案「激活用户赠送矿机，满额后关闭赠送」）。
 
 - [earn.js](file:///c:/Users/cy020/Desktop/WG-Grid-Studio-完整成交账本/resources/app/public/js/earn.js#L584-L613) `renderActivation()`：`const cap = 1000000;` → `capPct = min(100, activatedCount / cap * 100)` → 渲染 `.cap-wrap/.cap-bar/.cap-fill`。
 - [earn.js](file:///c:/Users/cy020/Desktop/WG-Grid-Studio-完整成交账本/resources/app/public/js/earn.js#L445-L487) `renderGuestContent()`：同一进度条的游客版（同样硬编码 `cap = 1000000`）。
@@ -103,7 +103,7 @@ if (request.method === 'POST' && pathname === '/api/admin/a-token/activation/pro
 ```html
 <div class="admin-a-card">
   <h3>📈 矿机激活进度（前台展示）</h3>
-  <p>控制「AxiX矿机 → 激活」页顶部「激活名额进度」进度条。已激活人数 = 真实确认激活数 + 后台补量，真实激活仍会继续累加。</p>
+  <p>控制「SVX 矿池 → 激活」页顶部「激活名额进度」进度条。已激活人数 = 真实确认激活数 + 后台补量，真实激活仍会继续累加。</p>
   <div class="admin-a-form-grid" style="grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end">
     <label>激活名额总数<input id="am-prog-cap" type="number" min="1" step="1" value="${...}"></label>
     <label>已激活人数（前台显示）<input id="am-prog-count" type="number" min="0" step="1" value="${...}"></label>
@@ -155,5 +155,5 @@ $id('am-prog-save')?.addEventListener('click', async () => {
    - `GET /api/a-token/plans` → `activationMeta = { cap:20000, activatedCount:1234 }`。
    - `GET /api/admin/a-token/miners` → 含 `activationMeta`。
    - 再 POST `{activatedCount:1300}`（不传 cap）→ cap 保持 20000。
-3. 前台手动核对：「AxiX矿机 → 激活」进度条宽度 = 1234/20000 ≈ 6.17%（游客与已登录两种视图）。
+3. 前台手动核对：「SVX 矿池 → 激活」进度条宽度 = 1234/20000 ≈ 6.17%（游客与已登录两种视图）。
 4. 用户确认效果后再决定是否部署。

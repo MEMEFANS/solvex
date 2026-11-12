@@ -1,0 +1,329 @@
+/* Mobile layouts share the same balances, forms and order handlers as desktop. */
+.solvex-react .rx-locale #lang-toggle > svg { display:none; }
+.assets-mobile-list, .rx-team-mobile-level, .svx-mobile-actions, .rx-team-members-mobile { display:none; }
+body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
+.svx-market-details > summary { min-height:36px; cursor:pointer; color:#7c708b; font-size:12px; }
+.solvex-react .assets-distribution > summary { cursor:pointer; list-style:none; min-height:32px; }
+.solvex-react .assets-distribution > summary::-webkit-details-marker,
+.solvex-react .rec-card > summary::-webkit-details-marker,
+.solvex-react .assets-mobile-coin > summary::-webkit-details-marker,
+.solvex-react .rx-team-rules summary::-webkit-details-marker { display:none; }
+.solvex-react .rec-card > summary { list-style:none; cursor:pointer; }
+.solvex-react .rec-card[open] .rec-detail { display:block; }
+.solvex-react .rec-card[open] .rec-open::after { content:'收起 ▴'; }
+.solvex-react .assets-deposit-sheet { width:calc(100% - 32px); max-width:520px; left:50%; bottom:auto; top:50%; transform:translate(-50%,-50%); max-height:calc(100dvh - 32px); padding:24px; }
+.solvex-react .assets-deposit-description { margin:8px 32px 0 0; color:#6b7288; font-size:13px; line-height:1.7; }
+.solvex-react .assets-deposit-sheet .assets-funding-pane { padding:20px 0 0; }
+.solvex-react .assets-deposit-sheet .account-form-row { display:grid; grid-template-columns:1fr; gap:18px; }
+.solvex-react .assets-deposit-sheet label { display:block; margin-bottom:8px; color:#596079; font-size:13px; }
+.solvex-react .assets-deposit-sheet :is(input,select) { width:100%; min-height:48px; padding:10px 12px; border:1px solid #dce0ec; border-radius:10px; background:#fafbff; color:#29314a; font:inherit; }
+.solvex-react .assets-deposit-sheet .btn { width:100%; min-height:48px; margin-top:16px; }
+.solvex-react .assets-deposit-rule { color:#76638c; font-size:12px; }
+.solvex-react .rx-team-rules { align-self:start; overflow:hidden; }
+.solvex-react .rx-team-rules summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:22px 24px; list-style:none; cursor:pointer; color:#45405f; }
+.solvex-react .rx-team-rules summary strong { display:block; font-size:15px; font-weight:600; }
+.solvex-react .rx-team-rules summary small { display:block; margin-top:6px; color:#786e89; font-size:12px; }
+.solvex-react .rx-team-rules details[open] summary > svg { transform:rotate(180deg); }
+.solvex-react .rx-team-rules-body { padding:0 20px 20px; }
+.solvex-react .rx-team-target-label { display:flex; justify-content:space-between; flex-wrap:wrap; gap:6px; }
+.solvex-react .rx-team-target-label > small { color:#7c668f; font-size:12px; }
+.solvex-react .rx-team-progress-note { color:#776c87; font-size:12px; line-height:1.7; margin-top:12px; }
+.svx-order-sheet { position:static; inset:auto; margin:0; padding:0; width:100%; max-width:none; max-height:none; border:0; background:transparent; color:inherit; overflow:visible; }
+.svx-order-sheet:not([open]) { display:none; }
+.svx-order-sheet-head { display:none; }
+.svx-trade-rules { margin:12px 14px 0; border-top:1px solid #e9e7ef; color:#6f7285; font-size:12px; line-height:1.8; }
+.svx-trade-rules summary { cursor:pointer; padding:12px 0; min-height:44px; }
+.svx-trade-rules p { margin:0 0 10px; }
+
+@media (max-width:900px) {
+  body.solvex-react { --mobile-dock-space:calc(68px + env(safe-area-inset-bottom,0px)); }
+  .solvex-react .rx-mobile-dock { height:var(--mobile-dock-space); min-height:68px; padding:5px 8px calc(5px + env(safe-area-inset-bottom,0px)); box-sizing:border-box; }
+  .solvex-react .rx-mobile-dock button { min-height:48px; font-size:11px; gap:4px; }
+  .solvex-react .rx-topbar { height:62px; padding:0 12px 0 8px; }
+  .solvex-react .rx-topbar-left { gap:3px; }
+  .solvex-react .rx-topbar-right { gap:8px; }
+  .solvex-react .rx-mobile-menu { width:44px; height:44px; min-width:44px; }
+  .solvex-react .rx-locale #lang-toggle { display:grid!important; place-items:center; width:44px; height:44px; min-width:44px; min-height:44px; padding:0; font-size:0; }
+  .solvex-react .rx-wallet #wallet-connect-btn { min-height:44px; max-width:108px; font-size:11px; padding:8px 10px; }
+  .solvex-react .rx-topbar-brand { font-size:20px; gap:6px; }
+  .solvex-react .rx-topbar-brand img { width:23px; }
+  .solvex-react .rx-heading-actions .ui-button { width:44px; height:44px; min-width:44px; min-height:44px; }
+  .solvex-react .rx-heading-actions .ui-button svg { width:17px; height:17px; }
+}
+
+@media (max-width:768px) {
+  .solvex-react :is(input[type=text],input[type=number],input[type=search],textarea) { font-size:16px; }
+  .solvex-react .rx-team-navigation { position:sticky; top:62px; z-index:40; padding:5px 0; background:var(--bg,#f5f6fb); }
+  .solvex-react .rx-team-tabs { justify-content:flex-start; width:100%; padding:4px; gap:3px; scroll-padding:6px; }
+  .solvex-react .rx-team-tabs .ui-tab { flex:0 0 auto; min-width:88px; min-height:44px; padding:10px 13px; font-size:13px; }
+  .solvex-react .rx-team-hero { min-height:0; padding:18px; }
+  .solvex-react .rx-team-hero > div:first-child { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; width:100%; }
+  .solvex-react .rx-team-hero :is(.rx-kicker,h2,p,.rx-level-orbit) { display:none; }
+  .solvex-react .rx-team-mobile-level { display:flex; align-items:center; gap:12px; font-size:34px; font-weight:650; color:#6e35d7; line-height:1.2; }
+  .solvex-react .rx-team-mobile-level small { font-size:12px; font-weight:400; color:#71617f; }
+  .solvex-react .rx-team-hero .ui-button { margin:0; width:auto; min-height:44px; padding:10px 12px; font-size:12px; }
+  .solvex-react .rx-team-grid { grid-template-columns:1fr; gap:14px; }
+  .solvex-react .rx-team-next .rx-team-next-heading { display:flex; align-items:center; gap:12px; margin-bottom:15px; }
+  .solvex-react .rx-team-next .rx-next-label { margin:0; font-size:12px; }
+  .solvex-react .rx-team-next .rx-next-level { margin:0; font-size:30px; line-height:1; }
+  .solvex-react .rx-team-next .rx-target { margin-top:16px; }
+  .solvex-react .rx-team-next .rx-target > div:nth-child(2) { margin:7px 0 9px; }
+  .solvex-react .rx-team-next .rx-target strong { font-size:17px; }
+  .solvex-react .rx-team-next .rx-target small { font-size:11px; }
+  .solvex-react .rx-team-next .rx-full { margin-top:20px; min-height:44px; font-size:13px; }
+  .solvex-react .rx-team-rules summary { padding:18px; min-height:72px; }
+  .solvex-react .rx-team-rules-body { padding:0 12px 14px; }
+  .solvex-react .rx-team-page .rx-metric > strong { overflow-wrap:anywhere; }
+  .solvex-react .rx-team-page .rx-metric > div > span { font-size:12px; }
+  .solvex-react .rx-team-page .rx-metric > strong small { font-size:11px; }
+  .solvex-react .rx-team-page .rx-note { font-size:13px; }
+  .solvex-react .rx-team-page .ui-button { min-height:44px; }
+  .solvex-react .rx-team-page .rx-invite-hero { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:12px; padding:18px; }
+  .solvex-react .rx-team-page .rx-invite-hero > :is(svg,.rx-kicker) { display:none; }
+  .solvex-react .rx-team-page .rx-invite-hero h2 { grid-column:1/-1; font-size:20px; line-height:1.4; margin:0; }
+  .solvex-react .rx-team-page .rx-invite-hero h2 br { display:none; }
+  .solvex-react .rx-team-page .rx-invite-hero p { grid-column:1/-1; margin:0; font-size:12px; }
+  .solvex-react .rx-team-page .rx-invite-code { margin:0; align-self:center; font-size:24px; letter-spacing:2px; overflow-wrap:anywhere; }
+  .solvex-react .rx-team-page .rx-invite-hero .ui-button { padding:10px; font-size:12px; }
+
+  /* Trading has one site dock; its own views are tabs above the content. */
+  body.solvex-react #tab-trade .mt-bottom-nav { position:static; bottom:auto!important; display:grid; min-height:52px; padding:5px 12px; gap:5px; border:0; border-bottom:1px solid #eeeaf6; background:#fff; }
+  body.solvex-react #tab-trade .mt-bottom-nav button { min-height:44px; height:44px; border-radius:9px; font-size:13px; font-weight:550; }
+  body.solvex-react #tab-trade .mt-bottom-nav button.active { background:#f2ecff; color:#7034db; }
+  body.solvex-react #tab-trade .mt-bottom-nav svg { width:17px; height:17px; }
+  body.solvex-react #tab-trade .mt-market-tabs { height:44px; }
+  body.solvex-react #tab-trade .mt-market-tabs button { min-height:44px; font-size:13px; }
+  body.solvex-react #tab-trade .terminal-marketbar { grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) 44px; padding:10px 12px!important; border-bottom-width:1px; }
+  body.solvex-react #tab-trade .mt-market-details { width:44px; height:44px; }
+  body.solvex-react #tab-trade .mt-chart-toolbar { height:48px; padding-inline:5px; }
+  body.solvex-react #tab-trade .mt-chart-toolbar button { min-width:40px; min-height:44px; height:44px; padding-inline:6px; }
+  body.solvex-react #tab-trade #mt-timeframe { min-width:56px; height:44px; min-height:44px; }
+  body.solvex-react #tab-trade .mt-chart-toolbar [data-mt-sec="86400"] { display:none; }
+  body.solvex-react #tab-trade .mt-chart-toolbar [data-mt-action=fullscreen] { padding-inline:6px; }
+  body.solvex-react #tab-trade .mt-drawing-tools { display:none; }
+  body.solvex-react #tab-trade.mt-tools-open .mt-drawing-tools { display:flex; width:44px; flex-basis:44px; }
+  body.solvex-react #tab-trade .mt-drawing-tools button { width:44px; height:44px; }
+  body.solvex-react #tab-trade .mt-chart-main { padding-top:0; }
+  body.solvex-react #tab-trade .mt-chart-legend { display:none; }
+  body.solvex-react #tab-trade .mt-chart-area { height:clamp(235px,calc(100svh - 475px),430px); }
+  body.solvex-react #tab-trade .mt-chart-footer { padding-left:12px; border-bottom-width:1px; }
+  body.solvex-react #tab-trade .mt-chart-footer button { min-height:38px; }
+  body.solvex-react #tab-trade .mt-order-controls { min-height:48px; }
+  body.solvex-react #tab-trade .mt-order-controls :is(select,.order-select-trigger) { min-height:44px; height:44px; }
+  body.solvex-react #tab-trade .order-entry.aentry > .side-switch button { min-height:44px; height:auto; padding:10px 2px; font-size:13px; }
+  body.solvex-react #tab-trade .order-entry.aentry > .order-field { min-height:46px; }
+  body.solvex-react #tab-trade .order-entry.aentry > .order-field input { height:44px; font-size:16px; }
+  body.solvex-react #tab-trade .order-entry.aentry > .terminal-order-btn { min-height:48px; font-size:14px; }
+  body.solvex-react #tab-trade .mt-slider > label { height:44px; }
+  body.solvex-react #tab-trade .mt-slider input[type=number] { height:40px; font-size:16px; }
+  body.solvex-react #tab-trade .terminal-grid > .terminal-bottom { display:none!important; }
+  body.solvex-react #tab-trade[data-mobile-view=account] .terminal-grid > .terminal-bottom { display:block!important; }
+  body.solvex-react #tab-trade.mt-fullscreen .mt-chart-area { height:auto; }
+
+  /* SVX actions remain within thumb reach while the canonical form opens in a sheet. */
+  .solvex-react #tab-a-token-trade .portal-shell { padding-bottom:calc(var(--mobile-dock-space) + 100px)!important; }
+  .solvex-react #tab-a-token-trade .portal-heading { margin-bottom:14px; }
+  .solvex-react #tab-a-token-trade .portal-heading p { display:none; }
+  .solvex-react #tab-a-token-trade .atrade-spot-price-strip { display:grid; grid-template-columns:1fr; gap:12px; padding:16px; }
+  .solvex-react #tab-a-token-trade .atrade-pair-name { order:0; }
+  .solvex-react #tab-a-token-trade .atrade-pair-name small { display:none; }
+  .solvex-react #tab-a-token-trade .price-big { order:1; }
+  .solvex-react #tab-a-token-trade .svx-market-details { order:2; }
+  .solvex-react #tab-a-token-trade .svx-market-details .atrade-spot-meta { display:grid; gap:12px; grid-template-columns:1fr 1fr; margin-top:0; }
+  .solvex-react #tab-a-token-trade .atrade-terminal { padding:0; gap:14px; }
+  .solvex-react #tab-a-token-trade .atrade-terminal-grid { display:block; }
+  .solvex-react #tab-a-token-trade .atrade-cell-entry { border:0; padding:0; }
+  .solvex-react #tab-a-token-trade .atrade-chart-toolbar { padding:6px; }
+  .solvex-react #tab-a-token-trade .atrade-chart-tabs { display:flex; width:100%; }
+  .solvex-react #tab-a-token-trade .atrade-chart-tabs button { flex:1; min-height:44px; font-size:12px; }
+  .solvex-react #tab-a-token-trade .atrade-chart-toolbar > .muted { display:none; }
+  .solvex-react #tab-a-token-trade .atrade-chart-host { min-height:235px; height:clamp(235px,36svh,340px); }
+  .solvex-react .svx-mobile-actions { position:fixed; display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px 14px; bottom:var(--mobile-dock-space); left:0; right:0; z-index:115; background:#fffffff5; backdrop-filter:blur(12px); border-top:1px solid #eae6f2; }
+  .solvex-react .svx-mobile-actions button { min-height:50px; border:0; border-radius:11px; font-size:14px; font-weight:600; color:#fff; }
+  .solvex-react .svx-mobile-buy { background:#7540dd; }
+  .solvex-react .svx-mobile-sell { background:#d55a75; }
+  .solvex-react .svx-mobile-actions button span { display:block; margin-top:3px; font-size:10px; font-weight:400; opacity:.9; }
+  .solvex-react .svx-order-sheet { position:fixed; inset:auto 0 0; margin:0 auto; padding:0 0 env(safe-area-inset-bottom,0px); width:100%; max-width:560px; max-height:calc(100dvh - 20px); overflow-y:auto; overscroll-behavior:contain; border:1px solid #e5ddef; border-bottom:0; border-radius:22px 22px 0 0; background:#fff; color:#30364d; box-shadow:0 -15px 70px #28203720; }
+  .solvex-react .svx-order-sheet::backdrop { background:#201c3c55; backdrop-filter:blur(3px); }
+  .solvex-react .svx-order-sheet-head { display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:2; background:#fff; padding:16px 18px 12px; border-bottom:1px solid #eee9f5; }
+  .solvex-react .svx-order-sheet-head h2 { margin:0; font-size:18px; }
+  .solvex-react .svx-order-sheet-head p { margin:5px 0 0; font-size:12px; color:#7c6f8c; }
+  .solvex-react .svx-order-sheet-head button { width:44px; height:44px; background:#f5f1fa; border:0; border-radius:11px; color:#756580; }
+  .solvex-react .svx-order-sheet .aentry { padding:10px 5px 18px; border:0; border-radius:0; max-height:none; overflow:visible; }
+  .solvex-react .svx-order-sheet .aentry-title { display:none; }
+  .solvex-react .svx-order-sheet :is(.aentry-switch button,.aentry-type button,.aentry-pcts button,.btn-copy) { min-height:44px; height:auto; font-size:12px; }
+  .solvex-react .svx-order-sheet .aentry-avail { margin-block:12px; font-size:13px; }
+  .solvex-react .svx-order-sheet .aentry-amt-label { margin-bottom:8px; font-size:12px; }
+  .solvex-react .svx-order-sheet .aentry-field { height:50px; grid-template-columns:44px minmax(0,1fr) 50px; }
+  .solvex-react .svx-order-sheet .aentry-field input { font-size:16px; }
+  .solvex-react .svx-order-sheet .aentry-slider { min-height:32px; }
+  .solvex-react .svx-order-sheet .aentry-quote { padding:12px; font-size:12px; }
+  .solvex-react .svx-order-sheet .terminal-order-btn { min-height:48px; font-size:15px; }
+  .solvex-react .assets-deposit-sheet { width:100%; left:0; top:auto; bottom:0; transform:none; max-width:none; max-height:calc(100dvh - 20px); padding:24px 20px calc(24px + env(safe-area-inset-bottom,0px)); border-radius:22px 22px 0 0; }
+  .solvex-react .assets-deposit-sheet :is(input,select) { font-size:16px; }
+  .solvex-react .assets-deposit-sheet .ui-dialog-close { min-width:44px; min-height:44px; top:12px; right:12px; }
+}
+
+@media (max-width:640px) {
+  .solvex-react #assets-dashboard-view { display:flex; flex-direction:column; gap:14px; }
+  .solvex-react #assets-dashboard-view > .assets-header { order:0; margin-bottom:0; }
+  .solvex-react #assets-dashboard-view > .assets-overview { order:1; margin:0; }
+  .solvex-react #assets-dashboard-view > .assets-main { order:2; margin:0; }
+  .solvex-react #assets-dashboard-view > .assets-distribution { order:3; margin:0; }
+  .solvex-react .assets-header { padding:0 0 12px; }
+  .solvex-react .assets-header::before { display:none; }
+  .solvex-react .assets-header h2::before { display:none; }
+  .solvex-react .assets-header > div { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 10px; }
+  .solvex-react .assets-header > div > div:first-child { grid-column:1/-1; }
+  .solvex-react .assets-header h2 { font-size:24px; }
+  .solvex-react .assets-wallet { width:100%; font-size:11px; margin-top:0; align-self:center; }
+  .solvex-react .assets-uid { margin-top:0; padding:0; border:0; background:transparent; }
+  .solvex-react .assets-uid-label { display:none; }
+  .solvex-react .assets-uid-copy { min-height:44px; }
+  .solvex-react .assets-icon-btn { width:44px; min-width:44px; height:44px; }
+  .solvex-react .assets-text-btn { min-height:44px; padding:8px 10px; font-size:11px; }
+  .solvex-react .assets-overview { border-radius:16px; }
+  .solvex-react .assets-total { padding:15px; }
+  .solvex-react .assets-total .assets-subvalue { display:none; }
+  .solvex-react .assets-total .assets-quick-actions { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-top:12px; }
+  .solvex-react .assets-quick-actions button { display:flex; justify-content:center; align-items:center; gap:5px; min-height:46px; padding:8px 6px; font-size:12px; }
+  .solvex-react .assets-total .assets-quick-actions .assets-records-shortcut { display:flex; }
+  .solvex-react .assets-overview .assets-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:0; }
+  .solvex-react .assets-overview .assets-metrics > div { min-height:0; padding:10px 14px; border:0; border-bottom:1px solid #eef0f6; border-right:1px solid #eef0f6; background:#fff; }
+  .solvex-react .assets-overview .assets-metrics > div:nth-child(2n) { border-right:0; }
+  .solvex-react .assets-overview .assets-metrics > div:nth-child(n+3) { border-bottom:0; }
+  .solvex-react .assets-overview .assets-metrics b { font-size:17px; line-height:1.3; margin-top:5px; overflow-wrap:anywhere; }
+  .solvex-react .assets-overview .assets-metrics b > span { font:inherit; color:inherit; }
+  .solvex-react .assets-distribution { padding:10px 16px; }
+  .solvex-react .assets-distribution > summary { min-height:44px; }
+  .solvex-react .assets-distribution h3 { font-size:14px; }
+  .solvex-react .assets-distribution .assets-allocation { margin-top:14px; padding-bottom:6px; }
+  .solvex-react .assets-tabs { margin:12px 12px 0; width:calc(100% - 24px); }
+  .solvex-react .assets-tabs button { min-height:44px; padding:8px; font-size:12px; }
+  .solvex-react .assets-list-tools { display:flex; flex-wrap:wrap; gap:8px; padding:12px; }
+  .solvex-react .assets-search { width:auto; flex:1 1 150px; min-height:44px; }
+  .solvex-react .assets-search input { width:100%; min-width:0; font-size:16px; }
+  .solvex-react .assets-zero-filter { min-height:44px; display:flex; align-items:center; flex-shrink:0; font-size:11px; white-space:nowrap; }
+  .solvex-react .assets-table-wrap { display:none; }
+  .solvex-react .assets-mobile-list { display:block; padding:0 12px 12px; }
+  .solvex-react .assets-mobile-coin { border:1px solid #e9e7f0; border-radius:12px; margin-top:9px; overflow:hidden; }
+  .solvex-react .assets-mobile-coin > summary { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1.15fr) 14px; align-items:center; gap:9px; min-height:82px; padding:14px 12px; cursor:pointer; list-style:none; }
+  .solvex-react .assets-mobile-coin .assets-coin { gap:8px; min-width:0; }
+  .solvex-react .assets-mobile-coin .assets-coin > span:last-child { min-width:0; }
+  .solvex-react .assets-mobile-coin .assets-coin-icon { width:30px; height:30px; flex:0 0 30px; }
+  .solvex-react .assets-mobile-coin .assets-coin b { font-size:13px; }
+  .solvex-react .assets-mobile-coin .assets-coin small { display:block; font-size:11px; color:#7e738b; }
+  .solvex-react .assets-mobile-value { display:flex; flex-direction:column; gap:5px; text-align:right; min-width:0; }
+  .solvex-react .assets-mobile-value strong { font-size:15px; color:#38334b; font-weight:600; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+  .solvex-react .assets-mobile-value small { font-size:11px; color:#82738e; overflow-wrap:anywhere; }
+  .solvex-react .assets-coin-chevron { color:#9b8aab; }
+  .solvex-react .assets-mobile-coin[open] .assets-coin-chevron { transform:rotate(180deg); }
+  .solvex-react .assets-mobile-coin-details { padding:0 12px 12px; border-top:1px solid #f0ecf6; }
+  .solvex-react .assets-mobile-coin-details dl { display:grid; gap:10px; margin:14px 0; font-size:12px; }
+  .solvex-react .assets-mobile-coin-details dl > div { display:flex; justify-content:space-between; gap:12px; }
+  .solvex-react .assets-mobile-coin-details dt { color:#86768f; flex-shrink:0; }
+  .solvex-react .assets-mobile-coin-details dd { margin:0; text-align:right; overflow-wrap:anywhere; color:#5c4e6e; }
+  .solvex-react .assets-mobile-coin-actions { display:flex; gap:8px; }
+  .solvex-react .assets-mobile-coin-actions button { min-height:44px; flex:1; border:1px solid #e6dcef; border-radius:9px; background:#f8f4ff; color:#7543ac; font:inherit; font-size:12px; }
+  .solvex-react .rx-team-members-desktop { display:none; }
+  .solvex-react .rx-team-members-mobile { display:grid; gap:10px; }
+  .solvex-react .rx-team-member { border:1px solid #e9e3f1; border-radius:12px; overflow:hidden; }
+  .solvex-react .rx-team-member summary { display:flex; align-items:center; justify-content:space-between; gap:10px; min-height:66px; padding:13px; list-style:none; cursor:pointer; }
+  .solvex-react .rx-team-member summary::-webkit-details-marker { display:none; }
+  .solvex-react .rx-team-member summary small { color:#9a89a9; }
+  .solvex-react .rx-team-member dl { display:grid; grid-template-columns:1fr 1fr; gap:15px 10px; margin:0; padding:0 13px 15px; }
+  .solvex-react .rx-team-member dt { color:#86758f; font-size:11px; }
+  .solvex-react .rx-team-member dd { margin:5px 0 0; font-size:13px; overflow-wrap:anywhere; }
+  .solvex-react .rec-cards { display:block; }
+  .solvex-react .rec-card { border:1px solid #ece7f3; padding:12px; }
+  .solvex-react .rec-card > summary { min-height:44px; }
+  .solvex-react .rec-card .rec-meta { font-size:11px; }
+}
+
+/* AI 量化：手机端以资产总览和量化操作为主，去掉桌面卡片的重复内框。 */
+@media (max-width:640px) {
+  .solvex-react .aim-page { padding:14px 12px calc(88px + env(safe-area-inset-bottom,0px))!important; }
+  .solvex-react .aim-topbar { min-height:0; margin-bottom:0; padding:18px; border-radius:16px; }
+  .solvex-react .aim-title-row { flex-direction:row; align-items:center; flex-wrap:wrap; gap:9px; }
+  .solvex-react .aim-heading h1 { font-size:25px; }
+  .solvex-react .aim-topbar h1::before { margin-bottom:7px; font-size:8px; letter-spacing:1.5px; }
+  .solvex-react .aim-heading p { max-width:none; margin-top:7px; font-size:11px; line-height:1.6; }
+  .solvex-react .aim-status { min-height:26px; max-width:100%; padding:3px 9px; font-size:10px; line-height:1.4; white-space:normal; }
+
+  .solvex-react .aim-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:12px; border-radius:14px; }
+  .solvex-react .aim-metrics > div { min-width:0; padding:13px 15px; border:0; }
+  .solvex-react .aim-metrics > div:first-child { display:grid; grid-column:1/-1; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding-block:14px; border-bottom:1px solid #eef1f7; }
+  .solvex-react .aim-metrics > div:nth-child(2) { border-right:1px solid #eef1f7; }
+  .solvex-react .aim-metrics span { font-size:11px; }
+  .solvex-react .aim-metrics strong { margin:6px 0 3px; overflow:visible; font-size:18px; line-height:1.3; white-space:normal; text-overflow:clip; overflow-wrap:anywhere; }
+  .solvex-react .aim-metrics > div:first-child strong { min-width:0; margin:0; font-size:21px; }
+  .solvex-react .aim-metrics small { font-size:10px; line-height:1.4; }
+  .solvex-react .aim-metrics > div:first-child small { margin:0; white-space:nowrap; text-align:right; }
+
+  .solvex-react .aim-workspace { gap:12px; margin-top:12px; }
+  .solvex-react .aim-panel { padding:0; border-radius:14px; }
+  .solvex-react .aim-panel-head { min-height:0; gap:10px; padding:15px 16px; }
+  .solvex-react .aim-panel-head > div { min-width:0; }
+  .solvex-react .aim-panel-head h2 { font-size:15px; }
+  .solvex-react .aim-panel-head p { font-size:11px; line-height:1.55; }
+  .solvex-react .aim-invest-panel .aim-panel-head { flex-direction:column; gap:7px; }
+  .solvex-react .aim-invest-panel .aim-panel-head > span { font-size:11px; white-space:normal; }
+
+  .solvex-react .aim-vip-card { align-items:stretch; gap:10px; margin:14px 14px 0; padding:14px; border-radius:12px; }
+  .solvex-react .aim-vip-badge { align-self:flex-start; }
+  .solvex-react .aim-vip-body { gap:5px; }
+  .solvex-react .aim-vip-body b { font-size:13px; line-height:1.5; }
+  .solvex-react .aim-vip-body span { margin-top:0; font-size:11.5px; line-height:1.7; }
+  .solvex-react .aim-vip-btn { width:100%; min-height:44px; font-size:12px; }
+  .solvex-react .aim-vip-card.is-active .aim-vip-btn { display:none; }
+  .solvex-react .aim-amount-block { margin:17px 14px 0; }
+  .solvex-react .aim-amount-block > label { font-size:12px; line-height:1.5; }
+  .solvex-react .aim-amount-field { height:52px; margin-top:8px; }
+  .solvex-react .aim-amount-field input { padding:0 13px; font-size:16px; }
+  .solvex-react .aim-amount-field > button { min-width:48px; height:36px; }
+  .solvex-react .aim-actions { grid-template-columns:1.15fr 1fr; gap:9px; margin:14px 14px 0; }
+  .solvex-react .aim-primary,.solvex-react .aim-secondary { min-height:46px; height:46px; padding:0 8px; font-size:13px; }
+  .solvex-react .aim-notice { display:block; margin:14px 14px 16px; padding:11px 12px; font-size:11px; line-height:1.65; }
+  .solvex-react .aim-notice b { display:block; margin-bottom:3px; }
+
+  .solvex-react .aim-analysis-content { min-height:0; margin-top:0; padding:14px; }
+  .solvex-react .aim-analysis-loading { padding:44px 0; }
+  .solvex-react .aim-analysis-pair { gap:10px; margin-bottom:12px; }
+  .solvex-react .aim-analysis-coin { width:36px; height:36px; }
+  .solvex-react .aim-analysis-pair strong { font-size:14px; }
+  .solvex-react .aim-analysis-pair small { font-size:11px; }
+  .solvex-react .aim-analysis-signal { padding:5px 10px; font-size:11px; }
+  .solvex-react .aim-analysis-grid { gap:0 16px; margin-bottom:12px; }
+  .solvex-react .aim-analysis-grid > div { padding:10px 2px; border:0; border-bottom:1px solid #edf0f5; border-radius:0; background:transparent; }
+  .solvex-react .aim-analysis-grid > div:nth-last-child(-n+2) { border-bottom:0; }
+  .solvex-react .aim-analysis-grid dt { font-size:10.5px; }
+  .solvex-react .aim-analysis-grid dd { margin-top:5px; font-size:14px; }
+  .solvex-react .aim-analysis-summary { padding:11px 12px; border:0; border-left:2px solid #cbb8f6; border-radius:8px; font-size:11.5px; line-height:1.75; }
+
+  .solvex-react .aim-card-panel { margin-top:12px; }
+  .solvex-react .aim-card-list { display:flex; flex-direction:column; gap:10px; max-height:none; margin-top:0; padding:12px 14px 14px; overflow:visible; }
+  .solvex-react .aim-batch-card,.solvex-react .aim-record-card { gap:9px; padding:14px; border-radius:12px; }
+  .solvex-react .aim-batch-head,.solvex-react .aim-record-head { gap:8px; padding-bottom:10px; }
+  .solvex-react .aim-record-head { display:grid; grid-template-columns:minmax(0,1fr) auto auto; }
+  .solvex-react .aim-record-head > span:first-child { font-size:10.5px; line-height:1.5; }
+  .solvex-react .aim-kv { gap:12px; font-size:12px; }
+  .solvex-react .aim-kv > span { font-size:11.5px; }
+}
+
+@media (max-width:360px) {
+  .solvex-react .aim-page { padding-inline:10px!important; }
+  .solvex-react .aim-topbar { padding:16px; }
+  .solvex-react .aim-heading h1 { font-size:23px; }
+  .solvex-react .aim-metrics > div { padding-inline:12px; }
+  .solvex-react .aim-metrics strong { font-size:16px; }
+  .solvex-react .aim-metrics > div:first-child strong { font-size:20px; }
+  .solvex-react .aim-panel-head { padding-inline:13px; }
+  .solvex-react .aim-vip-card { margin-inline:12px; }
+  .solvex-react .aim-amount-block,.solvex-react .aim-actions { margin-inline:12px; }
+  .solvex-react .aim-notice { margin-inline:12px; }
+  .solvex-react .aim-analysis-content,.solvex-react .aim-card-list { padding-inline:12px; }
+}
+
+@media (prefers-reduced-motion:reduce) {
+  .solvex-react .rx-team-rules summary > svg { transition:none; }
+}

@@ -5,15 +5,11 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { closeDatabase } from '../src/database.js';
 import { createWalletService } from '../src/wallet-service.js';
-import { createLotteryService, normalizeSocialScreenshot } from '../src/lottery-service.js';
 import { createSupportService } from '../src/support-service.js';
 import { createFundsAdminApi } from '../src/funds-admin-api.js';
 import { adminPageKind, isLegacyFundsPath, OPERATOR_ADMIN_CSP, FUNDS_ADMIN_CSP } from '../src/admin-security.js';
 
-const png = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZCZsAAAAASUVORK5CYII=';
-const attacks = [ '<img src=x onerror="fetch(\'/api/admin/test-credits\')">', 'javascript:alert(1)', 'data:image/svg+xml;base64,' + Buffer.from('<svg onload="alert(1)"></svg>').toString('base64'), 'data:text/html;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64'), png + '" onerror="alert(1)', 'data:image/png;base64,' + Buffer.from('<html><script>alert(1)</script>').toString('base64') ];
-assert.equal(normalizeSocialScreenshot(png), png);
-for (const attack of attacks) assert.throws(() => normalizeSocialScreenshot(attack));
+const attacks = [ '<img src=x onerror="fetch(\'/api/admin/test-credits\')">', 'javascript:alert(1)', 'data:image/svg+xml;base64,' + Buffer.from('<svg onload="alert(1)"></svg>').toString('base64'), 'data:text/html;base64,' + Buffer.from('<script>alert(1)</script>').toString('base64'), 'data:image/png;base64,' + Buffer.from('<html><script>alert(1)</script></html>').toString('base64') ];
 for (const uri of ['/admin.html','/%61dmin.html','//admin.html','/ADMIN.html']) assert.equal(adminPageKind(uri), 'operator');
 assert.equal(adminPageKind('/%66unds-admin.html'), 'funds');
 for (const uri of ['/api/admin/test-credits', '/api/admin/withdrawals/one', '/api/admin/withdrawal-automation','/api/admin/a-token/grant','/api/admin/a-token/debit','/api/admin/a-token/grant-miner','/api/admin/a-token/grant-stake','/api/admin/a-token/activations/confirm']) assert.equal(isLegacyFundsPath(uri), true);
@@ -34,26 +30,6 @@ const wallet = '0x' + '7'.repeat(40);
 try {
   const service = createWalletService({ dataRoot:root, depositAddress:'0x' + 'd'.repeat(40), networks:[] });
   service.ensureUser(wallet);
-  const lottery = createLotteryService({ database:service.database, walletService:service });
-  const submission = (id, screenshotUrl) => ({ id, wallet, platform:'twitter', screenshotUrl, status:'pending', reviewer:'', reviewedAt:null, pointsAwarded:0, createdAt:Date.now() });
-  service.database.insertSocialSubmission(submission('legacy_bad', attacks[0]));
-  assert.throws(() => lottery.adminReviewSocial('legacy_bad', true, 'operator'));
-  assert.equal(service.database.getSocialSubmission('legacy_bad').status, 'pending');
-  assert.equal(lottery.getPoints(wallet), 0);
-  const legacy = lottery.adminListSocial('pending').find(item => item.id === 'legacy_bad');
-  assert.equal(legacy.screenshotSafe, false); assert.equal(legacy.screenshotUrl, '');
-  service.database.insertSocialSubmission({ ...submission('approved_legacy_bad', attacks[2]), status:'approved' });
-  const approvedLegacy = lottery.adminListSocial('approved').find(item => item.id === 'approved_legacy_bad');
-  assert.equal(approvedLegacy.screenshotSafe, false); assert.equal(approvedLegacy.screenshotUrl, '');
-  lottery.adminReviewSocial('legacy_bad', false, 'operator');
-  assert.equal(service.database.getSocialSubmission('legacy_bad').status, 'rejected');
-  service.database.insertSocialSubmission(submission('valid_png', png));
-  assert.equal(lottery.adminReviewSocial('valid_png', true, 'operator').pointsAwarded, 10);
-  assert.equal(lottery.getPoints(wallet), 10);
-  assert.throws(() => lottery.adminReviewSocial('valid_png', true));
-  assert.equal(lottery.getPoints(wallet), 10);
-  console.log('PASS: new and legacy scriptable screenshots are rejected without awarding points; valid approval remains idempotent');
-
   const support = createSupportService({ database:service.database });
   assert.throws(() => support.userPost(wallet, attacks[0] + '\n普通咨询'), /封禁/);
   const session = support.userPost(wallet, '普通咨询');
@@ -105,7 +81,7 @@ try {
   assert.equal(history.payload.items.find(item => item.id === 'adj_asset_history_precision').amount,'2.000000000000000001');
   assert.equal(history.payload.items.find(item => item.id === 'adj_credit_security_123456').amount,'12.345678');
   assert.equal(service.balanceUnits(wallet,'USDT'),12345678n);
-  console.log('PASS: legacy remediation audit payloads do not break funds history; USDT and AIX quantities retain their own decimals');
+  console.log('PASS: legacy remediation audit payloads do not break funds history; USDT and SVX quantities retain their own decimals');
 
   assert.equal((await request('/api/wallet/admin/withdrawals/one','POST',{ action:'release' })).status, 503);
   assert.deepEqual(processed, []); assert.deepEqual(enqueued, []);

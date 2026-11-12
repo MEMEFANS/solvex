@@ -12,6 +12,8 @@ const signer = Wallet.createRandom(), user = Wallet.createRandom(), contract = W
 const walletService = createWalletService({ dataRoot: root, networks: [] });
 const database = walletService.database;
 walletService.creditBalance(user.address, 'A', parseUnits('1000000', 18));
+// 2026-11-09 P2 卖单额度闸门：链上领取需有匹配池转换出的流通额度
+database.addATokenUsableQuota(user.address, parseUnits('1000000', 18));
 const abi = new Interface(['function isClaimUsed(address,uint256,uint256) view returns (bool)', 'event Harvested(address indexed user,uint256 amount,uint256 nonce,uint256 newReserve)']);
 let receipt;
 const provider = {
@@ -31,6 +33,9 @@ const service = createATokenClaimService({
 try {
   const claim = service.signClaim({ wallet: user.address, amount: '100.000000000000000001' });
   assert.equal(claim.amountUnits, parseUnits('100.000000000000000001', 18).toString());
+  assert.equal(claim.feeUnits,parseUnits('2',18).toString());
+  assert.equal(walletService.balanceUnits(user.address,'A'),parseUnits('999897.999999999999999999',18));
+  assert.equal(BigInt(database.getATokenLpPoolBalance().aUnits),parseUnits('2',18));
   const digest = solidityPackedKeccak256(['address','uint256','uint256','address'], [user.address, claim.amountUnits, BigInt('0x'+claim.nonce), contract]);
   assert.equal(recoverAddress(hashMessage(getBytes(digest)), claim.signature), signer.address);
   const balance = walletService.balanceUnits(user.address, 'A');
@@ -46,6 +51,12 @@ try {
   assert.equal(walletService.balanceUnits(user.address, 'A'), balance);
   assert.equal(BigInt(database.loadWalletState().users[user.address.toLowerCase()].balances.A), balance);
   assert.equal(service.listClaims(user.address).length, 1);
+  assert.equal(BigInt(database.getATokenLpPoolBalance().aUnits),parseUnits('2',18),'failed claim must roll back its LP fee');
+  database.db.exec("CREATE TEMP TRIGGER fail_claim_fee BEFORE INSERT ON a_token_lp_pool_entries BEGIN SELECT RAISE(ABORT,'claim fee failure'); END");
+  assert.throws(()=>service.signClaim({wallet:user.address,amount:'100'}),/claim fee failure/);
+  assert.equal(walletService.balanceUnits(user.address,'A'),balance);
+  assert.equal(service.listClaims(user.address).length,1);
+  database.db.exec('DROP TRIGGER fail_claim_fee');
 
   const txHash = '0x'+'a'.repeat(64);
   await assert.rejects(service.confirmClaim({ wallet: user.address, claimId: claim.claimId, txHash }), /尚未成功/);

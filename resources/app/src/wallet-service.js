@@ -1,3 +1,4 @@
+import { assertSvxOnchainEnabled } from '../shared/solvex-rules.js';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -111,6 +112,13 @@ export function createWalletService(options = {}) {
   // 跟单提现额度钩子（2026-10-25，ai-managed-service 注入）：USDT 提现申请时校验并占用额度，驳回时返还
   let withdrawalQuotaHook = null;
   function setWithdrawalQuotaHook(hook) { withdrawalQuotaHook = hook || null; }
+  let withdrawalFeePolicy = null;
+  function setWithdrawalFeePolicy(policy) { withdrawalFeePolicy = policy || null; }
+  // 设备限制钩子（device-service 注入）：登录签名通过后、建立会话前校验并绑定设备
+  let deviceGuard = null;
+  let registrationGuard = null;
+  function setRegistrationGuard(guard) { registrationGuard = guard; }
+  function setDeviceGuard(guard) { deviceGuard = guard || null; }
   // 运行时拉黑：写入持久化名单 + 立即失效该钱包所有登录会话（客服检测到攻击载荷时调用）
   function blockWallet(address, reason = '') {
     const key = String(address || '').trim().toLowerCase();
@@ -492,7 +500,7 @@ export function createWalletService(options = {}) {
     const expiresAt = issuedAt + LOGIN_TTL_MS;
     const shortCode = BigInt(`0x${nonce}`).toString().slice(0, 6);
 
-    const message = `You are sign in AxiX ${shortCode}`;
+    const message = `You are sign in Solvex ${shortCode}`;
 
     state.pendingLogins[checksum.toLowerCase()] = { message, expiresAt, requestId };
     saveState();
@@ -522,6 +530,7 @@ export function createWalletService(options = {}) {
       depositAddress,
       depositEnabled: Boolean(depositAddress && networks.size),
       withdrawalEnabled: Boolean(withdrawalAddress && networks.size),
+      withdrawalFeeBps: Number(withdrawalFeePolicy?.rateBps || 0),
       automaticWithdrawals: state.withdrawalAutomation.enabled,
       // 提现规则下发给前端做提示与预校验（后端仍会强制校验，前端仅体验优化）
       usdtMultipleOfTen: Boolean(state.withdrawalAutomation.usdtMultipleOfTen),
@@ -579,6 +588,8 @@ export function createWalletService(options = {}) {
       id: record.id,
       asset: record.asset,
       amount: formatUnits(record.amountUnits, asset.decimals),
+      fee: formatUnits(record.feeUnits || '0', asset.decimals),
+      totalDebit: formatUnits(BigInt(record.amountUnits) + BigInt(record.feeUnits || '0'), asset.decimals),
       address: record.address,
       network: record.network || '',
       networkName: networks.get(record.network)?.name || record.network || '',
@@ -1013,6 +1024,11 @@ export function createWalletService(options = {}) {
   }
 
   function requestWithdrawal(wallet, body = {}) {
+    if (['A', 'SVX', 'AIX'].includes(String(body.asset || '').toUpperCase())) assertSvxOnchainEnabled();
+    const transact = withdrawalFeePolicy?.transaction || (operation => operation());
+    return transact(() => requestWithdrawalInside(wallet,body));
+  }
+  function requestWithdrawalInside(wallet, body = {}) {
     if (!withdrawalAddress) throw new Error('平台尚未配置提现出款钱包');
     // 账户级提现冻结（后台风控）：冻结期间禁止发起新的提现申请，已提交的提现单不受影响
     const freezeInfo = state.withdrawalFrozen?.[String(wallet || '').toLowerCase()];
@@ -1025,7 +1041,7 @@ export function createWalletService(options = {}) {
     // 钱包签名确认：提现必须由用户本人钱包 personal_sign 授权
     verifyOperationSignature({
       address: wallet,
-      message: `AxiX 提现确认：${String(body.amount ?? '')} ${String(body.asset ?? 'USDT')}，编号 ${String(body.requestId ?? '')}，时间：${String(body.timestamp ?? '')}`,
+      message: `Solvex 提现确认：${String(body.amount ?? '')} ${String(body.asset ?? 'USDT')}${withdrawalFeePolicy?.rateBps && String(body.asset ?? 'USDT').toUpperCase() === 'USDT' ? '（另收2%手续费）' : ''}，编号 ${String(body.requestId ?? '')}，时间：${String(body.timestamp ?? '')}`,
       signature: String(body.signature ?? ''),
     });
     const owner = normalizeAddress(wallet);
@@ -1072,7 +1088,8 @@ export function createWalletService(options = {}) {
       && automaticPaidOrPending + amountUnits <= BigInt(state.withdrawalAutomation.dailyLimitUnits);
     // 跟单提现额度：仅 USDT 提现占用；未跟单用户 hook 内直接放行
     if (asset.symbol === 'USDT' && withdrawalQuotaHook?.assert) withdrawalQuotaHook.assert(owner, amountUnits);
-    subtractBalance(owner, asset.symbol, amountUnits);
+    const feeUnits = asset.symbol === 'USDT' ? amountUnits * BigInt(withdrawalFeePolicy?.rateBps || 0) / 10000n : 0n;
+    subtractBalance(owner, asset.symbol, amountUnits + feeUnits);
     if (asset.symbol === 'USDT' && withdrawalQuotaHook?.consume) withdrawalQuotaHook.consume(owner, amountUnits);
     const record = {
       id: `wd_${crypto.randomBytes(8).toString('hex')}`,
@@ -1081,12 +1098,14 @@ export function createWalletService(options = {}) {
       network: network.id,
       asset: asset.symbol,
       amountUnits: amountUnits.toString(),
+      feeUnits: feeUnits.toString(),
       requestId,
       status: canAutomaticallyPay ? 'pending_auto' : 'pending_review',
       automaticApproved:canAutomaticallyPay,
       createdAt: nowIso(),
     };
     state.withdrawals.push(record);
+    withdrawalFeePolicy?.record(record);
     saveState();
     return presentWithdrawal(record);
   }
@@ -1151,7 +1170,7 @@ export function createWalletService(options = {}) {
       current.lastAt = !current.lastAt || record.confirmedAt > current.lastAt ? record.confirmedAt : current.lastAt;
       depositsByWallet.set(key, current);
     }
-    // 有矿机/质押/AIX余额的用户也算真实用户（不只看USDT充值）
+    // 有矿机/质押/SVX余额的用户也算真实用户（不只看USDT充值）
     const activeWallets = database.listATokenMinerWallets ? database.listATokenMinerWallets() : new Set();
     try {
       for (const row of database.listActiveATokenStakes()) activeWallets.add(String(row.wallet).toLowerCase());
@@ -1311,8 +1330,8 @@ export function createWalletService(options = {}) {
       user.updatedAt = previousUpdatedAt;
       throw error;
     }
-    // 后台充值 AIX 只入余额，不发放可用额度：充值获得的 AIX 只能用于质押/开矿机，不可挂卖。
-    // 历史已发放的可用额度不追溯、不回收。
+    // 后台充值 SVX 只入余额，不发放流通额度：充值获得的 SVX 只能用于质押/开矿机，不可挂卖。
+    // 历史已发放的流通额度不追溯、不回收。
     return presentAssetAdjustment(adjustment, asset.decimals);
   }
   function presentAssetAdjustment(record, decimals) {
@@ -1364,7 +1383,7 @@ export function createWalletService(options = {}) {
       user.updatedAt = previousUpdatedAt;
       throw error;
     }
-    // 后台扣减 AIX 不再回收可用额度：充值已不发放可用额度，回收会误伤用户经匹配池获得的额度。
+    // 后台扣减 SVX 不再回收流通额度：充值已不发放流通额度，回收会误伤用户经匹配池获得的额度。
     return presentAssetAdjustment(adjustment, asset.decimals);
   }
 
@@ -1471,6 +1490,13 @@ export function createWalletService(options = {}) {
     return { ...record };
   }
 
+  // 提现成功后的副作用（如加 LP 任务入队）：异常只记录日志，绝不回滚或阻塞提现。
+  function notifyWithdrawalPaid(record) {
+    if (typeof withdrawalFeePolicy?.paid !== 'function') return;
+    try { withdrawalFeePolicy.paid({ ...record }); }
+    catch (error) { console.warn('提现成功后的加 LP 任务入队失败（提现不受影响）:', error?.message || error); }
+  }
+
   function recordPaidPayout(id, confirmations = 0, details = {}) {
     const record = state.withdrawals.find(item => item.id === String(id || ''));
     if (!record || !['signed', 'broadcast'].includes(record.status)) throw new Error('提现出款状态已经变化');
@@ -1482,10 +1508,15 @@ export function createWalletService(options = {}) {
     if (details.receivedChainUnits) record.receivedChainUnits = String(details.receivedChainUnits);
     delete record.rawTransaction;
     saveState();
+    notifyWithdrawalPaid(record);
     return presentWithdrawal(record);
   }
 
   function recordFailedPayout(id, reason, { chainFailed = false, terminal = false } = {}) {
+    const transact=withdrawalFeePolicy?.transaction || (operation=>operation());
+    return transact(()=>recordFailedPayoutInside(id,reason,{chainFailed,terminal}));
+  }
+  function recordFailedPayoutInside(id, reason, { chainFailed = false, terminal = false } = {}) {
     const record = state.withdrawals.find(item => item.id === String(id || ''));
     if (!record || !['processing', 'signed', 'broadcast'].includes(record.status)) return record ? presentWithdrawal(record) : null;
     record.status = 'payout_failed';
@@ -1503,7 +1534,9 @@ export function createWalletService(options = {}) {
     //   2) 无 txHash：签名/广播之前失败（平台余额不足、报价失败、RPC 错误等），根本没发起付款
     // 已有 txHash 且非 revert（如跨链桥 terminal 状态）必须人工核对，不自动退款
     if (record.status === 'payout_failed' && !record.refundedAt && (!record.txHash || chainFailed)) {
-      addBalance(record.wallet, record.asset, BigInt(record.amountUnits));
+      addBalance(record.wallet, record.asset, BigInt(record.amountUnits)+BigInt(record.feeUnits||'0'), {ignoreBlock:true});
+      withdrawalFeePolicy?.reverse(record);
+      if (record.asset === 'USDT' && withdrawalQuotaHook?.refund) withdrawalQuotaHook.refund(record.wallet, BigInt(record.amountUnits));
       record.status = 'refunded';
       record.refundedAt = nowIso();
     }
@@ -1654,21 +1687,29 @@ export function createWalletService(options = {}) {
     } else if (action === 'reject') {
       const canRejectFailed = record.status === 'payout_failed' && (!record.txHash || record.chainFailed);
       if (record.status !== 'pending_review' && record.status !== 'pending_funds' && !canRejectFailed) throw new Error('该提现已经进入链上出款，不能退款');
-      addBalance(record.wallet, record.asset, BigInt(record.amountUnits));
-      // 驳回时返还已占用的跟单提现额度（仅 USDT）
-      if (record.asset === 'USDT' && withdrawalQuotaHook?.refund) withdrawalQuotaHook.refund(record.wallet, BigInt(record.amountUnits));
-      record.status = 'rejected';
-      record.reason = String(body.reason || '人工审核未通过').slice(0, 200);
-      record.processedAt = nowIso();
+      const transact = withdrawalFeePolicy?.transaction || (operation => operation());
+      return transact(() => {
+        addBalance(record.wallet, record.asset, BigInt(record.amountUnits) + BigInt(record.feeUnits || '0'), {ignoreBlock:true});
+        withdrawalFeePolicy?.reverse(record);
+        // 驳回时返还已占用的跟单提现额度（仅 USDT）
+        if (record.asset === 'USDT' && withdrawalQuotaHook?.refund) withdrawalQuotaHook.refund(record.wallet, BigInt(record.amountUnits));
+        record.status = 'rejected';
+        record.reason = String(body.reason || '人工审核未通过').slice(0, 200);
+        record.processedAt = nowIso();
+        saveState();
+        return { ...presentWithdrawal(record), wallet:record.wallet, reason:record.reason || '' };
+      });
     } else {
       throw new Error('不支持的提现处理动作');
     }
     saveState();
+    // 人工审核直接标记成功（paid）时，与自动出款一样在放款成功后触发加池任务
+    if (record.status === 'paid') notifyWithdrawalPaid(record);
     return { ...presentWithdrawal(record), wallet: record.wallet, reason: record.reason || '' };
   }
 
   // 处理登录签名验证（personal_sign 纯文本）
-  function handleLoginSignature(loginData = {}) {
+  function handleLoginSignature(loginData = {}, networkContext = {}) {
     const { signature, message } = loginData;
 
     if (!signature || !message || typeof message !== 'string') {
@@ -1694,7 +1735,18 @@ export function createWalletService(options = {}) {
     }
     delete state.pendingLogins[checksum.toLowerCase()];
 
-    // 3. 生成会话 token
+    // 3. 设备限制：首次建立会话时绑定设备；超限抛错且不创建会话
+    if (deviceGuard) {
+      const key = checksum.toLowerCase();
+      deviceGuard.assertAndBind({
+        address: checksum,
+        device: loginData.device,
+        walletCreatedAt: state.users[key]?.createdAt || null,
+      });
+    }
+
+    registrationGuard?.register({ address:checksum, ip:networkContext.ip, existingUser:Boolean(state.users[checksum.toLowerCase()]) });
+    // 4. 生成会话 token
     ensureUser(checksum);
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = Date.now() + sessionTtlMs;
@@ -1903,6 +1955,11 @@ export function createWalletService(options = {}) {
     adminProcessWithdrawal,
     claimPayout,
     balanceUnits,
+    assetDecimals:(symbol) => {
+      const asset = assets[String(symbol || '').toUpperCase()];
+      if (!asset) throw new Error(`不支持的资产: ${symbol}`);
+      return asset.decimals;
+    },
     beginAtomicUpdate,
     validateState: assertState,
     blockWallet,
@@ -1930,6 +1987,9 @@ export function createWalletService(options = {}) {
     readTokenBalance,
     requestWithdrawal,
     setWithdrawalQuotaHook,
+    setWithdrawalFeePolicy,
+    setDeviceGuard,
+    setRegistrationGuard,
     verifyOperationSignature,
     submitDeposit,
     reconcileOnchainDeposits,
@@ -1939,3 +1999,4 @@ export function createWalletService(options = {}) {
     database,
   };
 }
+

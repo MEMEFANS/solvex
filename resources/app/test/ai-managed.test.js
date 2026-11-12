@@ -32,7 +32,7 @@ const platformService = {
 const candles = Array.from({ length:100 }, (_, index) => ({ time:index * 1000, open:63000 + index, high:63010 + index, low:62990 + index, close:63005 + index, volume:1 }));
 const service = createAiManagedService({ platformService, walletService, fetchCandles:async()=>candles, clock:()=>now, slotMs:1000, dayMs:20000, timezoneOffsetMs:0 });
 
-// 跟单 VIP 会员制：测试预置已开通状态（销毁 100 AIX 的等效前提），有效期覆盖全部用例时间线
+// 跟单 VIP 会员制：测试预置已开通状态（销毁 100 SVX 的等效前提），有效期覆盖全部用例时间线
 strategies.set(address, { copyTradeUnlockedAt: 1 });
 strategies.set(secondAddress, { copyTradeUnlockedAt: 1 });
 

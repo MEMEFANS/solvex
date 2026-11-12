@@ -1,0 +1,32 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import puppeteer from 'puppeteer';
+const output=path.resolve(import.meta.dirname,'../../../output/solvex-mine-wall-20261111');
+fs.mkdirSync(output,{recursive:true});
+const browser=await puppeteer.launch({headless:true,executablePath:'C:/Program Files/Google/Chrome/Application/chrome.exe'});
+try {
+ const page=await browser.newPage();
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));
+ await page.setViewport({width:1440,height:1080,deviceScaleFactor:1});
+ await page.goto('http://127.0.0.1:5174/#/earn',{waitUntil:'networkidle0',timeout:30000});
+ await page.waitForSelector('[data-scene-style=toy]');
+ const scene=await page.$('[data-mining-scene]');
+ await scene.scrollIntoView();
+ await page.evaluate(()=>Promise.all([...document.images].map(i=>i.decode().catch(()=>{}))));
+ await new Promise(r=>setTimeout(r,800));
+ await scene.screenshot({path:path.join(output,'mine-desktop.png')});
+ await page.screenshot({path:path.join(output,'page-desktop.png'),fullPage:true});
+ await page.evaluate(()=>{for(const el of document.querySelectorAll('.rx-cavern-worker,.rx-cavern-impact'))for(const a of el.getAnimations()){a.pause();a.currentTime=1690+Number.parseFloat(getComputedStyle(el).animationDelay)*1000;}});
+ await scene.screenshot({path:path.join(output,'mine-strike.png')});
+ await page.setViewport({width:390,height:844,isMobile:true,hasTouch:true});
+ await page.reload({waitUntil:'networkidle0'});await page.waitForSelector('[data-scene-style=toy]');
+ await page.$eval('[data-mining-scene]',e=>e.scrollIntoView({block:'start'}));
+ await new Promise(r=>setTimeout(r,500));
+ await page.screenshot({path:path.join(output,'mine-mobile.png')});
+ await page.click('.rx-cavern-zones [data-tone=gold]');
+ await new Promise(r=>setTimeout(r,700));
+ await page.screenshot({path:path.join(output,'mine-mobile-gold.png')});
+ const report=await page.evaluate(()=>({width:innerWidth,document:document.documentElement.scrollWidth,scroll:document.querySelector('.rx-cavern-viewport').scrollLeft,mode:document.querySelector('[data-mining-scene]').dataset.sceneMode,stage:document.querySelector('.rx-cavern-stage').getBoundingClientRect().toJSON(),workers:document.querySelectorAll('.rx-cavern-worker').length}));
+ fs.writeFileSync(path.join(output,'local-preview.json'),JSON.stringify({...report,errors},null,2));
+ console.log(JSON.stringify({...report,errors}));
+} finally {await browser.close();}

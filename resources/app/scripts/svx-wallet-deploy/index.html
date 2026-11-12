@@ -1,0 +1,26 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SVX 合约部署与资金管理</title>
+<style>body{font:16px/1.6 system-ui;background:#101923;color:#e8edf2;max-width:920px;margin:32px auto;padding:0 22px}h1{font-size:27px}section{background:#1a2836;border:1px solid #334455;border-radius:12px;padding:20px;margin:18px 0}label{display:block;margin:12px 0}input{display:block;width:96%;padding:10px;background:#0f1924;color:white;border:1px solid #567;border-radius:6px}button{margin:7px 8px 7px 0;padding:11px 16px;border:0;border-radius:6px;background:#60d3ba;color:#10242b;cursor:pointer}button:disabled{opacity:.4;cursor:wait}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#08131d;padding:16px}small{color:#bbccdd}a{color:#60d3ba}</style>
+<h1>SVX 合约部署与资金管理</h1><p>固定发行 10 亿 SVX，买入 0%、卖出 5%。默认税款 50% 转销毁地址、50% 转分红钱包。配对价格默认 0.1 USDT/SVX；真实池内 USDT 与本合约累计加池均达到 500,000 U 后，在加池交易中开盘。</p>
+<p>所有交易由钱包逐笔确认。此页面不读取私钥，也不接入平台账本。LP 默认由合约持有，owner 可以转出，<b>不是锁池</b>。</p>
+<section><h2>1. 连接与部署</h2><button id="connect">连接钱包</button><p id="account">尚未连接</p>
+<label>链 ID（固定 BSC 主网）<input id="chain" value="56" readonly></label>
+<label>USDT 地址（BSC 主网）<input id="usdt" value="0x55d398326f99059fF775485246999027B3197955" readonly></label>
+<label>PancakeSwap V2 Router 地址（BSC 主网）<input id="router" value="0x10ED43C718714eb63d5aA57B78B54704E256024E" readonly></label>
+<label>分红收款地址<input id="dividend" value="0xf0869c9f5d34452531465cf051044f293fe456a7" readonly></label>
+<small>当前连接的钱包将成为两个合约的 owner，并接收全部 10 亿 SVX。部署将提交两笔主网交易，需要依次在钱包确认；过程中请勿用该钱包发送其他交易。每个盒子按 1 U 批量计入，线下按日期汇总已兑现提现的 2% 手续费。</small><br>
+<button id="deployBoth">一键部署代币 + 自动 LP</button>
+<label>SVX 地址（部署后自动保存，可填已部署地址恢复）<input id="token"></label>
+<label>自动 LP 地址<input id="lp"></label>
+<button id="tokenSetup">登记 Pair 并豁免 LP 税费</button><button id="setup">检查 LP 与开盘绑定</button><button id="refresh">刷新链上状态</button><button id="export">导出部署记录</button>
+<p>一键部署需要两次签名。随后登记 Pair 和 LP 免税需要各签一次。部署不会转入 USDT 或 SVX。</p></section>
+<section><h2>2. 库存和资金</h2>
+<label>存入 SVX 数量<input id="inventory" placeholder="例如 5000000"></label><button id="depositSvx">授权并存入 SVX</button>
+<label>资金操作员地址（平台出款钱包或专用执行钱包）<input id="operator" placeholder="0x…"></label><button id="operatorAdd">授权操作员</button>
+<label>盲盒批量笔数（每笔 1 U）<input id="count" placeholder="例如 100"></label>
+<label>盲盒批次唯一编号<input id="batchKey" placeholder="例如 blindbox:2026-11-12:001"></label><button id="fundBoxes">授权并转入盲盒款</button>
+<label>提现手续费所属日期（北京时间，必须已结束）<input id="feeDate" type="date"></label>
+<label>当日已成功提现的 2% 手续费合计（USDT）<input id="feeAmount" placeholder="输入实际手续费总额"></label><button id="fundFees">授权并转入当日手续费</button>
+<small>合约不读取平台提现数据。每日 00:00 的无人值守划款需要后续平台任务或执行钱包触发；同一天只能成功入账一次。</small></section>
+<section><h2>3. 批量加 LP</h2><label>本次使用的合约 USDT 数量<input id="processAmount" placeholder="例如 100"></label><button id="process">按当前报价加 LP</button>
+<p>不足以配对的 USDT 留在合约。未开盘时校验初始价格，开盘后交易使用广播前获取的报价和截止时间。到达门槛会在同一笔加池交易中开盘。</p></section>
+<pre id="status">准备连接钱包。</pre><pre id="log"></pre><script type="module" src="/client.js"></script></html>

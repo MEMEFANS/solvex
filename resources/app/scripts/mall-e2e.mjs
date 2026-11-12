@@ -1,4 +1,4 @@
-// AIX 商城端到端测试脚本（仅本地）。
+// SVX 商城端到端测试脚本（仅本地）。
 // 用法：
 //   1) 停掉服务后执行  node scripts/mall-e2e.mjs seed   —— 往数据库写入两个带余额的测试钱包
 //   2) 启动服务后执行  node scripts/mall-e2e.mjs test   —— 走完整 API 流程并输出结果
@@ -18,7 +18,7 @@ const MERCHANT_KEY = '0x8b3a350cf5c34c9194ca85829a2df0ec3153be0318b5e2d3348e8725
 const buyer = new Wallet(BUYER_KEY);
 const merchant = new Wallet(MERCHANT_KEY);
 
-const A = n => BigInt(n) * 10n ** 18n;   // AIX 18 位
+const A = n => BigInt(n) * 10n ** 18n;   // SVX 18 位
 const U = n => BigInt(n) * 10n ** 6n;    // USDT 6 位
 
 let passed = 0, failed = 0;
@@ -58,8 +58,8 @@ async function seed() {
     upsert.run(w.address.toLowerCase(), JSON.stringify(balances), now, now, JSON.stringify(user));
   }
   console.log('已写入测试钱包（服务重启后生效）：');
-  console.log('  买家    ', buyer.address, '1000 USDT / 200000 AIX');
-  console.log('  商户    ', merchant.address, '1000 USDT / 200000 AIX');
+  console.log('  买家    ', buyer.address, '1000 USDT / 200000 SVX');
+  console.log('  商户    ', merchant.address, '1000 USDT / 200000 SVX');
 }
 
 async function test() {
@@ -80,7 +80,7 @@ async function test() {
   check('无签名申请被拒', noSign.status === 401 || noSign.data?.pending === true, `got ${noSign.status}`);
   // 正确签名（签名消息与提交的时间戳必须一致）
   const tApply = ts();
-  const sign = await merchant.signMessage(`AxiX 商城开店保证金：缴纳 100 USDT，店铺「测试商铺」，时间：${tApply}`);
+  const sign = await merchant.signMessage(`Solvex 商城开店保证金：缴纳 100 USDT，店铺「测试商铺」，时间：${tApply}`);
   const applied = await api('/api/mall/merchant/apply', { method: 'POST', cookie: merchantCookie,
     body: { shopName: '测试商铺', intro: '端到端测试店铺', depositCurrency: 'USDT', timestamp: tApply, signature: sign } });
   check('签名+缴保证金申请成功', applied.status === 200 && applied.data.merchant?.status === 'pending', JSON.stringify(applied.data).slice(0, 120));
@@ -103,7 +103,7 @@ async function test() {
   console.log('[5] 商品上架（多图/规格/简介）');
   const imgs = Array.from({ length: 6 }, (_, i) => `https://example.com/p${i + 1}.jpg`);
   const created = await api('/api/mall/merchant/products', { method: 'POST', cookie: merchantCookie,
-    body: { title: 'AIX 测试商品', priceA: '10', stock: 20, summary: '一句话简介', spec: '尺码 L', images: imgs, description: '详细描述' } });
+    body: { title: 'SVX 测试商品', priceA: '10', stock: 20, summary: '一句话简介', spec: '尺码 L', images: imgs, description: '详细描述' } });
   const product = created.data.product;
   check('创建商品', created.status === 200 && product?.id, JSON.stringify(created.data).slice(0, 120));
   check('商品带多图/规格/简介', product?.images?.length === 6 && product?.spec === '尺码 L' && product?.summary === '一句话简介');
@@ -120,7 +120,7 @@ async function test() {
   const buyNoSign = await api('/api/mall/orders', { method: 'POST', cookie: buyerCookie, body: { productId: product.id, quantity: 2, addressId } });
   check('无签名下单被拒', buyNoSign.status === 401, `got ${buyNoSign.status}`);
   const t1 = ts();
-  const buySign = await buyer.signMessage(`AxiX 商城下单确认：商品 ${product.id}，数量 2 件，时间：${t1}`);
+  const buySign = await buyer.signMessage(`Solvex 商城下单确认：商品 ${product.id}，数量 2 件，时间：${t1}`);
   const bought = await api('/api/mall/orders', { method: 'POST', cookie: buyerCookie,
     body: { productId: product.id, quantity: 2, addressId, timestamp: t1, signature: buySign } });
   const order = bought.data.order;
@@ -132,7 +132,7 @@ async function test() {
 
   console.log('[7] 取消退款（第二单）');
   const t2 = ts();
-  const buySign2 = await buyer.signMessage(`AxiX 商城下单确认：商品 ${product.id}，数量 1 件，时间：${t2}`);
+  const buySign2 = await buyer.signMessage(`Solvex 商城下单确认：商品 ${product.id}，数量 1 件，时间：${t2}`);
   const bought2 = await api('/api/mall/orders', { method: 'POST', cookie: buyerCookie,
     body: { productId: product.id, quantity: 1, addressId, timestamp: t2, signature: buySign2 } });
   const cancel = await api('/api/mall/orders/cancel', { method: 'POST', cookie: buyerCookie, body: { orderId: bought2.data.order.id } });
@@ -163,7 +163,7 @@ async function test() {
 
   console.log('[10] 超时自动确认收货');
   const t3 = ts();
-  const buySign3 = await buyer.signMessage(`AxiX 商城下单确认：商品 ${product.id}，数量 1 件，时间：${t3}`);
+  const buySign3 = await buyer.signMessage(`Solvex 商城下单确认：商品 ${product.id}，数量 1 件，时间：${t3}`);
   const bought3 = await api('/api/mall/orders', { method: 'POST', cookie: buyerCookie,
     body: { productId: product.id, quantity: 1, addressId, timestamp: t3, signature: buySign3 } });
   const order3 = bought3.data.order;

@@ -79,7 +79,7 @@ window.TradeDepth = (() => {
     const yOf = c => padT + plotH - (c / maxCum) * plotH;
 
     // 背景网格
-    ctx.strokeStyle = '#1a2421';
+    ctx.strokeStyle = '#e6eeea';
     ctx.lineWidth = 1;
     for (let i = 1; i < 4; i++) {
       const y = padT + (plotH / 4) * i;
@@ -87,8 +87,8 @@ window.TradeDepth = (() => {
     }
 
     // 买盘绿色填充
-    ctx.fillStyle = 'rgba(79,209,181,0.15)';
-    ctx.strokeStyle = '#4fd1b5';
+    ctx.fillStyle = 'rgba(15,138,74,0.14)';
+    ctx.strokeStyle = '#0f8a4a';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(xOf(mid), padT + plotH);
@@ -99,8 +99,8 @@ window.TradeDepth = (() => {
     ctx.stroke();
 
     // 卖盘红色填充
-    ctx.fillStyle = 'rgba(240,111,117,0.15)';
-    ctx.strokeStyle = '#f06f75';
+    ctx.fillStyle = 'rgba(217,45,60,0.14)';
+    ctx.strokeStyle = '#c62a37';
     ctx.beginPath();
     ctx.moveTo(xOf(mid), padT + plotH);
     cumAsks.forEach(a => ctx.lineTo(xOf(a.price), yOf(a.cum)));
@@ -111,7 +111,7 @@ window.TradeDepth = (() => {
 
     // 中间价虚线
     const midX = xOf(mid);
-    ctx.strokeStyle = '#4a5752';
+    ctx.strokeStyle = '#cfdcd7';
     ctx.setLineDash([3, 3]);
     ctx.beginPath();
     ctx.moveTo(midX, padT);
@@ -120,18 +120,18 @@ window.TradeDepth = (() => {
     ctx.setLineDash([]);
 
     // 价格轴标签
-    ctx.fillStyle = '#4a5752';
+    ctx.fillStyle = '#eef4f2';
     ctx.font = '9px ui-monospace, monospace';
     ctx.textAlign = 'left';
     ctx.fillText(fmtPrice(minP), padL, h - 4);
     ctx.textAlign = 'right';
     ctx.fillText(fmtPrice(maxP), w - padR, h - 4);
     ctx.textAlign = 'center';
-    ctx.fillStyle = '#9aaba5';
+    ctx.fillStyle = '#eef4f2';
     ctx.fillText(fmtPrice(mid), midX, 12);
 
     // 累积量标签
-    ctx.fillStyle = '#4a5752';
+    ctx.fillStyle = '#eef4f2';
     ctx.textAlign = 'left';
     ctx.fillText(fmtSize(maxCum), padL + 2, padT + 8);
   }

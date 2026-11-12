@@ -2,66 +2,66 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>AxiX 质押收益</title>
+<title>Solvex 质押收益</title>
 <style>
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { width:1080px; height:1920px; overflow:hidden; }
-  body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; color:#c7d5d2;
+  body { font-family:"Microsoft YaHei","PingFang SC",sans-serif; color:#4f605b;
     background:
       radial-gradient(900px 500px at 50% -5%, rgba(79,209,181,.14), transparent 60%),
       radial-gradient(700px 400px at 50% 105%, rgba(79,209,181,.08), transparent 60%),
-      linear-gradient(170deg,#07100f 0%,#0a1112 55%,#081211 100%);
+      linear-gradient(170deg,#ffffff 0%,#ffffff 55%,#ffffff 100%);
     position:relative; display:flex; flex-direction:column; padding:64px 70px 56px; }
   .wm { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
-    font-size:230px; font-weight:900; letter-spacing:20px; color:rgba(79,209,181,.045); pointer-events:none; }
+    font-size:230px; font-weight:900; letter-spacing:20px; color:rgba(11,114,100,0.045); pointer-events:none; }
   .top { display:flex; align-items:center; gap:20px; }
-  .top img { width:76px; height:76px; border-radius:18px; box-shadow:0 0 30px rgba(79,209,181,.4); }
-  .brand { font-size:36px; font-weight:900; color:#eaf6f3; }
-  .brand b { color:#4fd1b5; }
+  .top img { width:76px; height:76px; border-radius:18px; box-shadow:0 0 30px rgba(16,38,32,0.16); }
+  .brand { font-size:36px; font-weight:900; color:#16211e; }
+  .brand b { color:#0b7264; }
   .hero { text-align:center; margin-top:70px; }
   .hero h1 { font-size:100px; font-weight:900; letter-spacing:6px;
     background:linear-gradient(100deg,#8ff0dc,#4fd1b5 50%,#b9f4e6);
     -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 0 60px rgba(79,209,181,.3); }
-  .hero p { margin-top:22px; font-size:32px; color:#7d9691; letter-spacing:10px; }
+    text-shadow:0 0 60px rgba(16,38,32,0.16); }
+  .hero p { margin-top:22px; font-size:32px; color:#5b6b66; letter-spacing:10px; }
   .plans { margin-top:80px; display:flex; flex-direction:column; gap:32px; }
-  .plan { background:linear-gradient(180deg,#101b1d,#0c1517); border:1px solid #29413e;
+  .plan { background:linear-gradient(180deg,#ffffff,#ffffff); border:1px solid #d9e4e0;
     border-radius:26px; padding:38px 48px; display:flex; align-items:center; gap:40px; position:relative; }
-  .plan.hot { border:2px solid #2b6157; box-shadow:0 0 50px rgba(79,209,181,.15); }
+  .plan.hot { border:2px solid #c0d8d3; box-shadow:0 0 50px rgba(16,38,32,0.15); }
   .tag { position:absolute; top:-18px; right:36px; background:linear-gradient(135deg,#8ff0dc,#4fd1b5);
     color:#04211b; font-size:22px; font-weight:900; padding:8px 26px; border-radius:999px; }
   .info { flex:1; }
-  .nm { font-size:36px; font-weight:900; color:#eaf6f3; }
-  .nm span { margin-left:16px; font-size:24px; color:#7d9691; font-weight:600; }
-  .bar { margin-top:20px; height:14px; border-radius:99px; background:#0d2020; overflow:hidden; }
+  .nm { font-size:36px; font-weight:900; color:#16211e; }
+  .nm span { margin-left:16px; font-size:24px; color:#5b6b66; font-weight:600; }
+  .bar { margin-top:20px; height:14px; border-radius:99px; background:#ffffff; overflow:hidden; }
   .bar i { display:block; height:100%; border-radius:99px; background:linear-gradient(90deg,#1f8f77,#8ff0dc); }
   .rate { text-align:right; flex:0 0 300px; }
-  .rate .r { font-size:74px; font-weight:900; line-height:1; color:#4fd1b5; text-shadow:0 0 40px rgba(79,209,181,.45); }
+  .rate .r { font-size:74px; font-weight:900; line-height:1; color:#0b7264; text-shadow:0 0 40px rgba(16,38,32,0.16); }
   .rate .r small { font-size:32px; }
-  .rate .d { margin-top:10px; font-size:23px; color:#7d9691; }
-  .rate .g { color:#5df0cf; font-weight:800; }
-  .note-card { margin-top:64px; background:linear-gradient(180deg,#101b1d,#0c1517);
-    border:1px solid #29413e; border-radius:26px; padding:44px 52px; }
-  .note-card h3 { font-size:30px; font-weight:900; color:#7fe6d3; display:flex; align-items:center; gap:14px; }
-  .note-card h3::before { content:""; width:12px; height:12px; border-radius:50%; background:#4fd1b5; box-shadow:0 0 12px #4fd1b5; }
-  .note-card p { margin-top:20px; font-size:26px; line-height:1.9; color:#b9cbc7; }
-  .note-card p b { color:#4fd1b5; }
+  .rate .d { margin-top:10px; font-size:23px; color:#5b6b66; }
+  .rate .g { color:#0b7264; font-weight:800; }
+  .note-card { margin-top:64px; background:linear-gradient(180deg,#ffffff,#ffffff);
+    border:1px solid #d9e4e0; border-radius:26px; padding:44px 52px; }
+  .note-card h3 { font-size:30px; font-weight:900; color:#0b7264; display:flex; align-items:center; gap:14px; }
+  .note-card h3::before { content:""; width:12px; height:12px; border-radius:50%; background:#4fd1b5; box-shadow:0 0 12px #102620; }
+  .note-card p { margin-top:20px; font-size:26px; line-height:1.9; color:#4f605b; }
+  .note-card p b { color:#0b7264; }
   .cta { margin-top:auto; text-align:center; }
   .cta .btn { display:inline-block; font-size:44px; font-weight:900; color:#04211b; letter-spacing:8px;
     background:linear-gradient(135deg,#8ff0dc,#4fd1b5); border-radius:999px; padding:30px 110px;
-    box-shadow:0 20px 60px rgba(79,209,181,.35); }
+    box-shadow:0 20px 60px rgba(16,38,32,0.16); }
   .foot { margin-top:40px; text-align:center; font-size:22px; color:#3d5a53; letter-spacing:5px; }
 </style>
 </head>
 <body>
-<div class="wm">AIX</div>
+<div class="wm">SVX</div>
 <div class="top">
-  <img src="assets/brand/logo.png" alt="AxiX">
-  <div class="brand">Axi<b>X</b> Exchange</div>
+  <img src="assets/brand/logo.png?v=20261111-domain-solvex-logo-3" alt="Solvex">
+  <div class="brand">Solve<b>x</b> Exchange</div>
 </div>
 
 <div class="hero">
-  <h1>AIX 质押</h1>
+  <h1>SVX 质押</h1>
   <p>收益日结 · 每日到账</p>
 </div>
 
@@ -94,10 +94,10 @@
 
 <div class="note-card">
   <h3>质押说明</h3>
-  <p>质押 <b>AIX</b> 参与平台生态，<b>AIX 与收益每日到账</b>，到期自动结清。持有越多、周期越长，收益比例越高。</p>
+  <p>质押 <b>SVX</b> 参与平台生态，<b>SVX 与收益每日到账</b>，到期自动结清。持有越多、周期越长，收益比例越高。</p>
 </div>
 
 <div class="cta"><span class="btn">立即质押</span></div>
-<div class="foot">AXIX EXCHANGE · BNB SMART CHAIN</div>
+<div class="foot">SOLVEX EXCHANGE · BNB SMART CHAIN</div>
 </body>
 </html>

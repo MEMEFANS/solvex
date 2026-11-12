@@ -1,9 +1,9 @@
-// AIX 商城 · 商户后台逻辑（2026-10-30；2026-10-31 担保交易 + 保证金 + 商品多图/规格/简介）
-// 数据源：/api/mall/merchant/*（平台钱包 session）。开店需缴纳保证金（USDT 或 AIX 二选一），
+// Solvex 商城 · 商户后台逻辑（2026-10-30；2026-10-31 担保交易 + 保证金 + 商品多图/规格/简介）
+// 数据源：/api/mall/merchant/*（平台钱包 session）。开店需缴纳保证金（USDT 或 SVX 二选一），
 // 上架商品（最多 6 张图 + 规格 + 简介）/ 编辑价格库存 / 上下架 / 按买家地址发货并登记物流单号。
-// 货款担保：买家付款冻结在平台担保账户，买家确认收货后才结算到商户 AIX 余额。
-import { WebsiteSession } from '/games/run-aix/session.js?v=20261028b';
-import { signDeposit } from '/games/mall/wallet-sign.js?v=20261031e';
+// 货款担保：买家付款冻结在平台担保账户，买家确认收货后才结算到商户 SVX 余额。
+import { WebsiteSession } from '/games/mall/session.js?v=20261111-domain-solvex-1';
+import { signDeposit } from '/games/mall/wallet-sign.js?v=20261111-domain-solvex-1';
 
 const $ = id => document.getElementById(id);
 const fmtA = v => { try { const n = Number(v); return n.toLocaleString('zh-CN', { maximumFractionDigits: 6 }); } catch { return '0'; } };
@@ -28,7 +28,9 @@ async function api(path, body) {
     body: body === undefined ? undefined : JSON.stringify(body || {}),
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || `请求失败 (${response.status})`);
+  if (!response.ok) throw Object.assign(new Error(data.error || `请求失败 (${response.status})`), {
+    code:data.code || '', messages:data.messages || null,
+  });
   return data;
 }
 function el(tag, className, text) { const node = document.createElement(tag); if (className) node.className = className; if (text != null) node.textContent = text; return node; }
@@ -61,12 +63,12 @@ async function connectMerchantWallet() {
     try { await provider.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: '0x38' }] }); } catch { /* 已是 BSC 或钱包拒绝切换不阻断 */ }
     const challenge = await api('/api/wallet/login-challenge', { address });
     const signature = await provider.request({ method: 'personal_sign', params: [challenge.message, address] });
-    await api('/api/wallet/login-sign', { message: challenge.message, signature });
+    await api('/api/wallet/login-sign', { message: challenge.message, signature, device: window.WGDevice?.payload?.() || null });
     await session.refresh();
     loadState();
   } catch (e) {
     if (Number(e?.code) === 4001 || /denied|rejected|cancel/i.test(e?.message || '')) return;  // 用户取消静默
-    toast(e?.message || '连接钱包失败', 'error');
+    toast(window.WGDevice?.localizedError?.(e) || e?.message || '连接钱包失败', 'error');
   } finally {
     if (btn) { btn.disabled = false; btn.textContent = '连接钱包'; }
   }
@@ -144,7 +146,7 @@ function renderShopBanner() {
   const items = [
     [String(products.filter(p => p.status === 'active').length), '在售'],
     [String(pending), '待发货'],
-    [fmtA(revenue), '累计销售 AIX'],
+    [fmtA(revenue), '累计销售 SVX'],
   ];
   for (const [value, label] of items) {
     const cell = el('div'); cell.append(el('b', '', value), el('span', '', label)); stats.append(cell);
@@ -255,7 +257,7 @@ function merchantOrderCard(order) {
   info.append(el('h3', '', order.productTitle));
   const line = el('div', 'line');
   line.append(el('span', '', `买家 ${order.buyerMask}`), el('span', '', `× ${order.quantity}`),
-    el('span', '', '合计'), el('b', '', `${fmtA(order.totalA)} AIX`));
+    el('span', '', '合计'), el('b', '', `${fmtA(order.totalA)} SVX`));
   info.append(line);
   body.append(info);
   // 收货地址 + 电话（发货必读，可一键复制）
@@ -294,7 +296,7 @@ function merchantOrderCard(order) {
     };
     form.append(company, tracking, submit);
     const actions = el('div', 'order-actions');
-    actions.append(el('span', 'p-stock', '买家已付款（平台担保中），请尽快按地址发货并登记单号；买家确认收货后货款结算到你的 AIX 余额'), form);
+    actions.append(el('span', 'p-stock', '买家已付款（平台担保中），请尽快按地址发货并登记单号；买家确认收货后货款结算到你的 SVX 余额'), form);
     card.append(actions);
   }
   return card;
@@ -308,7 +310,7 @@ $('apply-form').onsubmit = async event => {
   const shopName = $('apply-shop-name').value.trim();
   try {
     if (walletState.status !== 'ready') { message.textContent = '请先登录钱包再申请开店'; return; }
-    const amount = depositCurrency === 'USDT' ? (state?.depositInfo?.usdt || '100') : (state?.depositInfo?.aix || '5000');
+    const amount = depositCurrency === 'USDT' ? (state?.depositInfo?.usdt || '100') : (state?.depositInfo?.svx || '5000');
     message.textContent = '请在钱包中签名确认缴纳保证金…';
     const { signature, timestamp } = await signDeposit({ address: walletState.address, shopName, currency: depositCurrency, amount });
     message.textContent = '保证金缴纳中…';

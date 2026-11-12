@@ -12,7 +12,7 @@ window.I18n = (() => {
     if(loads.has(file))return loads.get(file);
     const promise=new Promise((resolve,reject)=>{
       const script=document.createElement('script');
-      script.src='/js/'+file+'?v=20261028-stake-day-1';
+      script.src='/js/'+file+'?v=20261111-domain-svxfree-1';
       script.onload=()=>ready()?resolve():reject(new Error('Invalid translation dictionary: '+file));
       script.onerror=()=>reject(new Error('Unable to load translation dictionary: '+file));
       document.head.appendChild(script);
@@ -125,22 +125,24 @@ window.I18n = (() => {
   }
   return {set,init,apply,t:source=>translate(source),toggle:()=>set(current==='zh'?'en':'zh'),langs:LANGS,get current(){return current;}};
 })();
-document.addEventListener('DOMContentLoaded',()=>{
+function initializeI18nControls() {
   window.I18n.init();
   const button=document.getElementById('lang-toggle');if(!button)return;
   button.textContent='🌐';button.onclick=null;
   button.addEventListener('click',event=>{
     event.stopPropagation();const old=document.getElementById('lang-menu');if(old){old.remove();return;}
     const menu=document.createElement('div');menu.id='lang-menu';menu.dataset.noTranslate='';
-    menu.style.cssText='position:fixed;background:var(--panel,#16201d);border:1px solid var(--border,#1f2a26);border-radius:10px;padding:6px 0;z-index:9999;min-width:160px;box-shadow:0 8px 28px rgba(0,0,0,.5);overflow:hidden';
+    menu.style.cssText='position:fixed;background:var(--panel,#ffffff);border:1px solid var(--border,#dfe8e4);border-radius:10px;padding:6px 0;z-index:9999;min-width:160px;box-shadow:0 10px 30px rgba(16,38,32,.16);overflow:hidden';
     const rect=button.getBoundingClientRect();menu.style.top=(rect.bottom+6)+'px';menu.style.right=Math.max(8,innerWidth-rect.right)+'px';
     for(const [code,label]of window.I18n.langs){
       const item=document.createElement('button');item.type='button';item.textContent=(code===window.I18n.current?'✓ ':'　')+label;
-      item.style.cssText='display:block;width:100%;padding:8px 16px;border:0;background:transparent;color:'+(code===window.I18n.current?'var(--brand,#50d2c2)':'var(--txt,#e0e5e3)')+';font:inherit;font-size:13px;text-align:left;cursor:pointer;white-space:nowrap';
-      item.onmouseenter=()=>item.style.background='var(--panel2,#1f2a26)';item.onmouseleave=()=>item.style.background='transparent';
+      item.style.cssText='display:block;width:100%;padding:8px 16px;border:0;background:transparent;color:'+(code===window.I18n.current?'var(--brand,#0b7264)':'var(--txt,#16211e)')+';font:inherit;font-size:13px;text-align:left;cursor:pointer;white-space:nowrap';
+      item.onmouseenter=()=>item.style.background='var(--panel2,#f0f5f3)';item.onmouseleave=()=>item.style.background='transparent';
       item.onclick=async()=>{menu.remove();await window.I18n.set(code);};menu.appendChild(item);
     }
     document.body.appendChild(menu);
   });
   document.addEventListener('click',()=>document.getElementById('lang-menu')?.remove());
-});
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initializeI18nControls, { once:true });
+else initializeI18nControls();

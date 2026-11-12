@@ -1,30 +1,33 @@
 (() => {
-  // The application uses one visual scheme. Keep this small API for chart
-  // consumers while preventing stale local preferences from re-enabling light mode.
-  const DARK = 'dark';
+  // A single light scheme keeps the chart palette aligned with the app.
+  const SCHEME = 'light';
 
-  const current = () => DARK;
+  const current = () => SCHEME;
 
-  function set(_theme = DARK, persist = false) {
-    document.documentElement.dataset.theme = DARK;
-    document.documentElement.style.colorScheme = DARK;
+  function set(_theme = SCHEME, persist = false) {
+    document.documentElement.dataset.theme = SCHEME;
+    document.documentElement.style.colorScheme = SCHEME;
     if (persist) {
       try { localStorage.removeItem('wg-color-theme'); } catch {}
     }
-    window.dispatchEvent(new CustomEvent('wg-theme-change', { detail: { theme: DARK } }));
-    return DARK;
+    window.dispatchEvent(new CustomEvent('wg-theme-change', { detail: { theme: SCHEME } }));
+    return SCHEME;
   }
+
+  // Light charts with legible axes and restrained grid lines.
+  const CHART = {
+    layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#607581' },
+    grid: { vertLines: { color: '#e8eef0' }, horzLines: { color: '#e8eef0' } },
+    rightPriceScale: { borderColor: '#d7e2e5' },
+    timeScale: { borderColor: '#d7e2e5' },
+  };
+  const UP = '#067a63';
+  const DOWN = '#c02a45';
 
   function chartOptions() {
-    return {
-      layout: { background: { type: 'solid', color: '#0b0f0e' }, textColor: '#91a19b' },
-      grid: { vertLines: { color: '#19211f' }, horzLines: { color: '#19211f' } },
-      rightPriceScale: { borderColor: '#202a27' },
-      timeScale: { borderColor: '#202a27' },
-    };
+    return JSON.parse(JSON.stringify(CHART));
   }
 
-  window.WGTheme = { current, set, chartOptions };
-  // Clear any legacy light-mode preference while initializing the fixed theme.
-  set(DARK, true);
+  window.WGTheme = { current, set, chartOptions, CHART, UP, DOWN };
+  set(SCHEME, true);
 })();

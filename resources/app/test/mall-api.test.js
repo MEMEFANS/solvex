@@ -1,4 +1,4 @@
-// AIX 商城 API 集成测试（2026-10-30）：
+// Solvex 商城 API 集成测试（2026-10-30）：
 //   开店/上架/改价/上下架 → 买家地址管理 → 下单支付（扣款/入账/扣库存）
 //   → 取消退款回库存 → 商户发货 → 确认收货 → 边界（自购拦截/余额不足/
 //   库存不足/未登录/越权）。使用真实 SQLite（临时目录）+ 内存账本 mock。
@@ -42,7 +42,7 @@ const readBody = async () => currentBody;
 const getSession = () => currentSession;
 const withAccountLock = (address, op) => op();
 
-const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'axix-mall-test-'));
+const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'solvex-mall-test-'));
 const database = openDatabase(dataRoot);
 // 商城表带 FOREIGN KEY(wallet) REFERENCES wallet_users(address)——生产中登录即建用户行，测试库手动补
 {
@@ -97,7 +97,7 @@ await fail('/api/mall/merchant/products', { session: { address: MERCHANT }, body
 await fail('/api/mall/merchant/products', { session: { address: MERCHANT }, body: { title: 'T', priceA: '1', stock: 0 } });
 const { product } = await ok('/api/mall/merchant/products', {
   session: { address: MERCHANT },
-  body: { title: 'AIX 限定卫衣', description: '厚实印花', priceA: '12.5', stock: 5, imageUrl: '' },
+  body: { title: 'SVX 限定卫衣', description: '厚实印花', priceA: '12.5', stock: 5, imageUrl: '' },
 });
 assert.equal(product.status, 'active');
 assert.equal(product.stock, 5);
@@ -122,11 +122,11 @@ await fail('/api/mall/orders', { session: { address: MERCHANT }, body: { product
 const { order } = await ok('/api/mall/orders', { body: { productId: product.id, quantity: 2, addressId: address.id } });
 assert.equal(order.status, 'paid');
 assert.equal(order.quantity, 2);
-assert.equal(A(order.totalUnits), '25', '12.5 × 2 = 25 AIX');
+assert.equal(A(order.totalUnits), '25', '12.5 × 2 = 25 SVX');
 assert.equal(order.address.receiver, '小明');
-assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore - 25n * UNITS, '买家应被扣 25 AIX');
-assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore + 25n * UNITS, '商户应入账 25 AIX');
-// 商城货款全额释放商户可卖额度：商家收到的 AIX 可直接在 AIX 交易大厅卖出
+assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore - 25n * UNITS, '买家应被扣 25 SVX');
+assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore + 25n * UNITS, '商户应入账 25 SVX');
+// 商城货款全额释放商户可卖额度：商家收到的 SVX 可直接在 SVX 交易大厅卖出
 assert.equal(database.getATokenSellQuota(MERCHANT).releasedUnits, (25n * UNITS).toString(), '货款应全额释放可卖额度');
 const stateAfterBuy = await ok('/api/mall/state', { method: 'GET' });
 assert.equal(stateAfterBuy.products[0].stock, 3, '库存 5 → 3');
@@ -164,7 +164,7 @@ await fail('/api/mall/merchant/orders/ship', { session: { address: MERCHANT }, b
 
 // ── 8. 余额不足 / 库存不足 ──
 await ok('/api/mall/addresses', { body: { receiver: '小红', phone: '13900139000', region: '上海市', detail: '浦东新区 2 号' } });
-ledger.set(BUYER.toLowerCase(), 3n * UNITS);  // 3 AIX < 12.5
+ledger.set(BUYER.toLowerCase(), 3n * UNITS);  // 3 SVX < 12.5
 await fail('/api/mall/orders', { body: { productId: product.id, quantity: 1, addressId: address.id } });
 ledger.set(BUYER.toLowerCase(), 1000n * UNITS);
 await fail('/api/mall/orders', { body: { productId: product.id, quantity: 99, addressId: address.id } }, '库存 4，99 件应失败');
@@ -205,4 +205,4 @@ wallets.add(BUYER);
 
 database.db?.close?.();
 try { fs.rmSync(dataRoot, { recursive: true, force: true }); } catch { /* 临时目录残留不影响结果 */ }
-console.log('✓ AIX 商城 API 测试全部通过（开店/上架/下单/取消/发货/收货/边界）');
+console.log('✓ Solvex 商城 API 测试全部通过（开店/上架/下单/取消/发货/收货/边界）');

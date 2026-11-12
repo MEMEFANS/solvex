@@ -17,7 +17,7 @@ export function setPlatformSymbols(symbols) {
 }
 const USDT_DECIMALS = 6;
 const PRICE_DECIMALS = 6;
-const A_DECIMALS = 18; // A 币为独立 18 位小数账本（与 ASSET_DECIMALS 平台账本无关）
+const A_DECIMALS = 18; // SVX为独立 18 位小数账本（与 ASSET_DECIMALS 平台账本无关）
 // 钱包资金账本各币原生精度（wallet-service assets）：并入 8 位平台台账前必须换算，否则 ETH/BNB(18位) 会放大 1e10 倍
 const WALLET_ASSET_DECIMALS = { BTC: 8, ETH: 18, BNB: 18, USDT: 6 };
 const walletUnitsToSpotDecimals = (symbol, rawUnits) => {
@@ -30,7 +30,7 @@ const walletUnitsToSpotDecimals = (symbol, rawUnits) => {
 };
 const STAKING_APY = 0.04;
 const MAINTENANCE_BPS = 50n;
-// A 币现价提供者（server 启动后注入），用于把 OPEN 卖单锁定的 A 折算进总资产
+// SVX现价提供者（server 启动后注入），用于把 OPEN 卖单锁定的 A 折算进总资产
 let aTokenPriceProvider = null;
 const LIQUIDATION_FEE_BPS = 50n;
 // 资金费率每 8 小时结算一次（与币安一致；旧版误按 1 小时结算，快了 8 倍）
@@ -638,13 +638,13 @@ export function createPlatformService({ dataRoot, walletService }) {
   function stake(address, amount) { const user=account(address); accrue(user.staking); const value=units(amount,USDT_DECIMALS,'质押数量'); walletService.debitBalance(address,'USDT',value); user.staking.principalUnits=(BigInt(user.staking.principalUnits)+value).toString(); audit(address,'stake',{amountUnits:value.toString()}); save(); }
   function unstake(address, amount) { const user=account(address); accrue(user.staking); const value=units(amount,USDT_DECIMALS,'赎回数量'), principal=BigInt(user.staking.principalUnits); if(value>principal)throw new Error('质押余额不足'); const reward=BigInt(user.staking.rewardUnits); user.staking.principalUnits=(principal-value).toString(); user.staking.rewardUnits='0'; walletService.creditBalance(address,'USDT',value+reward); if(reward>0n)chargeInsurance(-reward); audit(address,'unstake',{amountUnits:value.toString(),rewardUnits:reward.toString()}); save(); }
 
-  // 运营发放（抽奖中奖等）：直接给用户平台现货台账入账，资产页可见且可市价卖出换 USDT
+  // 运营发放：直接给用户平台现货台账入账，资产页可见且可市价卖出换 USDT
   function creditSpot(address, symbol, quantityUnits) {
     const sym = marketSymbol(symbol), quantity = BigInt(quantityUnits);
     if (quantity <= 0n) throw new Error('入账数量必须大于 0');
     const user = account(address);
     user.spot[sym] = (BigInt(user.spot[sym] || '0') + quantity).toString();
-    audit(address, 'lottery_credit', { symbol: sym, amountUnits: quantity.toString() });
+    audit(address, 'spot_credit', { symbol: sym, amountUnits: quantity.toString() });
     save();
     return quantity;
   }
@@ -689,7 +689,7 @@ export function createPlatformService({ dataRoot, walletService }) {
     const openOrders=state.orders.filter(item=>item.address.toLowerCase()===addressKey(address)&&item.status==='open');
     const presentOrder=item=>({...item,type:item.type === 'trigger' ? 'trigger' : 'limit',size:formatUnits(item.sizeUnits,ASSET_DECIMALS),limitPrice:formatUnits(item.limitPriceUnits,PRICE_DECIMALS),triggerPrice:formatUnits(item.triggerPriceUnits || '0',PRICE_DECIMALS)});
     const freeUsdt=walletService.balanceUnits(address,'USDT');
-    // ── A 币交易委托冻结并入资产口径：否则求购/挂牌中的资金在资产管理页不可见 ──
+    // ── SVX交易委托冻结并入资产口径：否则求购/挂牌中的资金在资产管理页不可见 ──
     let aLockedUsdt=0n,aLockedA=0n;
     try {
       const locks=walletService.database?.sumATokenLockedByWallet?.(address);
@@ -702,7 +702,7 @@ export function createPlatformService({ dataRoot, walletService }) {
     const spot=Object.fromEntries(PLATFORM_SYMBOLS.map(symbol => {
       const frozen=openOrders.filter(item=>item.reserveAsset===symbol).reduce((sum,item)=>sum+BigInt(item.reservedUnits||'0'),0n);
       spotFrozen[symbol]=formatUnits(frozen,ASSET_DECIMALS);
-      // 钱包资金账本中的币种余额（如历史抽奖发放的 BTC/ETH/BNB）并入现货展示，否则资产页不可见
+      // 钱包资金账本中的币种余额（如历史活动发放的 BTC/ETH/BNB）并入现货展示，否则资产页不可见
       // 注意：钱包账本为各币原生精度（ETH/BNB 18位），需换算到平台 8 位台账；账户不存在时 balanceUnits 会抛错，不能让它中断 profile
       let walletUnits=0n;
       try { walletUnits=walletUnitsToSpotDecimals(symbol, walletService.balanceUnits(address,symbol)||'0'); } catch {}
@@ -728,8 +728,8 @@ export function createPlatformService({ dataRoot, walletService }) {
       return sum+BigInt(strategy?.cashUnits||'0')+(mark>0n?BigInt(strategy?.inventoryUnits||'0')*mark/10n**BigInt(ASSET_DECIMALS):0n);
     },0n);
     marginUsed+=frozenPerpUsdt;
-    // A 币行：可用 = A 钱包余额；冻结中 = OPEN 卖单锁定（含手续费冻结）
-    // AIX 现货归入现货市值，尚未返还的质押本金归入质押市值；总资产只汇总一次。
+    // SVX行：可用 = A 钱包余额；冻结中 = OPEN 卖单锁定（含手续费冻结）
+    // SVX 现货归入现货市值，尚未返还的质押本金归入质押市值；总资产只汇总一次。
     try {
       const aBalanceUnits=BigInt(walletService.balanceUnits(address,'A')||'0');
       spot.A=formatUnits(aBalanceUnits,A_DECIMALS);
@@ -798,14 +798,14 @@ export function createPlatformService({ dataRoot, walletService }) {
           amount: formatUnits(BigInt(item.amountUnits || '0'), USDT_DECIMALS),
           reason: item.kind === 'start' ? '加入跟单，扣除 USDT' : '提前赎回，返还 USDT',
         })),
-      // AIX 代币交易成交（含互转外的买卖流水），让资金记录覆盖 AIX 生态
+      // SVX 代币交易成交（含互转外的买卖流水），让资金记录覆盖 SVX 生态
       ...database.listATokenTradesByWallet(address, 2000)
         .filter(item => item && item.id)
         .map(item => ({
           id: item.id,
           createdAt: new Date(Number(item.createdAt)).toISOString(),
           type: 'aix_trade',
-          symbol: 'AIX',
+          symbol: 'SVX',
           side: item.side,
           size: formatUnits(BigInt(item.sizeUnits || '0'), A_DECIMALS),
           price: formatUnits(BigInt(item.priceUsdtUnits || '0'), USDT_DECIMALS),
@@ -813,22 +813,6 @@ export function createPlatformService({ dataRoot, walletService }) {
           amount: formatUnits(BigInt(item.amountUsdtUnits || '0'), USDT_DECIMALS),
           pnl: null,
           liquidation: false,
-        })),
-      // 抽奖中奖的资产类奖品（BTC/ETH/BNB/USDT/AIX），让资金流水覆盖抽奖发放
-      ...database.listLotteryWins(address, 500)
-        .filter(item => item && item.prizeType === 'crypto' && Number(item.amount) > 0)
-        .map(item => ({
-          id: item.id,
-          createdAt: new Date(Number(item.createdAt)).toISOString(),
-          type: 'lottery_win',
-          symbol: item.symbol === 'USDT' ? '' : String(item.symbol || ''),
-          side: null,
-          size: String(item.amount),
-          price: null,
-          fee: '0',
-          pnl: null,
-          liquidation: false,
-          amount: Number(item.valueUsdt || 0).toFixed(2),
         })),
       // 链上充值：已确认到账的计入流水（确认中/已拒绝/已过期在“充值记录”表单独展示，避免与余额变动对不上）
       ...database.walletRecords('deposits', { wallet:address, status:'confirmed', limit:1000 })
@@ -1015,7 +999,7 @@ export function createPlatformService({ dataRoot, walletService }) {
       const recentReferralUnits = referralRewards.filter(item => itemTime(item) >= cutoff)
         .reduce((sum, item) => sum + BigInt(item.amountUnits || '0'), 0n);
 
-      // A 币生态两大收益：矿机释放(A units) + 质押奖励(A units)，按 A 币现价折算 USDT 计入「累计赚取」
+      // SVX生态两大收益：矿机释放(A units) + 质押奖励(A units)，按 SVX现价折算 USDT 计入「累计赚取」
       const aMinerReleases = database.listATokenMinerReleases(wallet, 5000);
       const aMinerUnitsA = aMinerReleases.reduce((sum, item) => sum + BigInt(item?.amountUnits || '0'), 0n);
       const aMiner30UnitsA = aMinerReleases.filter(item => Number(item?.releasedAt || 0) >= cutoff)
@@ -1102,7 +1086,7 @@ export function createPlatformService({ dataRoot, walletService }) {
         }
       }
       const stakingPrincipalUnits = BigInt(user.staking?.principalUnits || '0');
-      // A 币矿机+质押本金（钱包激活/矿机购买/质押时的平台内部入账），折算 USDT
+      // SVX矿机+质押本金（钱包激活/矿机购买/质押时的平台内部入账），折算 USDT
       const aMinerPrincipalUnitsA = database.listATokenMiners(wallet)
         .reduce((sum, item) => sum + BigInt(item?.totalUnits || '0'), 0n);
       const aStakePrincipalUnitsA = database.listATokenStakes(wallet)
@@ -1163,7 +1147,7 @@ export function createPlatformService({ dataRoot, walletService }) {
   return {
     database,
     setATokenPriceProvider: (fn) => { aTokenPriceProvider = typeof fn === 'function' ? fn : null; },
-    // 暴露 AIX 现价（USDT 浮点数，6 位精度）给 API 层，用于资产页 marketPrices.A 折算 AIX 市值
+    // 暴露 SVX 现价（USDT 浮点数，6 位精度）给 API 层，用于资产页 marketPrices.A 折算 SVX 市值
     aTokenSpotPrice: () => { try { const v = aTokenPriceProvider ? BigInt(aTokenPriceProvider() || 0n) : 0n; return Number(formatUnits(v, USDT_DECIMALS)); } catch { return 0; } },
     addToInternalStrategy:(...args) => transact(() => addToInternalStrategy(...args)),
     cancelOrder:(...args) => transact(() => cancelOrder(...args)),

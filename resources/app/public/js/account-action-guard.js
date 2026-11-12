@@ -23,7 +23,7 @@
     if (!isLocalApi(args[0])) return nativeFetch.apply(this, args);
     if (idle) return waiting;
     return nativeFetch.apply(this, args).then(response => {
-      if (response.headers.get('X-AxiX-Action') === 'idle') idle = true;
+      if (response.headers.get('X-Solvex-Action') === 'idle') idle = true;
       return idle ? waiting : response;
     }, error => {
       if (idle) return waiting;

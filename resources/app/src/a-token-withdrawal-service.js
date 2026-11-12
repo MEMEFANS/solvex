@@ -23,7 +23,7 @@ const ERC20_ABI = [
 const tokenInterface = new Interface(ERC20_ABI);
 
 function errorMessage(error) {
-  return String(error?.shortMessage || error?.reason || error?.message || error || 'A 币链上提现失败');
+  return String(error?.shortMessage || error?.reason || error?.message || error || 'SVX链上提现失败');
 }
 
 function startOfDayUnixMs(now = Date.now()) {
@@ -33,10 +33,10 @@ function startOfDayUnixMs(now = Date.now()) {
 }
 
 /**
- * A 币链上提现服务（BSC 单链）。
+ * SVX链上提现服务（BSC 单链）。
  * 依赖：用户必须先部署 contracts/A.sol 到 BSC 主网并填好 .env：
  *   A_TOKEN_CONTRACT_ADDRESS = 部署得到的合约地址
- *   A_TOKEN_HOT_WALLET       = 平台热钱包（持有大额 A 币用于出款）
+ *   A_TOKEN_HOT_WALLET       = 平台热钱包（持有大额 SVX用于出款）
  *   A_TOKEN_HOT_PRIVATE_KEY   = 上述热钱包的私钥
  *   BSC_RPC_URL               = BSC 主网 RPC（可选，默认用公共节点）
  */
@@ -51,16 +51,16 @@ export function createATokenWithdrawalService({
   hotPrivateKey = '',
   rpcUrl = 'https://bsc-dataseed.binance.org',
   pollIntervalMs = 15_000,
-  // 限额（单位：A 币（小数=1，方便阅读））
+  // 限额（单位：SVX（小数=1，方便阅读））
   minWithdrawA = 100,           // 单笔最小 100 A
   maxWithdrawA = 500_000,       // 单笔最大 50 万 A
   dailyCapA = 2_000_000,         // 单日累计上限 200 万 A
   autoApproveThresholdA = 1_000, // <1000 A 自动放；>=1000 A 进 manual_review
-  feeRateBps = 50,              // 0.5% 手续费
-  minFeeA = 5,                  // 单笔手续费最少 5 A
+  feeRateBps = 0,               // SVX 提现免手续费（2026-11-11 起不再收取，也不再写 LP 流水）
+  minFeeA = 0,                  // 无最低手续费
 } = {}) {
-  if (!aTokenService) throw new Error('A 币提现服务缺少 aTokenService');
-  if (!database) throw new Error('A 币提现服务缺少 database');
+  if (!aTokenService) throw new Error('SVX提现服务缺少 aTokenService');
+  if (!database) throw new Error('SVX提现服务缺少 database');
 
   const contract = isAddress(String(contractAddress || '')) ? getAddress(contractAddress) : '';
   const hotAddress = isAddress(String(hotWalletAddress || '')) ? getAddress(hotWalletAddress) : '';
@@ -126,17 +126,62 @@ export function createATokenWithdrawalService({
     return Number(units) / 10 ** LEDGER_DECIMALS;
   }
 
+  // 提现手续费记录（当前费率为 0，不再产生流水）；仅当费率恢复收费时才会入 LP 账本。
+  // 记账号由提现单号派生：in 用 wd:<id>，退款反向 out 用 wd:<id>:refund，唯一索引防重复。
+  const withdrawalFeeRef = id => `wd:${id}`;
+  function recordWithdrawalFee(record, now) {
+    return database.insertATokenLpPoolEntryRow({
+      id: `alp_${record.id}`,
+      source: 'withdraw_fee',
+      refId: withdrawalFeeRef(record.id),
+      wallet: record.wallet,
+      aUnits: record.feeUnits,
+      direction: 'in',
+      createdAt: now,
+      payload: { withdrawalId: record.id },
+    });
+  }
+  function reverseWithdrawalFee(record, now) {
+    // 老提现单（费率还是 0.5%）没有对应入账，不做反向记账，避免 LP 出现负数
+    if (!database.getATokenLpPoolEntryByRef('withdraw_fee', withdrawalFeeRef(record.id))) return false;
+    return database.insertATokenLpPoolEntryRow({
+      id: `alp_${record.id}_refund`,
+      source: 'withdraw_fee',
+      refId: `${withdrawalFeeRef(record.id)}:refund`,
+      wallet: record.wallet,
+      aUnits: record.feeUnits,
+      direction: 'out',
+      createdAt: now,
+      payload: { withdrawalId: record.id, reason: 'refund' },
+    });
+  }
+
   function computeFee(amountUnits) {
     const feeUnits = BigInt(amountUnits) * BigInt(feeRateBps) / 10_000n;
     const minFeeUnits = parseUnits(String(minFeeA), LEDGER_DECIMALS);
     return feeUnits > minFeeUnits ? feeUnits : minFeeUnits;
   }
 
+  // 卖单额度闸门（2026-11-09 P2）：链上提现等同离场卖出，只有匹配池转换出的「流通额度」可提，
+  // 质押/节点等产出（蓄能额度）必须先过匹配池。申请时占用，拒绝/撤销/失败时退回。
+  function availableUsableQuota(wallet) {
+    const q = database.getATokenUsableQuota(String(wallet || '').toLowerCase());
+    const released = BigInt(q.releasedUnits || '0');
+    const used = BigInt(q.usedUnits || '0');
+    return released > used ? released - used : 0n;
+  }
+  function refundWithdrawalQuota(record) {
+    const units = BigInt(record.quotaConsumedUnits || '0');
+    if (units <= 0n) return;   // 旧单（本次改造前）未占用额度，不回退，避免凭空发放
+    try { database.refundATokenUsableQuota(record.wallet, units); }
+    catch (e) { console.error(`[提现] ${record.id} 流通额度退回失败，需人工处理:`, e?.message || e); }
+  }
+
   function isBlockedAddress(addr) {
     if (!addr) return true;
     const a = String(addr).toLowerCase();
     if (!isAddress(a)) return true;
-    if (contract && a === contract.toLowerCase()) return true;            // 不能提现到 A 币合约本身
+    if (contract && a === contract.toLowerCase()) return true;            // 不能提现到 SVX合约本身
     if (hotAddress && a === hotAddress.toLowerCase()) return true;       // 不能提现回平台热钱包
     return false;
   }
@@ -193,7 +238,7 @@ export function createATokenWithdrawalService({
    */
   function requestWithdrawal({ wallet, amount, toAddress, requestId = '' }) {
     if (!wallet) throw new Error('缺少钱包地址');
-    if (!configured) throw new Error('A 币链上提现未启用（请先部署合约并配置 A_TOKEN_CONTRACT_ADDRESS / A_TOKEN_HOT_WALLET / A_TOKEN_HOT_PRIVATE_KEY）');
+    if (!configured) throw new Error('SVX链上提现未启用（请先部署合约并配置 A_TOKEN_CONTRACT_ADDRESS / A_TOKEN_HOT_WALLET / A_TOKEN_HOT_PRIVATE_KEY）');
     // 安全约束：链上提现只能提到当前连接钱包地址本身，禁止任意地址输入
     const recipient = isAddress(String(wallet || '')) ? getAddress(wallet) : '';
     if (!recipient) throw new Error('当前钱包地址格式无效');
@@ -228,7 +273,13 @@ export function createATokenWithdrawalService({
     const needUnits = amountUnits + feeUnits;
     const balanceA = aTokenService.balanceA(wallet);
     if (BigInt(balanceA) < needUnits)
-      throw new Error(`A 余额不足，需要 ${formatUnits(needUnits, LEDGER_DECIMALS)} A（含手续费 ${formatUnits(feeUnits, LEDGER_DECIMALS)} A）`);
+      throw new Error(`SVX 余额不足，需要 ${formatUnits(needUnits, LEDGER_DECIMALS)} SVX`);
+
+    // 卖单额度闸门：流通额度（匹配池转换所得）必须覆盖提现数量
+    const quotaAvailable = availableUsableQuota(wallet);
+    if (quotaAvailable < amountUnits) {
+      throw new Error(`流通额度不足：链上提现需先通过匹配池转换，当前可用 ${formatUnits(quotaAvailable > 0n ? quotaAvailable : 0n, LEDGER_DECIMALS)} A`);
+    }
 
     // 立即扣款（冻结）
     // Balance and withdrawal record are committed atomically below.
@@ -243,6 +294,7 @@ export function createATokenWithdrawalService({
       amountUnits: amountUnits.toString(),
       feeUnits: feeUnits.toString(),
       needUnits: needUnits.toString(),
+      quotaConsumedUnits: amountUnits.toString(),   // 已占用的流通额度（退款时原样退回）
       status: initialStatus,
       txHash: null,
       chainId: BSC_CHAIN_ID,
@@ -251,7 +303,12 @@ export function createATokenWithdrawalService({
       processedAt: null,
       failReason: null,
     };
-    commitBalance(record, () => aTokenService.debitA(wallet, needUnits.toString()));
+    commitBalance(record, () => {
+      aTokenService.debitA(wallet, needUnits.toString());
+      database.consumeATokenUsableQuota(wallet, amountUnits);   // 占用可提额度（卖单闸门）
+      // 免手续费时不产生任何 LP 流水（不参与加池累计）
+      if (BigInt(record.feeUnits) > 0n) recordWithdrawalFee(record, now);
+    });
 
     if (willAutoApprove) enqueue(id).catch(() => {});
     return record;
@@ -274,7 +331,11 @@ export function createATokenWithdrawalService({
     if (record.status !== 'manual_review') throw new Error(`当前状态 ${record.status} 不可拒绝`);
     commitBalance({
       ...record, status: 'rejected', processedAt: Date.now(), failReason: String(reason),
-    }, () => aTokenService.creditA(record.wallet, record.needUnits));
+    }, () => {
+      aTokenService.creditA(record.wallet, record.needUnits);
+      reverseWithdrawalFee(record, Date.now());
+      refundWithdrawalQuota(record);
+    });
     return database.getATokenWithdrawalById(id);
   }
 
@@ -288,7 +349,11 @@ export function createATokenWithdrawalService({
       throw new Error(`当前状态 ${record.status} 不可撤销（仅待审核状态可撤销）`);
     commitBalance({
       ...record, status: 'cancelled', processedAt: Date.now(), failReason: 'user_cancelled',
-    }, () => aTokenService.creditA(record.wallet, record.needUnits));
+    }, () => {
+      aTokenService.creditA(record.wallet, record.needUnits);
+      reverseWithdrawalFee(record, Date.now());
+      refundWithdrawalQuota(record);
+    });
     return database.getATokenWithdrawalById(id);
   }
 
@@ -317,7 +382,11 @@ export function createATokenWithdrawalService({
     if (!record || !PAYOUT_STATES.has(record.status)) return;
     if ((record.txHash || record.rawTransaction) && !confirmedRevert) return;
     commitBalance({ ...record, status: 'failed', processedAt: Date.now(), failReason: String(reason).slice(0, 500) },
-      () => aTokenService.creditA(record.wallet, record.needUnits));
+      () => {
+        aTokenService.creditA(record.wallet, record.needUnits);
+        reverseWithdrawalFee(record, Date.now());
+        refundWithdrawalQuota(record);
+      });
   }
 
   async function process(id) {
@@ -334,7 +403,7 @@ export function createATokenWithdrawalService({
         const [tokenBalance] = tokenInterface.decodeFunctionResult('balanceOf', encoded);
         const amountUnits = BigInt(record.amountUnits);
         if (BigInt(tokenBalance) < amountUnits) {
-          markFailed(id, '平台热钱包 A 币链上余额不足，请联系平台补充');
+          markFailed(id, '平台热钱包 SVX链上余额不足，请联系平台补充');
           return;
         }
         // 签名 ERC-20 transfer(recipient, amount)

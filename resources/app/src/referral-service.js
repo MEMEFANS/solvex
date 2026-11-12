@@ -11,7 +11,7 @@ const ID_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 export function createReferralService({ database, walletService }) {
   // ── 推荐关系缓存（2026-10-22 全站卡顿修复）──
   // 旧实现 links() 每次调用都全表扫 platform_referral_links（2.3 万行、逐行 JSON.parse）：
-  // referral profile 一次请求要扫 (2+直推数) 遍，AIX 卖单/互转的费率阶梯也每笔全扫一遍，
+  // referral profile 一次请求要扫 (2+直推数) 遍，SVX 卖单/互转的费率阶梯也每笔全扫一遍，
   // keccak 修复后这里是全站 CPU 最大的热点（实测 profile 中占主线程 20~34%）。
   // 借鉴 a-token-team-service 的链图缓存：15s TTL 内存 map，任何 upsert 后立即失效。
   // 代价：新绑定的推荐关系最多 15s 后对统计/费率可见；绑定写库本身即时生效，不影响绑定正确性。
@@ -46,7 +46,7 @@ export function createReferralService({ database, walletService }) {
   function upsertLink(link) { const row = database.upsertReferralLink(link); invalidateLinks(); return row; }
   const byWalletOf = value => linksMaps().byWallet.get(key(value)) || null;
   function directOf(address) { return linksMaps().byChild.get(key(address)) || []; }
-  // 统一用户ID：与 AIX 互转使用的 8 位用户ID同表同值，保证「邀请码 = 用户ID」
+  // 统一用户ID：与 SVX 互转使用的 8 位用户ID同表同值，保证「邀请码 = 用户ID」
   function ensureUnifiedUserId(address) {
     const normalized = String(address || '').toLowerCase();
     try { walletService.ensureUser?.(normalized); } catch { /* 建用户失败不阻塞 */ }
@@ -106,17 +106,17 @@ export function createReferralService({ database, walletService }) {
   function activePrincipal(address) {
     // 有效本金三选一即可：
     //   ① AI 合约跟单 active 批次本金（USDT，6 位精度）
-    //   ② AIX 矿机运行中（active 状态，有剩余产出）
-    //   ③ AIX 质押运行中（active 状态，有本金）
+    //   ② SVX 矿机运行中（active 状态，有剩余产出）
+    //   ③ SVX 质押运行中（active 状态，有本金）
     const k = key(address);
     const aiSum = database.listAiBatches(address).filter(item => item.status === 'active')
       .reduce((sum, item) => sum + BigInt(item.principalUnits || '0'), 0n);
     if (aiSum > 0n) return aiSum;
-    // 矿机 active 视为有效本金（取剩余产出额度，AIX 18 位精度，只需 >0n）
+    // 矿机 active 视为有效本金（取剩余产出额度，SVX 18 位精度，只需 >0n）
     const minerActive = database.listATokenMiners?.(k)
       .some(m => String(m.status) === 'active' && BigInt(m.totalUnits || '0') - BigInt(m.totalEarnedUnits || '0') > 0n);
     if (minerActive) return 1n; // 非零占位即可，validDirectCount 只看 >0
-    // 质押 active 视为有效本金（取本金，AIX 18 位精度）
+    // 质押 active 视为有效本金（取本金，SVX 18 位精度）
     const stakeActive = database.listATokenStakes?.(k)
       .filter(s => String(s.status) === 'active')
       .reduce((sum, s) => sum + BigInt(s.principalUnits || '0'), 0n);
@@ -151,7 +151,7 @@ export function createReferralService({ database, walletService }) {
   }
   function validDirectCount(address) { return directOf(address).filter(item => activePrincipal(item.wallet) > 0n).length; }
   // 阶梯费率专用：只算「有效直推」——矿机运行中（active 且有剩余产出）或质押运行中（active 且有本金）。
-  // 矿机到期/产出完毕且没有质押 AIX 的直推不再计入，上级手续费阶梯随之回落（费率回升）
+  // 矿机到期/产出完毕且没有质押 SVX 的直推不再计入，上级手续费阶梯随之回落（费率回升）
   function minerDirectCount(address) {
     return directOf(address).filter(item => {
       const w = key(item.wallet);
@@ -169,8 +169,8 @@ export function createReferralService({ database, walletService }) {
   function presentRow(item, level, owner) {
     const principal = activePrincipal(item.wallet);
     // 「跟单金额」只统计 AI 合约跟单 active 批次本金（USDT，6 位）。
-    // activePrincipal 混合了 AIX 质押(18 位)/矿机，仅用于下方有效判定，不能按 USDT 展示，
-    // 否则 8000 AIX 质押会被放大 10^12 显示成 8 千万亿 USDT。
+    // activePrincipal 混合了 SVX 质押(18 位)/矿机，仅用于下方有效判定，不能按 USDT 展示，
+    // 否则 8000 SVX 质押会被放大 10^12 显示成 8 千万亿 USDT。
     const aiPrincipal = database.listAiBatches(item.wallet)
       .filter(batch => batch.status === 'active')
       .reduce((sum, batch) => sum + BigInt(batch.principalUnits || '0'), 0n);

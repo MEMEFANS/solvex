@@ -1,0 +1,65 @@
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {parseUnits} from 'ethers';
+import {createWalletService} from '../src/wallet-service.js';
+import {closeDatabase} from '../src/database.js';
+import {createCommunityGroupService} from '../src/community-group-service.js';
+import {createCommunityAdminService} from '../src/community-admin-service.js';
+import {createRegistrationIpService} from '../src/registration-ip-service.js';
+import {createCommunityApi} from '../src/community-api.js';
+const root=fs.mkdtempSync(path.join(os.tmpdir(),'solvex-groups-'));
+const address=n=>'0x'+n.toString(16).padStart(40,'0');
+try {
+ const wallet=createWalletService({dataRoot:root,depositAddress:address(999),networks:[]});
+ const database=wallet.database, adminService=createCommunityAdminService({database});
+ const level=new Map([[address(1),3],[address(2),2]]);
+ const groups=createCommunityGroupService({database,walletService:wallet,adminService,teamService:{snapshot:w=>({level:level.get(w)||0})}});
+ const owner=address(1), member=address(2), outsider=address(3);
+ for(const w of [owner,member,outsider])wallet.ensureUser(w);
+ assert.throws(()=>groups.create(member,{name:'不允许'}),/V3/);
+ const g=groups.create(owner,{name:'私人测试群'});
+ assert.match(g.number,/^\d{6}$/);assert.ok(g.invite);
+ assert.equal(groups.list(outsider).groups.some(x=>x.number===g.number),false);
+ assert.throws(()=>groups.scoped(g.number,outsider),/邀请/);
+ assert.throws(()=>groups.join(member,{number:g.number,invite:'wrong'}),/邀请码/);
+ groups.join(member,{number:g.number,invite:g.invite});
+ const privateChat=groups.scoped(g.number,owner), publicChat=groups.scoped('100001',owner);
+ const message=privateChat.service.postMessage(owner,{body:'私人消息',clientId:'message_private'});
+ assert.equal(privateChat.service.listMessages().messages.length,1);
+ assert.equal(publicChat.service.listMessages().messages.length,0,'私人消息不能出现在总群');
+ assert.equal(groups.scoped(g.number,member).group.invite,undefined,'成员不能读取群主邀请码');
+ wallet.creditBalance(owner,'USDT',parseUnits('10',6));
+ const packet=privateChat.redPacketService.createPacket(owner,{asset:'USDT',total:'2',count:1,algorithm:'equal',clientId:'packet_private'});
+ assert.throws(()=>publicChat.redPacketService.grab(packet.packet.id,outsider,{clientId:'bad_grab'}),/不存在/);
+ const got=groups.scoped(g.number,member).redPacketService.grab(packet.packet.id,member,{clientId:'good_grab'});
+ assert.equal(got.claim.amount,'2.0');
+ groups.moderate(g.number,owner,'mute',{address:member,minutes:1});
+ assert.throws(()=>groups.scoped(g.number,member).service.postMessage(member,{body:'被禁言'}),/禁言/);
+ assert.throws(()=>groups.moderate(g.number,member,'message-delete',{id:message.message.id}),/管理员/);
+ groups.moderate(g.number,owner,'kick',{address:member});assert.throws(()=>groups.scoped(g.number,member),/移出/);
+ const api=createCommunityApi({service:publicChat.service,redPacketService:publicChat.redPacketService,groupService:groups,adminService,
+  getSession:r=>r.actor?{address:r.actor}:null,isSameOrigin:r=>r.origin!=='foreign',readBody:async r=>r.body,
+  send:(res,status,payload)=>Object.assign(res,{status,payload})});
+ async function request(route,actor,method='GET',body={},origin='local') {const res={};await api.handle({url:route,method,actor,body,origin},res,route.split('?')[0]);return res;}
+ assert.equal((await request('/api/community/messages?group='+g.number,outsider)).status,403);
+ const session=await request('/api/community/session?group='+g.number,owner);
+ assert.equal(session.payload.isAdmin,true);assert.equal(session.payload.me.isAdmin,true);
+ const avatar='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=';
+ const profile=await request('/api/community/profile?group=100001',owner,'POST',{nickname:'新的群昵称',avatar});
+ assert.equal(profile.status,200);assert.equal(profile.payload.member.nickname,'新的群昵称');assert.match(profile.payload.member.avatar,/^\/api\/community\/avatar\/0x/);
+ assert.equal(publicChat.service.getAvatar(owner).mime,'image/png');
+ const avatarResponse={writeHead(status,headers){this.status=status;this.headers=headers;},end(body){this.body=body;}};
+ await api.handle({url:'/api/community/avatar/'+owner,method:'GET'},avatarResponse,'/api/community/avatar/'+owner);
+ assert.equal(avatarResponse.status,200);assert.equal(avatarResponse.headers['Content-Type'],'image/png');assert(Buffer.isBuffer(avatarResponse.body));
+ assert.equal((await request('/api/community/groups',outsider,'POST',{name:'bad'})).status,403);
+ assert.equal((await request('/api/community/messages?group='+g.number,owner,'POST',{body:'cross origin'},'foreign')).status,403);
+ assert.equal((await request('/api/community/messages?group=100001',owner)).payload.messages.length,0);
+ const ips=createRegistrationIpService({database});
+ for(let i=1;i<=3;i++)ips.register({address:address(i),ip:'192.0.2.1'});
+ assert.throws(()=>ips.register({address:address(4),ip:'::ffff:192.0.2.1'}),/最多注册3/);
+ ips.register({address:address(1),ip:'192.0.2.2'});
+ ips.register({address:address(4),ip:'192.0.2.2'});
+ console.log('PASS Solvex: V3 groups/invitation, private messages and red packets, owner moderation, IP registration cap.');
+} finally {closeDatabase(root);fs.rmSync(root,{recursive:true,force:true});}

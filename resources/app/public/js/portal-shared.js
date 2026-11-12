@@ -1,6 +1,6 @@
 // K 线本地时区显示：lightweight-charts v5 移除了 localization.timeZone，
 // 时间轴默认按 UTC 渲染（国内差 8 小时），需自定义 tickMarkFormatter / timeFormatter。
-// 三张图（现货合约、AIX、策略台）共用此工厂，createChart 时展开合并即可。
+// 两张图（现货合约、SVX）共用此工厂，createChart 时展开合并即可。
 window.wgChartTzOptions = function wgChartTzOptions() {
   const tz = (typeof Intl !== 'undefined' && Intl.DateTimeFormat().resolvedOptions().timeZone) || 'Asia/Shanghai';
   const toDate = (t) => {
@@ -49,20 +49,18 @@ window.wgChartTzOptions = function wgChartTzOptions() {
    * Aethon Fund 方法论背书徽章
    *  - 严格使用"方法论参考"措辞，不表述为股权投资 / 子公司 / LP 关系
    *  - 明确声明 Aethon Fund 未发行代币、无官方 X/Twitter 账号
-   *  - 明确 AIX = AxiX 自有品牌原生代币，与 Aethon Fund 不存在任何代币关联
+   *  - 明确 SVX = Solvex 自有品牌原生代币，与 Aethon Fund 不存在任何代币关联
    */
   const aethonBadge = (context = '策略执行框架') => `
     <div class="aethon-badge">
       <div class="aethon-badge-logo" aria-hidden="true">Æ</div>
       <div class="aethon-badge-body">
-        <strong><span>Aethon Fund（$50M 启动 · 纽约）—— AxiX </span><span>${context}</span><span>方法论参考</span></strong>
+        <strong><span>Aethon Fund（$50M 启动 · 纽约）—— Solvex </span><span>${context}</span><span>方法论参考</span></strong>
         <span>
           <span>本页</span><span>${context}</span><span>参考了 Aethon Fund 创始人 George Kailas（20 年信号研究 + Prospero.ai 信号库经 20 万+ 散户反馈淬炼 + 7.5× S&P500 实盘）的信号驱动型量化方法论，风控对齐 VRP 叠加层 + 仓位规则化退出的机构级标准。</span>
-          <span>详细来源与合规边界见 </span><a href="#" onclick="event.preventDefault(); try { switchTab('whitepaper'); } catch(e){}">白皮书（09 章 AIX 代币边界声明）</a>。
-          <br><em style="color:#8fa8a3;font-style:normal">※ Aethon Fund 未发行任何代币，亦无官方 Twitter/X 账号。※ AIX 为 AxiX 自有品牌原生代币，与 Aethon Fund 不存在任何股权/代币/收益权关联。</em>
+          <br><em style="color:#4b6c66;font-style:normal">※ Aethon Fund 未发行任何代币，亦无官方 Twitter/X 账号。※ SVX 为 Solvex 自有品牌原生代币，与 Aethon Fund 不存在任何股权/代币/收益权关联。</em>
         </span>
       </div>
-      <button class="aethon-badge-cta" type="button" onclick="event.preventDefault(); try { switchTab('whitepaper'); } catch(e){}">查看白皮书 →</button>
     </div>`;
 
   function register(name, page) {

@@ -1,0 +1,28 @@
+.rx-cavern { overflow:hidden; min-width:0; border:1px solid #d7dbe7; border-radius:18px; background:#fff; box-shadow:0 8px 28px #34241709; }
+.rx-cavern-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:20px 24px; }
+.rx-cavern-title { display:flex; align-items:center; gap:12px; min-width:0; }
+.rx-cavern-icon { display:grid; place-items:center; width:42px; height:42px; border:1px solid #e8dcca; border-radius:12px; color:#956335; background:#faf5ed; flex-shrink:0; }
+.rx-cavern-title h2 { color:#282b3b; font-size:18px; font-weight:650; line-height:1.5; margin:0; }
+.rx-cavern-title p { color:#7a7e8f; font-size:11px; line-height:1.6; margin:2px 0 0; }
+.rx-cavern-tools { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.rx-cavern-state { display:flex; align-items:center; gap:7px; color:#7f6b4f; border:1px solid #ebe1d0; background:#faf6ef; border-radius:30px; padding:6px 11px; font-size:11px; white-space:nowrap; }
+.rx-cavern-state i { width:6px; height:6px; border-radius:50%; background:#bd955c; }
+.rx-cavern-state.is-active { color:#067a63; background:#eef8f3; border-color:#cce7db; }.rx-cavern-state.is-active i { background:#169b75; }
+.rx-cavern-state.is-error { color:#a44540; background:#fff5f2; border-color:#f0d5cf; }.rx-cavern-state.is-error i { background:#ba665b; }
+.rx-cavern-toggle { width:34px; height:34px; display:grid; place-items:center; border:1px solid #dedfe6; border-radius:10px; color:#626779; background:#fff; cursor:pointer; transition:background .2s,color .2s; }.rx-cavern-toggle:hover { background:#f4f0fb; color:#7034ef; }
+.rx-cavern-viewport { overflow-x:auto; scrollbar-width:thin; scrollbar-color:#b99b76 #eee8df; }
+.rx-cavern-stage { position:relative; isolation:isolate; width:100%; min-width:640px; aspect-ratio:16/9; overflow:hidden; background:#654d36; }
+.rx-cavern-background { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; user-select:none; pointer-events:none; }
+.rx-cavern-region { --miner-color:#b76b3a; position:absolute; inset:0; pointer-events:none; }.rx-cavern-region.is-silver { --miner-color:#9eafc0; }.rx-cavern-region.is-gold { --miner-color:#dbad41; }
+.rx-cavern-shadow { position:absolute; left:var(--miner-x); top:var(--miner-y); width:4.5%; height:1.8%; border-radius:50%; transform:translate(-50%,-50%); background:#21130866; filter:blur(3px); }
+.rx-cavern-worker { position:absolute; left:var(--miner-x); top:var(--miner-y); width:19.2%; aspect-ratio:512/576; transform:translate(-39.0625%,-92.01389%); background-image:url('/assets/mining/miner-copper-atlas-v1.webp'); background-size:400% 200%; background-repeat:no-repeat; background-position:0 0; animation:rx-cavern-swing 950ms step-end infinite; animation-delay:var(--miner-delay); animation-play-state:paused; contain:layout paint; }
+.rx-cavern-worker { transform-origin:39.0625% 92.01389%; transform:translate(-39.0625%,-92.01389%) scaleX(var(--miner-facing,1)); }
+.rx-cavern-region.is-silver .rx-cavern-worker { background-image:url('/assets/mining/miner-silver-atlas-v1.webp'); }.rx-cavern-region.is-gold .rx-cavern-worker { background-image:url('/assets/mining/miner-gold-atlas-v1.webp'); }
+.rx-cavern[data-animation-running=true] .rx-cavern-worker { animation-play-state:running; }
+.rx-cavern-label { position:absolute; top:calc(var(--miner-y) + 3.2%); left:var(--miner-x); transform:translateX(-50%); display:flex; align-items:center; gap:6px; white-space:nowrap; border:1px solid #ffffff70; border-radius:30px; padding:5px 10px; background:#fffaf0ed; box-shadow:0 3px 12px #25190b24; color:#564431; font-size:10px; }
+.rx-cavern-label i { width:7px; height:7px; border-radius:50%; background:var(--miner-color); box-shadow:inset 0 0 0 1px #00000010; }.rx-cavern-label strong { font-weight:650; font-size:11px; }.rx-cavern-label span { padding-left:6px; border-left:1px solid #d8cdbb; color:#82725d; font-size:9px; }
+.rx-cavern-region[data-working=false] .rx-cavern-label { opacity:.8; }
+.rx-cavern-footer { display:flex; justify-content:space-between; align-items:center; gap:16px; padding:15px 24px; border-top:1px solid #eee9e0; }.rx-cavern-footer p { color:#696b7b; font-size:11px; line-height:1.8; margin:0; }.rx-cavern-footer small { display:block; color:#8d8f9d; font-size:10px; }.rx-cavern-footer .ui-button { flex-shrink:0; font-size:11px; height:34px; }.rx-cavern-swipe { display:none; color:#9b896c; font-size:10px; white-space:nowrap; }
+@keyframes rx-cavern-swing { 0% { background-position:0 0; } 15.789474% { background-position:33.333333% 0; } 27.368421% { background-position:66.666667% 0; } 43.157895% { background-position:100% 0; } 50.526316% { background-position:0 100%; } 58.947368% { background-position:33.333333% 100%; } 69.473684% { background-position:66.666667% 100%; } 84.210526% { background-position:100% 100%; } 100% { background-position:0 0; } }
+@media(max-width:640px) { .rx-cavern { border-radius:14px; }.rx-cavern-heading { padding:15px 14px; gap:8px; }.rx-cavern-icon { width:34px; height:34px; border-radius:10px; }.rx-cavern-title { gap:8px; }.rx-cavern-title h2 { font-size:15px; }.rx-cavern-title p { font-size:9px; }.rx-cavern-tools { gap:7px; }.rx-cavern-state { font-size:9px; padding:5px 8px; gap:5px; }.rx-cavern-toggle { width:30px; height:30px; }.rx-cavern-footer { padding:12px 14px; flex-wrap:wrap; gap:8px; }.rx-cavern-footer p { font-size:10px; }.rx-cavern-footer small { font-size:9px; }.rx-cavern-swipe { display:block; } }
+@media(prefers-reduced-motion:reduce) { .rx-cavern .rx-cavern-worker { animation:none; background-position:0 0; } }

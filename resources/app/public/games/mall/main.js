@@ -1,8 +1,8 @@
-// AIX 商城 · 用户端逻辑（2026-10-30；2026-10-31 担保交易 + 保证金 + 多图/规格/简介 + 买家评论）
-// 数据源：/api/mall/*（平台钱包 session，同游戏大厅 /api/a-token/profile 的登录态）。
+// Solvex 商城 · 用户端逻辑（2026-10-30；2026-10-31 担保交易 + 保证金 + 多图/规格/简介 + 买家评论）
+// 数据源：/api/mall/*（平台钱包 session，与主站 /api/a-token/profile 的登录态一致）。
 // 货款担保：下单付款冻结在平台担保账户，买家确认收货后才结算给商户；待发货可取消全额退款。
-import { WebsiteSession } from '/games/run-aix/session.js?v=20261028b';
-import { signDeposit, signOrder } from '/games/mall/wallet-sign.js?v=20261031e';
+import { WebsiteSession } from '/games/mall/session.js?v=20261111-domain-solvex-1';
+import { signDeposit, signOrder } from '/games/mall/wallet-sign.js?v=20261111-domain-solvex-1';
 
 const $ = id => document.getElementById(id);
 const fmtA = v => { try { const n = Number(v); return n.toLocaleString('zh-CN', { maximumFractionDigits: 6 }); } catch { return '0'; } };
@@ -121,7 +121,7 @@ function renderShop() {
     body.append(shopLine);
     const meta = el('div', 'p-meta');
     const price = el('span', 'p-price', fmtA(product.priceA));
-    price.append(el('small', '', 'AIX'));
+    price.append(el('small', '', 'SVX'));
     meta.append(price);
     body.append(meta);
     card.append(thumb, body);
@@ -237,7 +237,7 @@ function renderProduct() {
   const right = el('section', 'panel buy-panel');
   const priceRow = el('div', 'p-meta'); priceRow.style.padding = '0 0 12px';
   const priceText = el('span', 'p-price', `${fmtA(product.priceA)} `);
-  priceText.append(el('small', '', 'AIX / 件'));
+  priceText.append(el('small', '', 'SVX / 件'));
   priceRow.append(priceText);
   const stockLine = el('p', `p-stock${product.stock <= 5 ? ' low' : ''}`,
     product.stock <= 5 ? `仅剩 ${product.stock} 件` : `库存 ${product.stock} 件`);
@@ -264,9 +264,9 @@ function renderProduct() {
   manageAddr.style.marginTop = '8px';
 
   const total = el('div', 'total-row');
-  const totalLabel = el('span', '', '应付合计'); const totalValue = el('b', '', '— AIX');
+  const totalLabel = el('span', '', '应付合计'); const totalValue = el('b', '', '— SVX');
   total.append(totalLabel, totalValue);
-  function refreshTotal() { totalValue.textContent = ''; totalValue.append(el('span', '', fmtA(String(Number(product.priceA) * quantity))), el('small', '', ' AIX')); }
+  function refreshTotal() { totalValue.textContent = ''; totalValue.append(el('span', '', fmtA(String(Number(product.priceA) * quantity))), el('small', '', ' SVX')); }
   refreshTotal();
 
   const buy = el('button', 'primary-button', '确认支付');
@@ -282,7 +282,7 @@ function renderProduct() {
       const { signature, timestamp } = await signOrder({ address: walletState.address, productId: product.id, quantity });
       message.textContent = '支付中…';
       const result = await api('/api/mall/orders', { productId: product.id, quantity, addressId: addrSelect.value, signature, timestamp });
-      toast(`下单成功，${result.order.totalA} AIX 已由平台担保`, 'ok');
+      toast(`下单成功，${result.order.totalA} SVX 已由平台担保`, 'ok');
       await loadState();
       location.hash = '#orders';
     } catch (e) { message.textContent = e.message; toast(e.message, 'err'); }
@@ -306,8 +306,8 @@ function orderCard(order, { merchantView = false } = {}) {
   const info = el('div', 'order-info');
   info.append(el('h3', '', order.productTitle));
   const line = el('div', 'line');
-  line.append(el('span', '', `× ${order.quantity}`), el('span', '', '单价'), el('b', '', `${fmtA(order.priceA)} AIX`),
-    el('span', '', '合计'), el('b', '', `${fmtA(order.totalA)} AIX`));
+  line.append(el('span', '', `× ${order.quantity}`), el('span', '', '单价'), el('b', '', `${fmtA(order.priceA)} SVX`),
+    el('span', '', '合计'), el('b', '', `${fmtA(order.totalA)} SVX`));
   info.append(line);
   body.append(info);
 
@@ -384,9 +384,9 @@ function orderCard(order, { merchantView = false } = {}) {
       actions.append(tip);
       const cancel = el('button', 'danger-button', '取消订单');
       cancel.onclick = async () => {
-        if (!window.confirm(`确认取消该订单？将全额退款 ${fmtA(order.totalA)} AIX 至你的账户。`)) return;
+        if (!window.confirm(`确认取消该订单？将全额退款 ${fmtA(order.totalA)} SVX 至你的账户。`)) return;
         cancel.disabled = true;
-        try { const r = await api('/api/mall/orders/cancel', { orderId: order.id }); toast(`已取消，退款 ${r.refundA} AIX 已到账`, 'ok'); await loadState(); }
+        try { const r = await api('/api/mall/orders/cancel', { orderId: order.id }); toast(`已取消，退款 ${r.refundA} SVX 已到账`, 'ok'); await loadState(); }
         catch (e) { toast(e.message, 'err'); cancel.disabled = false; }
       };
       actions.append(cancel);
@@ -471,7 +471,7 @@ function renderMerchantEntry() {
     $('my-shop-avatar').textContent = merchant.shopName.slice(0, 1);
   } else if (!pending && state?.depositInfo) {
     $('deposit-usdt-amount').textContent = `${state.depositInfo.usdt} USDT`;
-    $('deposit-aix-amount').textContent = `${state.depositInfo.aix} AIX`;
+    $('deposit-svx-amount').textContent = `${state.depositInfo.svx} SVX`;
   }
 }
 $('apply-form').onsubmit = async event => {
@@ -481,7 +481,7 @@ $('apply-form').onsubmit = async event => {
   const shopName = $('apply-shop-name').value.trim();
   try {
     if (walletState.status !== 'ready') { message.textContent = '请先登录钱包再申请开店'; return; }
-    const amount = depositCurrency === 'USDT' ? (state?.depositInfo?.usdt || '100') : (state?.depositInfo?.aix || '5000');
+    const amount = depositCurrency === 'USDT' ? (state?.depositInfo?.usdt || '100') : (state?.depositInfo?.svx || '5000');
     message.textContent = '请在钱包中签名确认缴纳保证金…';
     const { signature, timestamp } = await signDeposit({ address: walletState.address, shopName, currency: depositCurrency, amount });
     message.textContent = '保证金缴纳中…';

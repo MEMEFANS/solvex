@@ -1,4 +1,4 @@
-// AIX 商城商户审核 + 订单总览（后台面板 /admin.html #mall）：入驻/关店审核、订单与担保在冻资金对账
+// Solvex 商城商户审核 + 订单总览（后台面板 /admin.html #mall）：入驻/关店审核、订单与担保在冻资金对账
 (() => {
   const $ = id => document.getElementById(id);
   const STATUS = { pending: '入驻待审核', active: '已通过', rejected: '已拒绝', closing: '关店待审核', closed: '已关店' };
@@ -27,7 +27,7 @@
       for (const m of merchants) {
         const dep = m.deposit ? `${esc(m.deposit.amount)} ${esc(m.deposit.currency)}${m.deposit.refundedAt ? '（已退）' : ''}` : '—';
         const row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:10px;padding:12px;border:1px solid var(--admin-line,#29413e);border-radius:8px;align-items:center';
+        row.style.cssText = 'display:grid;grid-template-columns:1fr auto;gap:10px;padding:12px;border:1px solid var(--admin-line,#d9e4e0);border-radius:8px;align-items:center';
         row.innerHTML = `<div><b>${esc(m.shopName)}</b> <span style="opacity:.7">${esc(m.walletMask || m.wallet)}</span>`
           + `<div style="font-size:12px;opacity:.75;margin-top:4px">${esc(m.intro || '')}</div>`
           + `<div style="font-size:12px;opacity:.6;margin-top:2px">保证金 ${dep} · 申请于 ${fmtTime(m.createdAt)} · ${STATUS[m.status] || esc(m.status)}</div></div>`;
@@ -82,10 +82,10 @@
       if (!orders.length) { root.innerHTML = '<div class="admin-inline-status">暂无订单</div>'; return; }
       for (const o of orders) {
         const row = document.createElement('div');
-        row.style.cssText = 'padding:12px;border:1px solid var(--admin-line,#29413e);border-radius:8px';
+        row.style.cssText = 'padding:12px;border:1px solid var(--admin-line,#d9e4e0);border-radius:8px';
         const ship = o.shipCompany ? ` · 物流 ${esc(o.shipCompany)} ${esc(o.shipTracking || '')}` : '';
         row.innerHTML = `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(o.productTitle)}</b>`
-          + `<span style="opacity:.7">× ${o.quantity}</span><b style="color:#50d2c2">${esc(o.totalA)} AIX</b>`
+          + `<span style="opacity:.7">× ${o.quantity}</span><b style="color:#0e9c88">${esc(o.totalA)} SVX</b>`
           + `<span style="margin-left:auto;font-size:12px;opacity:.75">${OSTATUS[o.status] || esc(o.status)}</span></div>`
           + `<div style="font-size:12px;opacity:.7;margin-top:4px">店铺 ${esc(o.shopName)}（${esc(o.merchantMask)}）→ 买家 ${esc(o.buyerMask)} · 下单 ${fmtTime(o.createdAt)}${ship}</div>`
           + `<div style="font-size:11px;opacity:.5;margin-top:2px">${esc(o.id)}</div>`;

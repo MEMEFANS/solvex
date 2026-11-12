@@ -1,31 +1,40 @@
 import { createAixTransaction } from './a-token-ledger.js';
 import { formatUnits } from 'ethers';
+import { nextSettlementAt } from './a-token-time.js';
 import { readAixIncome, splitStakePayment, beijingDayStart } from './a-token-income.js';
 
 const A_TOKEN_DECIMALS = 18;
 const USDT_DECIMALS = 6;
 const A = (n) => BigInt(n) * 10n ** BigInt(A_TOKEN_DECIMALS);
 
-// A1-A10 等级常量：个人持有门槛 + 团队持有门槛 + 级差收益比例(bps)
-// 2026-10-24 用户确认：级差每档 10% → 8.8%（880bps × 档级），A9 封顶 79.2%
-const TEAM_LEVELS = [
-  { level: 1,  personalHeld: 1000,    teamHeld: 5000,        rateBps: 880, label: 'A1' },
-  { level: 2,  personalHeld: 2000,    teamHeld: 10000,       rateBps: 1760, label: 'A2' },
-  { level: 3,  personalHeld: 4000,    teamHeld: 50000,       rateBps: 2640, label: 'A3' },
-  { level: 4,  personalHeld: 8000,    teamHeld: 100000,      rateBps: 3520, label: 'A4' },
-  { level: 5,  personalHeld: 16000,   teamHeld: 500000,      rateBps: 4400, label: 'A5' },
-  { level: 6,  personalHeld: 32000,   teamHeld: 1000000,     rateBps: 5280, label: 'A6' },
-  { level: 7,  personalHeld: 64000,   teamHeld: 5000000,     rateBps: 6160, label: 'A7' },
-  { level: 8,  personalHeld: 128000,  teamHeld: 10000000,    rateBps: 7040, label: 'A8' },
-  { level: 9,  personalHeld: 256000,  teamHeld: 50000000,    rateBps: 7920, label: 'A9' },
-  { level: 10, personalHeld: 500000,  teamHeld: 100000000,   rateBps: 8800, label: 'A10 享受交易手续费分红' },
+// LV1-LV10 双条件等级（2026-11-09 P3 用户确认）：
+// 必须同时满足「个人升级仓金额」与「团队业绩」才可达到对应等级。
+// rateBps = 自身级差比例（5% → 50%）；级差奖励 = 自身比例 − 直接下级比例。
+export const TEAM_LEVELS = [
+  { level: 1,  warehouseUnits: A(1000),     teamPerfUnits: A(6000),       rateBps: 500, label: 'V1' },
+  { level: 2,  warehouseUnits: A(3000),     teamPerfUnits: A(30000),      rateBps: 1000, label: 'V2' },
+  { level: 3,  warehouseUnits: A(5000),     teamPerfUnits: A(100000),     rateBps: 1500, label: 'V3' },
+  { level: 4,  warehouseUnits: A(10000),    teamPerfUnits: A(500000),     rateBps: 2000, label: 'V4' },
+  { level: 5,  warehouseUnits: A(20000),    teamPerfUnits: A(2000000),    rateBps: 2500, label: 'V5' },
+  { level: 6,  warehouseUnits: A(40000),    teamPerfUnits: A(5000000),    rateBps: 3000, label: 'V6' },
+  { level: 7,  warehouseUnits: A(80000),    teamPerfUnits: A(20000000),   rateBps: 3500, label: 'V7' },
+  { level: 8,  warehouseUnits: A(160000),   teamPerfUnits: A(50000000),   rateBps: 4000, label: 'V8' },
+  { level: 9,  warehouseUnits: A(320000),   teamPerfUnits: A(100000000),  rateBps: 4500, label: 'V9' },
+  { level: 10, warehouseUnits: A(640000),   teamPerfUnits: A(500000000),  rateBps: 5000, label: 'V10' },
 ];
+// 前端展示用（Number，禁止把 BigInt 直接放进 JSON）
+const TEAM_LEVELS_VIEW = TEAM_LEVELS.map(t => ({
+  level: t.level,
+  label: t.label,
+  warehouse: Number(formatUnits(t.warehouseUnits, A_TOKEN_DECIMALS)),
+  teamPerf: Number(formatUnits(t.teamPerfUnits, A_TOKEN_DECIMALS)),
+  ratePct: t.rateBps / 100,
+}));
 
-const DIRECT_RATE_BPS = 1500n;   // 直推 15%
-const INDIRECT_RATE_BPS = 1000n; // 间推 10%
-const PARITY_RATE_BPS = 1000n;    // 平级 10%
+const DIRECT_STAKE_RATE_BPS = 1000n; // 直推 10%：按下级质押收益计算（2026-11-09 新规）
 
-export function createATokenTeamService({ database, walletService, rotationAddresses = '', rotationHideViewers = '', reportingExclusions = null }) {
+
+export function createATokenTeamService({ database, walletService, rotationAddresses = '', rotationHideViewers = '', reportingExclusions = null, pendingService = null, clock = () => Date.now() }) {
   const transaction = createAixTransaction(database, walletService);
   const k = (v) => String(v || '').toLowerCase();
   // 轮换收款地址（逗号分隔，含套餐专属格式 '2:0x..'）用于展示统计排除：
@@ -64,7 +73,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     if (reportingTxs) {
       const proWallets = database.listATokenMinerWalletsByPlan('pro1500');
       const include = row => {
-        if (row?.status !== 'confirmed' || String(row.plan) !== '2' || row.paymentAsset === 'AIX' || !proWallets.has(k(row.wallet))) return;
+        if (row?.status !== 'confirmed' || String(row.plan) !== '2' || row.paymentAsset === 'AIX' || row.paymentAsset === 'SVX' || !proWallets.has(k(row.wallet))) return;
         const hasBnbMiner = database.listATokenMiners(row.wallet).some(miner =>
           miner.plan === 'pro1500' && !String(miner.activationId || '').startsWith('ata_aix_'));
         if (hasBnbMiner) map.set(k(row.wallet), { mini: 0, pro: 1 });
@@ -146,18 +155,21 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     _chainRawWallet = raw;
     _chainBuiltAt = now;
   }
-  // 推荐链向上追溯的最大层数（2026-10-24 用户确认：团队奖最多向上发 9 代；级差最多发 10 代 → 链走 10 代足够）
-  const MAX_REWARD_CHAIN_DEPTH = 10;
-  // 级差只发前 10 代（链位置 0~9）
-  const LEVEL_DIFF_MAX_DEPTH = 10;
+  // 推荐链向上追溯的最大层数（2026-11-12 调整：团队分润最多向上发 30 代 → 链走 30 代）
+  const MAX_REWARD_CHAIN_DEPTH = 30;
+  // 级差只发前 30 代（链位置 0~29）
+  const LEVEL_DIFF_MAX_DEPTH = 30;
   // 团队奖只发前 9 代（链位置 0~8，首个有级别上级拿满档）
   const TEAM_AWARD_MAX_DEPTH = 9;
-  function getReferralChain(address) {
+  // 团队业绩要覆盖整条推荐链（全团队都算），因此允许调用方传入更大的层数上限。
+  const TEAM_PERF_MAX_DEPTH = 1000;
+  function getReferralChain(address, maxDepth = MAX_REWARD_CHAIN_DEPTH) {
     ensureChainMaps();
     const chain = [];
     let cur = k(address);
     const visited = new Set([cur]);
-    while (chain.length < MAX_REWARD_CHAIN_DEPTH) {
+    const limit = Math.max(1, Number(maxDepth) || MAX_REWARD_CHAIN_DEPTH);
+    while (chain.length < limit) {
       const referrerRaw = _chainParent.get(cur);
       if (!referrerRaw) break;
       const rk = k(referrerRaw);
@@ -172,12 +184,14 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   }
 
   // ── 个人持有 A（18 decimals units, BigInt）：钱包余额 + 质押中本金 ──
-  // 本人级别判定用：质押不降级别、赎回不升级别，只有真正卖出/转出 AIX 才下降
+  // 本人级别判定用：质押不降级别、赎回不升级别，只有真正卖出/转出 SVX 才下降
   // 2026-09-27 起矿机剩余未产出不再计入个人业绩（矿机≠持仓）；团队业绩仍保留下级矿机剩余口径
+  // 2026-11-12 起能量（energy）不计入持币业绩：它只是本金分期返还，不算持仓
   function getPersonalHeld(address) {
     try {
       let total = walletService.balanceUnits(address, 'A');
       for (const s of database.listATokenStakes(address)) {
+        if (s.planId === 'energy') continue;
         if (s.status === 'active') total += splitStakePayment(s, s.totalEarnedUnits).outstanding;
       }
       return total;
@@ -186,10 +200,12 @@ export function createATokenTeamService({ database, walletService, rotationAddre
 
   // ── 下级质押中本金 + 矿机剩余未产出（18 decimals units, BigInt）──
   // 团队业绩用：下级质押本金 + 矿机剩余量；产出后递减，赎回则下降
+  // 2026-11-12 起能量（energy）同样不计入团队持币口径
   function getStakedPrincipal(address) {
     try {
       let total = 0n;
       for (const s of database.listATokenStakes(address)) {
+        if (s.planId === 'energy') continue;
         if (s.status === 'active') total += splitStakePayment(s, s.totalEarnedUnits).outstanding;
       }
       for (const m of database.listATokenMiners(address)) {
@@ -237,7 +253,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   }
 
   // ── 后台手动设置的「团队展示数据」（仅前端展示，绝不参与等级/费率/分润等经济计算）──
-  // 虚拟会员开通矿机即视为持有对应 AIX 业绩：Mini=100 AIX、Pro=1500 AIX（与真实新矿机满额一致）
+  // 虚拟会员开通矿机即视为持有对应 SVX 业绩：Mini=100 SVX、Pro=1500 SVX（与真实新矿机满额一致）
   const VIRTUAL_MINI_HOLD_UNITS = 100n * 10n ** BigInt(A_TOKEN_DECIMALS);
   const VIRTUAL_PRO_HOLD_UNITS = 1500n * 10n ** BigInt(A_TOKEN_DECIMALS);
 
@@ -425,7 +441,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     // 本人被设置时，其虚拟直推矿机也属于自己的团队矿机（团队口径含直推）
     const ownDirectMini = acc.own ? acc.dDirectMini : 0;
     const ownDirectPro = acc.own ? acc.dDirectPro : 0;
-    // 真实直推业绩：每个直推用户的个人持有（AIX 余额 + 质押本金 + 矿机剩余）之和，不含其下级
+    // 真实直推业绩：每个直推用户的个人持有（SVX 余额 + 质押本金 + 矿机剩余）之和，不含其下级
     let directRealHoldUnits = 0n;
     for (const w of r.directSet) {
       try { directRealHoldUnits += getPersonalHeld(w); } catch {}
@@ -465,7 +481,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   }
 
   // ── 团队持有：记忆化递归（每钱包质押本金查一次、子树和算一次，整体 O(n)，防环）──
-  // 团队业绩 = 下级钱包 AIX 余额 + 下级 active 质押本金 + 下级 active 矿机剩余
+  // 团队业绩 = 下级钱包 SVX 余额 + 下级 active 质押本金 + 下级 active 矿机剩余
   // 注意：active 质押本金未退回钱包，所以不会与钱包余额重复；到期后质押变 completed 不算，本金已退回钱包
   function teamHeldOf(address, childrenMap, stakedCache, walletCache, teamCache, visiting) {
     const key = k(address);
@@ -497,7 +513,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         if (!walletCache.has(childKey)) {
           try { walletCache.set(childKey, walletService.balanceUnits(child, 'A')); } catch { walletCache.set(childKey, 0n); }
         }
-        total += walletCache.get(childKey);       // 下级钱包里持有的 AIX
+        total += walletCache.get(childKey);       // 下级钱包里持有的 SVX
         total += stakedCache.get(childKey);       // 下级质押中的本金 + 矿机剩余
         total += teamCache.get(childKey) || 0n;    // 环上子节点的子树不计（与旧递归语义一致）
       }
@@ -512,12 +528,22 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return teamHeldOf(address, childrenMap, new Map(), new Map(), new Map(), new Set());
   }
 
-  // ── 计算等级：个人持有 + 团队持有 都达标才能升级 ──
-  function calcLevel(personalUnits, teamUnits) {
+  // ── 升级仓金额（P3）：仅 active 仓位计入；退出/赎回（redeeming）立即掉级 ──
+  function getUpgradeUnits(address) {
+    try { return BigInt(database.sumATokenUpgradeUnits?.(address) || '0'); } catch { return 0n; }
+  }
+
+  // ── 团队业绩（P3）：按币计、全团队累计、可冲销（反向事件净额）──
+  function getTeamPerfUnits(address) {
+    try { return BigInt(database.sumATokenTeamPerfUnits?.(address) || '0'); } catch { return 0n; }
+  }
+
+  // ── 计算等级：个人升级仓金额 + 团队业绩 必须同时达标 ──
+  function calcLevel(upgradeUnits, teamPerfUnits) {
     let level = 0;
     for (let i = TEAM_LEVELS.length - 1; i >= 0; i--) {
       const t = TEAM_LEVELS[i];
-      if (personalUnits >= A(t.personalHeld) && teamUnits >= A(t.teamHeld)) {
+      if (upgradeUnits >= t.warehouseUnits && teamPerfUnits >= t.teamPerfUnits) {
         level = t.level;
         break;
       }
@@ -529,14 +555,14 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   // manualLevel 语义=保底等级（只升不降）：实际等级取 max(自动等级, 保底等级)；
   // 持仓达标更高等级时自动升级，跌破保底时维持保底；manualLevel=0 表示完全按持仓自动计算
   function applyFloor(autoLevel, manualLevel) {
-    return manualLevel > 0 ? Math.max(Number(manualLevel), autoLevel) : autoLevel;
+    return autoLevel; // 新规则只认升级舱与团队业绩双条件，旧手动保底不再生效。
   }
   function snapshot(address) {
-    const personalUnits = getPersonalHeld(address);
-    const teamUnits = getTeamHeld(address);
+    const upgradeUnits = getUpgradeUnits(address);
+    const teamPerfUnits = getTeamPerfUnits(address);
     const existing = database.getATokenTeamLevel?.(address);
     const manualLevel = existing?.manualLevel || 0;
-    const level = applyFloor(calcLevel(personalUnits, teamUnits), manualLevel);
+    const level = applyFloor(calcLevel(upgradeUnits, teamPerfUnits), manualLevel);
     const links = activeLinks();
     const directValid = links.filter(
       (item) => k(item.referrerWallet) === k(address) && getPersonalHeld(item.wallet) > 0n
@@ -545,15 +571,20 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     database.upsertATokenTeamLevelRow({
       wallet: address,
       level,
-      personalHeldUnits: personalUnits.toString(),
-      teamHeldUnits: teamUnits.toString(),
+      // 复用旧列存 P3 双条件指标：personal_held_units = 升级仓金额，team_held_units = 团队业绩
+      personalHeldUnits: upgradeUnits.toString(),
+      teamHeldUnits: teamPerfUnits.toString(),
       directValidCount: directValid,
       updatedAt: now,
       manualLevel: manualLevel > 0 ? manualLevel : undefined,
     });
     // 同步 wallet_users 里的 level 字段，避免其他地方读旧值
     try { walletService?.setUserLevel?.(address, level); } catch {}
-    return { wallet: address, level, personalA: Number(formatUnits(personalUnits, A_TOKEN_DECIMALS)), teamA: Number(formatUnits(teamUnits, A_TOKEN_DECIMALS)) };
+    return {
+      wallet: address, level,
+      upgradeA: Number(formatUnits(upgradeUnits, A_TOKEN_DECIMALS)),
+      teamPerfA: Number(formatUnits(teamPerfUnits, A_TOKEN_DECIMALS)),
+    };
   }
 
   // ── 全量快照：一次建树 + 记忆化递归 + 事务批量写（O(n)，不随人数平方增长）──
@@ -569,26 +600,28 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     const links = activeLinks();
     const childrenMap = buildReferralTree(links);
     const personalCache = new Map();
-    const stakedCache = new Map();
-    const walletCache = new Map();
-    const teamCache = new Map();
-    const visiting = new Set();
     const wallets = new Set();
     for (const item of links) {
       if (item.wallet) wallets.add(item.wallet);
       if (item.referrerWallet) wallets.add(item.referrerWallet);
     }
+    // P3：等级双条件指标改为「升级仓金额 + 团队业绩」，批量分组读取避免逐人查库。
+    let upgradeTotals = new Map();
+    let perfTotals = new Map();
+    try { upgradeTotals = database.sumAllATokenUpgradeUnits?.() || new Map(); } catch {}
+    try { perfTotals = database.sumAllATokenTeamPerfUnits?.() || new Map(); } catch {}
+    for (const w of upgradeTotals.keys()) wallets.add(w);
+    for (const w of perfTotals.keys()) wallets.add(w);
     const now = Date.now();
     const rows = [];
     for (const w of wallets) {
       try {
         const key = k(w);
-        if (!personalCache.has(key)) personalCache.set(key, getPersonalHeld(w));
-        const personalUnits = personalCache.get(key);
-        const teamUnits = teamHeldOf(w, childrenMap, stakedCache, walletCache, teamCache, visiting);
+        const upgradeUnits = upgradeTotals.get(key) || 0n;
+        const teamPerfUnits = perfTotals.get(key) || 0n;
         const existing = database.getATokenTeamLevel?.(w);
         const manualLevel = existing?.manualLevel || 0;
-        const level = applyFloor(calcLevel(personalUnits, teamUnits), manualLevel);
+        const level = applyFloor(calcLevel(upgradeUnits, teamPerfUnits), manualLevel);
         let directValid = 0;
         for (const cw of childrenMap.get(key) || []) {
           const ck = k(cw);
@@ -597,8 +630,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         }
         rows.push({
           wallet: w, level,
-          personalHeldUnits: personalUnits.toString(),
-          teamHeldUnits: teamUnits.toString(),
+          personalHeldUnits: upgradeUnits.toString(),
+          teamHeldUnits: teamPerfUnits.toString(),
           directValidCount: directValid, updatedAt: now,
           manualLevel: manualLevel > 0 ? manualLevel : undefined,
         });
@@ -618,38 +651,64 @@ export function createATokenTeamService({ database, walletService, rotationAddre
 
   // ── 获取等级（从快照表读）──
   function getLevel(address) {
-    const row = database.getATokenTeamLevel(address);
-    return row?.level || 0;
+    return calcLevel(getUpgradeUnits(address), getTeamPerfUnits(address));
   }
 
   // ── 后台手动指定等级：manualLevel 作为「保底等级」，实际等级=max(自动等级, 保底)，只升不降 ──
   // level 1-10 = 设置/更新保底；0 = 取消保底，恢复完全按持仓自动计算
   // 等级取值统一交给 snapshot()（applyFloor），这里只负责写入/删除保底标记
-  function setManualLevel(address, level) {
-    const lv = Math.max(0, Math.min(10, Math.floor(Number(level) || 0)));
-    const row = { ...(database.getATokenTeamLevel?.(address) || {}), wallet: address, updatedAt: Date.now() };
-    if (lv > 0) row.manualLevel = lv; else delete row.manualLevel;
-    // 先落保底标记（新用户无快照行时补齐必填字段），snapshot 紧接着会重算并覆盖这些值
-    if (row.personalHeldUnits === undefined) row.personalHeldUnits = '0';
-    if (row.teamHeldUnits === undefined) row.teamHeldUnits = '0';
-    if (row.directValidCount === undefined) row.directValidCount = 0;
-    if (row.level === undefined) row.level = lv;
-    database.upsertATokenTeamLevelRow(row);
-    return snapshot(address);
+  function setManualLevel() { throw new Error('等级按升级舱与团队业绩自动计算，不支持手动保底'); }
+
+  // ── 团队业绩记账（P3）：按币计、全团队都算（整条推荐链），可冲销 ──
+  // 一笔业务只记一次；id 由 bizType+bizId+链位置确定，重复调用幂等。
+  function recordTeamPerformance(sourceWallet, { bizType, bizId, amountUnits, occurredAt = Date.now(), payload = {} } = {}) {
+    // 2026-11-12：能量/质押本金、盲盒产出均不记团队业绩（业绩只认矿池 node 与升级舱 upgrade）
+    if (bizType === 'energy' || bizType === 'stake' || bizType === 'blindbox') return { recorded: 0, depth: 0 };
+    const units = BigInt(amountUnits || '0');
+    const source = k(sourceWallet);
+    if (units <= 0n || !source || !bizType || !bizId) return { recorded: 0, depth: 0 };
+    if (isBanned(source)) return { recorded: 0, depth: 0 };
+    const chain = getReferralChain(source, TEAM_PERF_MAX_DEPTH);
+    let recorded = 0;
+    for (let i = 0; i < chain.length; i += 1) {
+      const owner = chain[i];
+      if (isBanned(owner)) continue;
+      const ok = database.insertATokenTeamPerfEventRow({
+        id: `atpe_${bizType}_${bizId}_${i + 1}`,
+        ownerWallet: owner,
+        sourceWallet: source,
+        bizType,
+        bizId,
+        amountUnits: units.toString(),
+        asset: 'A',
+        depth: i + 1,
+        occurredAt: Number(occurredAt) || Date.now(),
+        createdAt: Date.now(),
+        payload,
+      });
+      if (ok) recorded += 1;
+    }
+    return { recorded, depth: chain.length };
   }
 
-  // ── 团队分润（矿机产出/质押收益通用）：直推15% + 间推10% + 级差/平级 ──
-  // ── 有效用户闸门（2026-10-01 用户确认）──
-  // 规则：只有「有矿机（含后台赠送）/ 有质押 / 有 confirmed 激活记录」的用户才能获得动态奖励；
-  // 一旦激活或质押过即永久有效（矿机到期、质押赎回不影响）。纯拉人头、自己从不激活/质押者不发任何动态奖励。
-  const eligibleStmt = database.db.prepare(
-    'SELECT 1 FROM a_token_miners WHERE wallet=? ' +
-    'UNION ALL SELECT 1 FROM a_token_stakes WHERE wallet=? ' +
-    'UNION ALL SELECT 1 FROM a_token_activations WHERE wallet=? AND status=? LIMIT 1'
-  );
-  function isEligibleRecipient(wallet) {
-    return !!eligibleStmt.get(wallet, wallet, wallet, 'confirmed');
+  // 冲销：把某笔业务写入的团队业绩逐条反向，等级在下一次 snapshot 时回落。
+  function reverseTeamPerformance(sourceWallet, bizType, bizId) {
+    const rows = database.listATokenTeamPerfEventsByBiz?.(sourceWallet, bizType, bizId) || [];
+    let reversed = 0;
+    for (const row of rows) {
+      const done = database.reverseATokenTeamPerfEvent?.(row.id, {
+        createdAt: Date.now(),
+        payload: { reason: 'reverse', bizType, bizId },
+      });
+      if (done) reversed += 1;
+    }
+    return { reversed };
   }
+
+  // ── 团队分润（矿机产出/质押收益通用）：直推 10%（仅质押）+ 级差/平级 ──
+  // 动态收益仅发给当前仍持有有效矿池的用户。
+  const eligibleStmt = database.db.prepare("SELECT 1 FROM a_token_nodes WHERE wallet=? AND status='active' AND expires_at>? LIMIT 1");
+  function isEligibleRecipient(wallet) { return !!eligibleStmt.get(k(wallet), clock()); }
 
   // 幂等判重：id 结构 = prefix_kind_sourceId_slotAt_idx。
   // 走 source_wallet 索引 + LIKE 边界匹配，命中即停（LIMIT 1），
@@ -671,20 +730,21 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     if (totalReward <= 0n) return { distributed: false, reason: 'zero reward' };
     const results = [];
 
-    const credit = (recipient, kind, amount, levelInfo = {}) => {
+    const credit = (recipient, kind, amount, levelInfo = {}, options = {}) => {
       if (amount <= 0n) return;
       // 封禁账号不发放任何团队分润（直推/间推/团队/级差/平级）
       if (isBanned(recipient)) {
         results.push({ recipient, kind, amount: amount.toString(), credited: false, skipped: 'banned' });
         return;
       }
-      // 有效用户闸门：无矿机/无质押/无激活记录的收款方不发（不顺延）
+      // 所有动态奖励统一受有效矿池门槛约束。
       if (!isEligibleRecipient(recipient)) {
         results.push({ recipient, kind, amount: amount.toString(), credited: false, skipped: 'ineligible' });
         return;
       }
+      const rewardId = `${prefix}_${kind}_${sourceId}_${slotAt}_${results.length}`;
       const recorded = database.insertATokenTeamRewardRow({
-        id: `${prefix}_${kind}_${sourceId}_${slotAt}_${results.length}`,
+        id: rewardId,
         recipientWallet: recipient,
         sourceWallet: userAddress,
         kind: `${prefix}_${kind}`,
@@ -694,57 +754,56 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         createdAt: receivedAt,
         periodEndAt: slotAt,
       });
-      if (recorded.inserted) walletService.creditBalance(recipient, 'A', amount);
+      if (recorded.inserted) {
+        // P3：级差收益统一进入待领取（pending），由用户主动领取后入主钱包；
+        // 没有 pendingService 的旧调用路径保持直接入账，避免破坏历史测试/工具脚本。
+        if (pendingService) {
+          pendingService.createReward({
+            wallet: recipient,
+            bizType: 'team',
+            bizId: rewardId,
+            periodKey: 'v1',
+            amountUnits: amount.toString(),
+            quotaUnits: amount.toString(),
+            availableAt: nextSettlementAt(slotAt - 1),
+            payload: {
+              rewardId, sourceWallet: userAddress, kind: `${prefix}_${kind}`,
+              level: levelInfo.level ?? null, rateBps: levelInfo.rateBps ?? null, slotAt,
+            },
+          });
+        } else {
+          walletService.creditBalance(recipient, 'A', amount);
+        }
+      }
       results.push({ recipient, kind, amount: amount.toString(), credited:recorded.inserted });
     };
 
-    // ① 直推 15%
-    if (chain[0]) {
-      const amt = (totalReward * DIRECT_RATE_BPS) / 10000n;
-      credit(chain[0], 'direct', amt, { level: 1, rateBps: Number(DIRECT_RATE_BPS) });
+    // ① 直推 10%（2026-11-09 新规）：只按下级「质押收益」计算，不再按投资额；
+    //    矿机产出发放不再产生直推奖励。
+    if ((prefix === 'stake' || prefix === 'node') && chain[0]) {
+      const amt = (totalReward * DIRECT_STAKE_RATE_BPS) / 10000n;
+      credit(chain[0], 'direct', amt, { level: 1, rateBps: Number(DIRECT_STAKE_RATE_BPS) });
     }
-    // ② 间推 10%
-    if (chain[1]) {
-      const amt = (totalReward * INDIRECT_RATE_BPS) / 10000n;
-      credit(chain[1], 'indirect', amt, { level: 2, rateBps: Number(INDIRECT_RATE_BPS) });
-    }
+    // ② 间推：新规归零并彻底移除（旧 10% 逻辑不再保留任何开关）
 
-    // ③ 团队奖/级差：沿链"逐层减法"模型（用户 2026-09-13 确认）
-    //    每个有级别上级实拿 = 自己档位% −（产单人档位% + 下方已分到的节点档位%之和）
-    //    命名口径（用户 2026-09-13 确认）：
-    //    - 下方没有任何级别占用（eaten=0，即产单人是 A0 且中间只有 A0）→ 拿自己满档位 = 团队奖(team)
-    //      例：A1 拿 A0 产的叫团队奖；A2-A9 伞下全是 A0 时拿满档位，也叫团队奖
-    //    - 下方已有级别拿过档位（eaten>0）→ 只拿剩下的差值 = 级差(level_diff)
-    //      例1：A0 产 100 枚 → A1 团队奖10；A2 级差 20−10=10；A9 级差 90−30=60
-    //      例2（倒挂）：A0→A1→A3→A2→A5 → A1 团队奖10、A3 级差20、A2 倒挂拿0（档位不占用空间）、
-    //                   A5 级差 50−(0+10+30)=10；继续向上只发给更高级别，最高分到 A9 档为止
-    //    - 算出 <0：倒挂不发奖，且自己档位不计入合计（不占空间）
-    //    - 算出 =0：同级，链上不发奖（平级奖改为按日结算，见 settleParityRewards）
-    //    - A0 中间层：档位 0，不影响合计（透明穿透）
-    //    - A10：不拿团队奖/级差/平级，截断整条链
-    //    - 层数限制（2026-10-24 用户确认）：级差只发前 10 代（链位置 i<10）；
-    //      第 10 代以外只允许发团队奖（eaten=0 时首个有级别上级拿满档）
+    // ③ 级差（2026-11-12 口径）：V1~V10 每级 5%，只按「矿机静态产出」计提；
+    //    节点/质押收益（prefix=stake/node）不参与级差，仅保留上面的直推 10%。
+    //    奖励 = 自己比例 − 直接下级比例；平级为 0、下级更高为 0。
+    //    直接下级：链位置 i=0 时是产单人本人，i>0 时是链上前一位。
+    //    一笔收益只沿链结算一次；奖励行 id 幂等，重复调用不会重复发放。
+    //    级差收益走 pending 待领取，与 P2 的待领取账本共用一套。
     const rateBpsOf = (lvl) => (lvl > 0 ? BigInt(TEAM_LEVELS[lvl - 1].rateBps) : 0n);
-    {
-      let eatenBps = rateBpsOf(userLevel);   // 已被下方占用的档位合计（从产单人档位起算）
-      for (let i = 0; i < chain.length; i++) {
+    if (prefix === 'miner') {
+      for (let i = 0; i < chain.length && i < LEVEL_DIFF_MAX_DEPTH; i++) {
         const uplineLevel = getLevel(chain[i]);
-        if (uplineLevel <= 0) continue;      // A0 中间层：穿透
-        if (uplineLevel >= 10) break;        // A10：截断整条链
-        const mineBps = rateBpsOf(uplineLevel);
-        const takeBps = mineBps - eatenBps;
-        if (takeBps > 0n) {
-          const isTeamAward = eatenBps === 0n;
-          // 团队奖超过 9 代不发；级差超过 10 代不发、也不占档位空间（2026-10-24 用户确认）
-          if (isTeamAward ? i >= TEAM_AWARD_MAX_DEPTH : i >= LEVEL_DIFF_MAX_DEPTH) continue;
-          const amt = (totalReward * takeBps) / 10000n;
-          // 命名：下方无级别占用 → 团队奖（拿满档位）；下方有级别拿过 → 级差（拿差值）
-          const pushAt = results.length;
-          credit(chain[i], isTeamAward ? 'team' : 'level_diff', amt, { level: uplineLevel, rateBps: Number(takeBps) });
-          // 无资格被跳过 → 档位不占空间（与倒挂同理），更高级别仍按原剩余空间分
-          if (results[pushAt]?.skipped !== 'ineligible') eatenBps += mineBps;
-        }
-        // takeBps <= 0：同级/倒挂，链上不发奖也不占档位空间（同级补偿走每日平级奖 settleParityRewards）
+        if (uplineLevel <= 0) continue;
+        const downlineLevel = i === 0 ? userLevel : getLevel(chain[i - 1]);
+        if (uplineLevel === downlineLevel && uplineLevel > 0) break;
+        const takeBps = rateBpsOf(uplineLevel) - rateBpsOf(downlineLevel);
+        if (takeBps <= 0n) continue;
+        const amt = (totalReward * takeBps) / 10000n;
+        if (amt <= 0n) continue;
+        credit(chain[i], 'level_diff', amt, { level: uplineLevel, rateBps: Number(takeBps) }, { viaPending: true, allowByLevel: true });
       }
     }
 
@@ -756,72 +815,13 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'miner', sourceId: minerId, slotAt }));
   }
 
-  // ── 质押收益分润（比例与矿机一致：直推15% + 间推10% + 级差/平级）──
+  // ── 节点/质押收益分润（2026-11-12 起仅直推 10%，不再参与级差；级差只认矿机静态产出）──
   function distributeStakeReward(userAddress, rewardUnits, stakeId, slotAt = Date.now(), receivedAt = slotAt) {
     return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'stake', sourceId: stakeId, slotAt, receivedAt }));
   }
 
-  // ── 平级奖（2026-10-02 改为每日 0 点日结前一天）──
-  // 规则（用户确认）：只看「直推且与我同级」的下级，取该下级【前一天全天】团队收益（团队奖 team + 级差 level_diff，
-  // 不含直推15%/间推10%）的 10% 作为平级奖；每个（上级, 下级, 北京日）一条记录。
-  // 每天北京时间 0 点后结算一次；幂等 id=parity_{北京日槽}_{上级}_{下级}，重复执行/重启补跑均不重复发放。
-  function settleParityRewards(now = Date.now()) {
-    const dayStart = beijingDayStart(now);
-    // 结算区间：前一天北京日 [dayStart-1d, dayStart)；daySlot 对应前一天
-    const settleStart = dayStart - 86400000;
-    const daySlot = Math.floor((dayStart + 28800000) / 86400000) - 1;
-    // 前一天全天团队奖+级差，按下级（收款方）汇总：平级奖基数 = 下级本人收到的 team/level_diff 收益
-    // 注意：amount_units 是 18 位精度大整数，不能在 SQLite 里 SUM（超出 JS 安全整数），取行后用 BigInt 聚合
-    const rows = database.db.prepare(`
-      SELECT recipient_wallet AS w, amount_units AS a
-      FROM a_token_team_rewards
-      WHERE kind IN ('miner_team','stake_team','miner_level_diff','stake_level_diff')
-        AND created_at >= ? AND created_at < ?`).all(settleStart, dayStart);
-    const sumByChild = new Map();
-    for (const row of rows) {
-      const w = k(row.w);
-      sumByChild.set(w, (sumByChild.get(w) || 0n) + BigInt(row.a || '0'));
-    }
-    const entries = [...sumByChild.entries()].filter(([, s]) => s > 0n);
-    if (!entries.length) return { settled: false, reason: 'no team income' };
-    snapshotAll();
-    const parentOf = new Map(activeLinks().map((l) => [k(l.wallet), k(l.referrerWallet || '')]));
-    const getRow = database.db.prepare('SELECT amount_units FROM a_token_team_rewards WHERE id=?');
-    let count = 0;
-    let total = 0n;
-    for (const [child, sum] of entries) {
-      const parent = parentOf.get(child);
-      if (!parent || parent === child) continue;
-      if (isBanned(child) || isBanned(parent)) continue;      // 封禁账号不参与平级奖
-      const childLevel = getLevel(child);
-      if (childLevel <= 0 || childLevel >= 10) continue;      // 无级别/A10 不参与平级
-      if (getLevel(parent) !== childLevel) continue;          // 仅「直推且同级」
-      if (!isEligibleRecipient(parent)) continue;             // 有效用户闸门
-      const amount = (sum * PARITY_RATE_BPS) / 10000n;
-      if (amount <= 0n) continue;
-      const id = `parity_${daySlot}_${parent}_${child}`;
-      const existing = getRow.get(id);
-      if (!existing) {
-        const rec = database.insertATokenTeamRewardRow({
-          id, recipientWallet: parent, sourceWallet: child, kind: 'parity',
-          level: childLevel, rateBps: Number(PARITY_RATE_BPS), amountUnits: amount.toString(),
-          createdAt: now, periodEndAt: dayStart,
-        });
-        if (rec.inserted) { walletService.creditBalance(parent, 'A', amount); count += 1; total += amount; }
-      } else if (BigInt(existing.amount_units) < amount) {
-        // 兼容 2026-10-02 由「当日滚动」改「0点日结」前的部分发放：日结时只补差额（只补不扣）。
-        // 正常日结前一天数据固定、一次发全，delta=0 不触发。
-        const delta = amount - BigInt(existing.amount_units);
-        database.db.prepare('UPDATE a_token_team_rewards SET amount_units=?, period_end_at=? WHERE id=?')
-          .run(amount.toString(), dayStart, id);
-        walletService.creditBalance(parent, 'A', delta);
-        count += 1; total += delta;
-      }
-    }
-    return count > 0
-      ? { settled: true, daySlot, count, total: total.toString(), totalA: formatUnits(total, A_TOKEN_DECIMALS) }
-      : { settled: false, reason: 'no same-level direct child' };
-  }
+  // 新方案取消平级奖；保留方法以兼容调度入口，不再生成或补发任何平级奖励。
+  function settleParityRewards() { return { settled: false, reason: 'disabled_by_model' }; }
 
   // ── A10 池：交易/互转手续费的分红份额全额进池（调用方已按 50% 预分），日结均分给所有 A10 用户 ──
   function distributeToA10Pool(feeAUnits, executionId, createdAt = Date.now()) {
@@ -837,7 +837,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return poolReward;
   }
 
-  // ── A10 日结：均分池子给所有 A10 用户（发 A 币）──
+  // ── A10 日结：均分池子给所有 A10 用户（发 SVX）──
   function settleA10Pool(now = Date.now()) {
     const settleDate = new Date(beijingDayStart(now) + 28800000).toISOString().slice(0, 10);
     if (database.getA10Pool(`settled_${settleDate}`)) return { settled:false, reason:'already settled' };
@@ -918,6 +918,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   function profile(address) {
     snapshot(address);
     const level = getLevel(address);
+    const upgradeUnits = getUpgradeUnits(address);
+    const teamPerfUnits = getTeamPerfUnits(address);
     const chain = getReferralChain(address);
     // 团队页的累计收益不能只取最近 200 笔，否则历史流水多时会被截断。
     const rewards = readAixIncome(database, address, 'team');
@@ -947,11 +949,13 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       const row = database.getATokenTeamLevel?.(item.wallet);
       const bal = getPersonalHeld(item.wallet);
       const teamHeld = teamHeldFor(item.wallet);
+      const dUpgradeUnits = getUpgradeUnits(item.wallet);
+      const dTeamPerfUnits = getTeamPerfUnits(item.wallet);
       // 该直推用户的虚拟团队业绩叠加（后台设置的虚拟矿机业绩沿推荐链传播到此直推用户）
       const dAcc = virtualStatsAccrual(item.wallet, links, overrideContext);
       const effTeamHeld = teamHeld + dAcc.teamHoldUnits;
-      // 保底等级只升不降：max(自动等级, 保底等级)，未设保底则完全按持仓实时计算
-      const lvl = applyFloor(calcLevel(bal, effTeamHeld), row?.manualLevel || 0);
+      // 保底等级只升不降：max(自动等级, 保底等级)；自动等级按 P3 双条件（升级仓 + 团队业绩）
+      const lvl = applyFloor(calcLevel(dUpgradeUnits, dTeamPerfUnits), row?.manualLevel || 0);
       const hisDirectCount = (childrenMap2.get(k(item.wallet)) || []).length;
       directHoldUnits += bal;
       if (bal > 0n) directHoldUsers += 1;
@@ -960,6 +964,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         shortAddress: `${String(item.wallet).slice(0, 6)}...${String(item.wallet).slice(-4)}`,
         personalA: Number(formatUnits(bal, A_TOKEN_DECIMALS)),
         teamA: Number(formatUnits(effTeamHeld, A_TOKEN_DECIMALS)),
+        upgradeA: Number(formatUnits(dUpgradeUnits, A_TOKEN_DECIMALS)),
+        teamPerfA: Number(formatUnits(dTeamPerfUnits, A_TOKEN_DECIMALS)),
         level: lvl,
         joinedAt: item.createdAt,
         // 按查看者的展示统计规则扣除指定激活，不修改矿机记录。
@@ -1005,7 +1011,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     const hiddenTeam = hiddenViewerSet.has(k(address)) ? hiddenRotationSubtreeCounts(downlines) : { mini: 0, pro: 0, users: 0 };
     const hiddenDirect = reportingTxs && hiddenViewerSet.has(k(address)) ? hiddenRotationSubtreeCounts(directWalletSet) : { pro: 0 };
 
-    // 团队持币统计：下级钱包 AIX 余额 + active 质押本金 + active 矿机剩余（与级别判定口径一致）
+    // 团队持币统计：下级钱包 SVX 余额 + active 质押本金 + active 矿机剩余（与级别判定口径一致）
     let teamHoldUnits = 0n;
     let teamHoldUsers = 0;
     for (const w of downlines) {
@@ -1017,7 +1023,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       v += walletCache.get(w) + stakedCache.get(w);
       if (v > 0n) { teamHoldUnits += v; teamHoldUsers += 1; }
     }
-    // 虚拟会员业绩叠加（仅展示）：Mini 100 AIX / Pro 1500 AIX
+    // 虚拟会员业绩叠加（仅展示）：Mini 100 SVX / Pro 1500 SVX
     teamHoldUnits += statsAcc.teamHoldUnits;
     teamHoldUsers += statsAcc.teamHoldUsers;
     directHoldUnits += statsAcc.directHoldUnits;
@@ -1049,12 +1055,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       byKind[k2] = (byKind[k2] || 0n) + BigInt(r.amountUnits || '0');
     }
 
-    // 展示等级（仅页面展示，不写快照、不参与真实分润）：真实等级 与 真实+虚拟团队业绩档位 取高
-    let displayLevel = level;
-    try {
-      const virtualLevel = calcLevel(getPersonalHeld(address), teamHeldFor(address) + statsAcc.teamHoldUnits);
-      displayLevel = Math.max(level, virtualLevel);
-    } catch {}
+    // 展示等级：P3 严格按「升级仓金额 + 团队业绩」双条件，不再叠加虚拟持仓。
+    const displayLevel = level;
     // 本人被设置时，虚拟直推矿机同时计入本人团队矿机（团队口径含直推）
     const ownDirectMini = statsAcc.own ? statsAcc.dDirectMini : 0;
     const ownDirectPro = statsAcc.own ? statsAcc.dDirectPro : 0;
@@ -1063,7 +1065,9 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       level: displayLevel,
       realLevel: level,
       levelLabel: displayLevel > 0 ? TEAM_LEVELS[displayLevel - 1].label : '未达标',
-      nextLevel: displayLevel < 10 && displayLevel >= 0 ? TEAM_LEVELS[displayLevel] : null,
+      nextLevel: displayLevel < 10 && displayLevel >= 0 ? TEAM_LEVELS_VIEW[displayLevel] : null,
+      upgradeA: formatUnits(upgradeUnits, A_TOKEN_DECIMALS),
+      teamPerfA: formatUnits(teamPerfUnits, A_TOKEN_DECIMALS),
       directReferrer: chain[0] || null,
       indirectReferrer: chain[1] || null,
       directCount: directs.length + statsAcc.dDirect,
@@ -1089,7 +1093,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       byKind: Object.fromEntries(Object.entries(byKind).map(([k2, v]) => [k2, formatUnits(v, A_TOKEN_DECIMALS)])),
       a10PoolAccum: pool ? formatUnits(BigInt(pool.accumUnits || '0'), A_TOKEN_DECIMALS) : '0',
       a10ParticipantCount: database.listATokenTeamLevelsByLevel(10).length,
-      TEAM_LEVELS,
+      TEAM_LEVELS: TEAM_LEVELS_VIEW,
     };
   }
 
@@ -1114,7 +1118,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return { ...raw, rows, by, total: raw.total - excludedPro, excludedPro, rawTotal: raw.total, rawBy: raw.by };
   }
 
-  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, setManualLevel, calcLevel, distributeMinerReward, distributeStakeReward, distributeToA10Pool,
+  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, setManualLevel, calcLevel, distributeMinerReward, distributeStakeReward, distributeToA10Pool, getReferralChain,
+    recordTeamPerformance, reverseTeamPerformance, getUpgradeUnits, getTeamPerfUnits,
     settleParityRewards:(...args) => transaction(() => settleParityRewards(...args)),
     settleA10Pool:(...args) => transaction(() => settleA10Pool(...args)), profile, summary, getTeamStatsView, teamActivationBreakdown, TEAM_LEVELS };
 }

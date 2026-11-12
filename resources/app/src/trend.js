@@ -1,13 +1,12 @@
-// Trend detection + strategy recommendation from OHLCV candles.
+// Market regime detection from OHLCV candles.
 import { ema, atr, normalizedSlope } from './indicators.js';
 
 /**
- * Analyse candles and recommend a grid strategy.
+ * Analyse candles and classify the market regime.
  * candles: chronological [{time, open, high, low, close, volume}]
  *
  * Logic: combine an EMA(fast) vs EMA(slow) regime filter with a linear-
- * regression slope confirmation. Volatility (ATR%) is reported so the UI can
- * suggest sensible grid spacing.
+ * regression slope confirmation. Volatility (ATR%) is reported as a risk gauge.
  *
  * Returns:
  *  trend:        'up' | 'down' | 'range'
@@ -56,17 +55,17 @@ export function analyzeTrend(candles, opts = {}) {
   let trend, recommended, detail;
   if (up) {
     trend = 'up'; recommended = 'long';
-    detail = `上升趋势：EMA${fast} 在 EMA${slow} 之上（差 ${emaGapPct.toFixed(2)}%），斜率 +${(slope * 100).toFixed(3)}%/根。推荐做多网格（低买、上涨分批止盈）。`;
+    detail = `上升趋势：EMA${fast} 在 EMA${slow} 之上（差 ${emaGapPct.toFixed(2)}%），斜率 +${(slope * 100).toFixed(3)}%/根。多头结构延续时，回调可关注支撑。`;
   } else if (down) {
     trend = 'down'; recommended = 'short';
-    detail = `下降趋势：EMA${fast} 在 EMA${slow} 之下（差 ${emaGapPct.toFixed(2)}%），斜率 ${(slope * 100).toFixed(3)}%/根。推荐做空网格（高空、下跌分批止盈）。`;
+    detail = `下降趋势：EMA${fast} 在 EMA${slow} 之下（差 ${emaGapPct.toFixed(2)}%），斜率 ${(slope * 100).toFixed(3)}%/根。空头结构延续时，反弹可关注压力。`;
   } else {
     trend = 'range'; recommended = 'neutral';
-    detail = `震荡/无明显趋势：EMA 差 ${emaGapPct.toFixed(2)}%，斜率 ${(slope * 100).toFixed(3)}%/根。推荐中性网格（区间内双向吃波动）。`;
+    detail = `震荡/无明显趋势：EMA 差 ${emaGapPct.toFixed(2)}%，斜率 ${(slope * 100).toFixed(3)}%/根。区间内高抛低吸更依赖执行纪律。`;
   }
 
   const volNote = atrPct != null
-    ? ` 波动率 ATR≈${atrPct.toFixed(2)}%，建议单格间距不小于该值的一半以覆盖手续费。`
+    ? ` 波动率 ATR≈${atrPct.toFixed(2)}%，可作为止损与目标间距的参考。`
     : '';
 
   return {

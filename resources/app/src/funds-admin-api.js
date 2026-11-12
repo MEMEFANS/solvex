@@ -1,3 +1,4 @@
+import { createAixTransaction } from './a-token-ledger.js';
 import crypto from 'node:crypto';
 import { formatUnits, getAddress, parseUnits } from 'ethers';
 
@@ -18,8 +19,8 @@ function conflict() {
 
 function adjustAsset(walletService, body) {
   if (!['grant','debit'].includes(body.action)) throw new Error('资产调整操作无效');
-  const asset = body.asset === 'AIX' ? 'A' : String(body.asset || '').toUpperCase();
-  if (!['USDT','A'].includes(asset)) throw new Error('仅支持调整 USDT 和 AIX');
+  const asset = ['SVX', 'AIX'].includes(body.asset) ? 'A' : String(body.asset || '').toUpperCase();
+  if (!['USDT','A'].includes(asset)) throw new Error('仅支持调整 USDT 和 SVX');
   const wallet = getAddress(String(body.wallet || '').trim());
   const requestId = requestIdOf(body), reason = reasonOf(body);
   const decimals = asset === 'A' ? 18 : 6;
@@ -91,7 +92,7 @@ function tokenEqual(actual, expected) {
 }
 
 // Funds operations require their own bearer credential; operator cookies grant no access.
-export function createFundsAdminApi({ walletService, minerService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
+export function createFundsAdminApi({ walletService, minerService, stakingService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
   const send = (res, status, payload) => { respond(res, status, payload); return true; };
   async function handle(request, res, pathname) {
     if (!pathname.startsWith('/api/wallet/admin/')) return false;
@@ -114,14 +115,33 @@ export function createFundsAdminApi({ walletService, minerService, payoutService
         const body = await readBody(request,16_000);
         return send(res,200,{ ok:true, adjustment:adjustAsset(walletService,body) });
       }
+      if (pathname === '/api/wallet/admin/energy-grants' && request.method === 'GET') {
+        const rows = walletService.database.db.prepare("SELECT payload_json FROM audit_log WHERE event_type='funds_energy_grant' ORDER BY created_at DESC LIMIT 200").all();
+        return send(res,200,{items:rows.map(r=>JSON.parse(r.payload_json))});
+      }
+      if (pathname === '/api/wallet/admin/energy-grants' && request.method === 'POST') {
+        const body = await readBody(request,16000);
+        const wallet = getAddress(String(body.wallet||'').trim());
+        const requestId=requestIdOf(body), reason=reasonOf(body);
+        const amount=String(body.amount||''); const units=parseUnits(amount,18);
+        const old=walletService.database.getSetting('energy_grant:'+requestId);
+        if(old){ const item=JSON.parse(old); if(item.wallet.toLowerCase()!==wallet.toLowerCase()||item.units!==units.toString())throw conflict(); return send(res,200,{ok:true,energy:item.energy,idempotent:true}); }
+        walletService.ensureUser(wallet);
+        const energy=createAixTransaction(walletService.database,walletService)(()=>{
+          const energy=stakingService.grantEnergy(wallet,amount,{requestId,reason});
+          const record={wallet,units:units.toString(),amount,reason,requestId,energy,adminUsername:'funds-admin',createdAt:Date.now()};
+          walletService.database.saveSetting('energy_grant:'+requestId,JSON.stringify(record));
+          walletService.database.db.prepare('INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)').run('energy_'+requestId,wallet,'funds_energy_grant',record.createdAt,JSON.stringify(record));
+          return energy;
+        });
+        return send(res,200,{ok:true,energy});
+      }
       if (pathname === '/api/wallet/admin/miner-grants' && request.method === 'GET') {
         const rows = walletService.database.db.prepare("SELECT payload_json FROM audit_log WHERE event_type='funds_miner_grant' ORDER BY created_at DESC LIMIT 200").all();
         return send(res,200,{ items:rows.map(row => JSON.parse(row.payload_json)) });
       }
       if (pathname === '/api/wallet/admin/miner-grants' && request.method === 'POST') {
-        if (!allowRequest(request,res,'funds-miner-grant',30,60_000)) return true;
-        const body = await readBody(request,16_000);
-        return send(res,200,{ ok:true, miner:grantMiner(walletService,minerService,body) });
+        return send(res,403,{error:'旧矿机赠送已关闭，请使用能量充值',code:'LEGACY_MINER_DISABLED'});
       }
       if (pathname === '/api/wallet/admin/withdrawal-automation' && request.method === 'GET') {
         return send(res, 200, { ...walletService.withdrawalAutomationSettings(), ...payoutService.status() });
@@ -145,6 +165,39 @@ export function createFundsAdminApi({ walletService, minerService, payoutService
       }
       if (pathname === '/api/wallet/admin/withdrawals' && request.method === 'GET') {
         return send(res, 200, { items:walletService.adminListWithdrawals(url.searchParams.get('status') || '') });
+      }
+      if (pathname === '/api/wallet/admin/withdrawal-daily-summary' && request.method === 'GET') {
+        const rows = walletService.database.db.prepare(`
+          SELECT date((CASE WHEN status='paid' AND processed_at IS NOT NULL THEN processed_at ELSE created_at END) / 1000.0, 'unixepoch', '+8 hours') AS day,
+            status, COUNT(*) AS count, SUM(CAST(amount_units AS INTEGER)) AS amount_units,
+            SUM(CAST(COALESCE(json_extract(payload_json, '$.feeUnits'), '0') AS INTEGER)) AS fee_units
+          FROM withdrawals WHERE upper(asset)='USDT'
+          GROUP BY day, status ORDER BY day DESC
+        `).all();
+        const paid = new Set(['paid']);
+        const pending = new Set(['pending_review','pending_funds','pending_auto','processing','signed','broadcast','payout_failed']);
+        const byDay = new Map();
+        for (const row of rows) {
+          if (!paid.has(row.status) && !pending.has(row.status)) continue;
+          const key = row.day;
+          const item = byDay.get(key) || { date:key, paidAmountUnits:0n, paidFeeUnits:0n, pendingAmountUnits:0n, pendingFeeUnits:0n, count:0, pendingCount:0 };
+          const amount = BigInt(row.amount_units || 0);
+          const fee = BigInt(row.fee_units || 0);
+          if (paid.has(row.status)) { item.paidAmountUnits += amount; item.paidFeeUnits += fee; item.count += Number(row.count || 0); }
+          else { item.pendingAmountUnits += amount; item.pendingFeeUnits += fee; item.pendingCount += Number(row.count || 0); }
+          byDay.set(key, item);
+        }
+        const formatUsdt = units => {
+          const value = formatUnits(units, 6);
+          return value.includes('.') ? value.replace(/0+$/, '').replace(/\.$/, '') : value;
+        };
+        const days = [...byDay.values()].sort((a,b)=>b.date.localeCompare(a.date)).slice(0, 90).map(item => ({
+          date:item.date, count:item.count, pendingCount:item.pendingCount,
+          paidAmount:formatUsdt(item.paidAmountUnits), paidFee:formatUsdt(item.paidFeeUnits),
+          paidTotal:formatUsdt(item.paidAmountUnits + item.paidFeeUnits),
+          pendingAmount:formatUsdt(item.pendingAmountUnits), pendingFee:formatUsdt(item.pendingFeeUnits),
+        }));
+        return send(res, 200, { ok:true, rateBps:200, days });
       }
       const match = pathname.match(/^\/api\/wallet\/admin\/withdrawals\/([^/]+)$/);
       if (match && request.method === 'POST') {

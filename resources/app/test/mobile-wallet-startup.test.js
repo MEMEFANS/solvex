@@ -65,7 +65,7 @@ try {
   assert.equal(scriptRequests.length,8,scriptRequests.join(', '));
   assert(!apiRequests.includes('/api/wallet/profile'), 'Signing does not wait for full funding history or RPC reconciliation.');
   assert(!apiRequests.includes('/api/a-token/team/profile') && !apiRequests.includes('/api/referrals/profile'), 'Team data is loaded on the team tab.');
-  assert(!scriptRequests.some(src => /lottery|strategy|ai-managed|assets|trade-chart/.test(src)));
+  assert(!scriptRequests.some(src => /strategy|ai-managed|assets|trade-chart/.test(src)));
   assert.equal(await page.evaluate(() => testMethods.filter(method => method === 'personal_sign').length),1);
   assert.equal(await page.evaluate(() => testMethods.includes('wallet_switchEthereumChain')),false);
   assert.equal(await page.evaluate(() => testMethods.includes('eth_sendTransaction')),false);
@@ -109,7 +109,7 @@ try {
   assert.equal(scriptRequests.filter(src=>src==='/vendor/lightweight-charts.js').length,1);
   assert.equal(scriptRequests.filter(src=>src==='/js/trade-account.js').length,1);
   // First visits also load the other public modules without missing shared dependencies.
-  for (const name of ['points','ai-managed','overview','a-token-trade','referrals','leaderboard','community','support']) {
+  for (const name of ['points','ai-managed','a-token-trade','referrals','leaderboard','community','support']) {
     await page.evaluate(name => loadPageModule(name), name);
   }
   assert.equal(scriptRequests.filter(src=>src==='/vendor/lightweight-charts.js').length,1);

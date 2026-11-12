@@ -1,4 +1,4 @@
-// AIX 商城 · 敏感操作钱包签名（personal_sign 纯文本，签名含时间戳防重放，后端 verifyOperationSignature 校验）
+// Solvex 商城 · 敏感操作钱包签名（personal_sign 纯文本，签名含时间戳防重放，后端 verifyOperationSignature 校验）
 // 复用平台钱包连接器（/vendor/wallet/connector.js）：优先静默恢复已授权连接，未授权才拉起连接弹窗。
 async function signMessage(address, message) {
   const connector = window.WGWalletConnector;
@@ -22,13 +22,13 @@ async function signMessage(address, message) {
 // 开店保证金签名（首次开店缴纳保证金时）
 export async function signDeposit({ address, shopName, currency, amount }) {
   const timestamp = String(Date.now());
-  const message = `AxiX 商城开店保证金：缴纳 ${amount} ${currency}，店铺「${shopName}」，时间：${timestamp}`;
+  const message = `Solvex 商城开店保证金：缴纳 ${amount} ${currency === 'AIX' ? 'SVX' : currency}，店铺「${shopName}」，时间：${timestamp}`;
   return { signature: await signMessage(address, message), timestamp };
 }
 
-// 下单付款签名（买家支付 AIX 时；消息只含客户端可控字段，与后端拼接保持一致）
+// 下单付款签名（买家支付 SVX 时；消息只含客户端可控字段，与后端拼接保持一致）
 export async function signOrder({ address, productId, quantity }) {
   const timestamp = String(Date.now());
-  const message = `AxiX 商城下单确认：商品 ${productId}，数量 ${quantity} 件，时间：${timestamp}`;
+  const message = `Solvex 商城下单确认：商品 ${productId}，数量 ${quantity} 件，时间：${timestamp}`;
   return { signature: await signMessage(address, message), timestamp };
 }

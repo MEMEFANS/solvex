@@ -2,7 +2,7 @@ import { JsonRpcProvider, isAddress, getAddress } from 'ethers';
 import { A_TOKEN_DECIMALS } from './a-token-service.js';
 import { createHash } from 'node:crypto';
 
-// New activations debit and burn platform AIX atomically. BNB plans below are
+// New activations debit and burn platform SVX atomically. BNB plans below are
 // retained only to verify payments made before the persisted cutover time.
 const TX_HASH_RE = /^0x[a-fA-F0-9]{64}$/;
 
@@ -12,17 +12,20 @@ const LEGACY_ACTIVATION_PLANS = Object.freeze({
 });
 
 export const ACTIVATION_PLANS = Object.freeze({
-  '1': Object.freeze({ plan: '1', minerPlan: 'mini120', paymentAsset: 'AIX', aix: '20', name: 'Mini 矿机', total: '100', days: 30, lifetimeLimit: 1, label: '20 AIX · Mini 矿机 · 100 AIX / 30天 · 每钱包终身一次' }),
-  '2': Object.freeze({ plan: '2', minerPlan: 'pro1500', paymentAsset: 'AIX', aix: '400', name: 'Pro 矿机', total: '1500', days: 90, lifetimeLimit: null, label: '400 AIX · Pro 矿机 · 1500 AIX / 90天 · 激活无上限' }),
+  '1': Object.freeze({ plan: '1', minerPlan: 'mini120', paymentAsset: 'SVX', svx: '20', name: 'Mini 矿机', total: '100', days: 30, lifetimeLimit: 1, label: '20 SVX · Mini 矿机 · 100 SVX / 30天 · 每钱包终身一次' }),
+  '2': Object.freeze({ plan: '2', minerPlan: 'pro1500', paymentAsset: 'SVX', svx: '400', name: 'Pro 矿机', total: '1500', days: 90, lifetimeLimit: null, label: '400 SVX · Pro 矿机 · 1500 SVX / 90天 · 激活无上限' }),
 });
+
+// 历史记录里 paymentAsset 存的是 'AIX'，读写入口统一视为 'SVX'
+const isSvxPayment = record => record?.paymentAsset === 'SVX' || record?.paymentAsset === 'AIX';
 
 export function activationMessage(planKey, requestId, timestamp, quantity = 1) {
   const plan = ACTIVATION_PLANS[String(planKey)];
   if (!plan) throw new Error('激活套餐无效');
   const qty = Math.max(1, Math.floor(Number(quantity) || 1));
   // 台数并入销毁金额：1 台时与历史消息格式完全一致（兼容升级前未确认的请求）
-  const burnAix = qty === 1 ? plan.aix : String(Number(plan.aix) * qty);
-  return `AxiX 矿机激活确认：套餐 ${plan.plan}，销毁 ${burnAix} AIX，编号 ${requestId}，时间：${timestamp}`;
+  const burnSvx = qty === 1 ? plan.svx : String(Number(plan.svx) * qty);
+  return `Solvex 矿机激活确认：套餐 ${plan.plan}，销毁 ${burnSvx} SVX，编号 ${requestId}，时间：${timestamp}`;
 }
 
 export function createATokenActivationService({
@@ -82,7 +85,7 @@ export function createATokenActivationService({
     const addrLabel = rotationByPlan.size
       ? [...rotationByPlan].map(([p, a]) => `套餐${p}=${a}·${everyLabelFor(p)}`).join(' / ')
       : `默认=${rotAddress}·${everyLabelFor('')}`;
-    console.log(`[A币激活] 收款地址轮换已启用: 参与套餐 ${planLabel} · ${addrLabel}`);
+    console.log(`[SVX激活] 收款地址轮换已启用: 参与套餐 ${planLabel} · ${addrLabel}`);
   }
   let provider = null;
   function getProvider() {
@@ -93,7 +96,7 @@ export function createATokenActivationService({
   }
 
   function getPlans() { return Object.values(ACTIVATION_PLANS).map(p => ({ ...p })); }
-  function getMeta() { return { ...aTokenService.getActivationMeta(), cap: null, unlimited: true, paymentMode: 'aix_balance' }; }
+  function getMeta() { return { ...aTokenService.getActivationMeta(), cap: null, unlimited: true, paymentMode: 'svx_balance' }; }
 
   function requestRecordId(wallet, requestId) {
     if (!/^[a-zA-Z0-9_-]{16,128}$/.test(String(requestId || ''))) throw new Error('激活请求编号无效，请刷新后重试');
@@ -120,15 +123,15 @@ export function createATokenActivationService({
           || db.listATokenMiners(wallet).some(m => m.plan === 'mini120'))) {
         throw new Error('Mini 矿机每个钱包终身仅可激活一次');
       }
-      const cost = BigInt(plan.aix) * BigInt(qty) * 10n ** BigInt(A_TOKEN_DECIMALS);
-      if (BigInt(aTokenService.balanceA(wallet)) < cost) throw new Error(`可用 AIX 余额不足，激活 ${qty} 台需 ${Number(plan.aix) * qty} AIX`);
+      const cost = BigInt(plan.svx) * BigInt(qty) * 10n ** BigInt(A_TOKEN_DECIMALS);
+      if (BigInt(aTokenService.balanceA(wallet)) < cost) throw new Error(`可用 SVX 余额不足，激活 ${qty} 台需 ${Number(plan.svx) * qty} SVX`);
       aTokenService.debitA(wallet, cost);
       const burned = aTokenService.burn(cost, 'miner_activation', `${plan.name}${qty > 1 ? `×${qty}` : ''}激活全额销毁 · ${id}`);
       if (BigInt(burned) !== cost) throw new Error('剩余可销毁额度不足，暂时无法激活矿机');
       const now = clock();
-      const record = { id, wallet, plan: plan.plan, paymentAsset: 'AIX', amountUnits: cost.toString(),
+      const record = { id, wallet, plan: plan.plan, paymentAsset: 'SVX', amountUnits: cost.toString(),
         bnbAmountWei: '0', txHash: null, blockNumber: null, status: 'confirmed', confirmedAt: now, createdAt: now,
-        payload: { paymentMode: 'aix_balance', paymentAsset: 'AIX', aix: plan.aix, quantity: qty, burnedUnits: cost.toString(), requestId, minerPlan: plan.minerPlan } };
+        payload: { paymentMode: 'svx_balance', paymentAsset: 'SVX', svx: plan.svx, quantity: qty, burnedUnits: cost.toString(), requestId, minerPlan: plan.minerPlan } };
       db.upsertATokenActivationRow(record);
       // 批量激活一次入账 N 台：逐台发矿机，积分回调每台一次（与逐台单独购买完全等价）
       for (let i = 0; i < qty; i++) {
@@ -212,7 +215,7 @@ export function createATokenActivationService({
       const block = await p.getBlock(receipt.blockNumber);
       if (!block?.timestamp) return { status: 'pending', reason: '等待核验历史付款时间', record };
       if (Number(block.timestamp) * 1000 > legacyCutoffAt) {
-        reject(record, 'BNB 激活已关闭，请使用平台 AIX 余额激活');
+        reject(record, 'BNB 激活已关闭，请使用平台 SVX 余额激活');
         return { status: 'rejected', reason: record.payload.rejectReason, record };
       }
       const from = String(tx.from || '').toLowerCase();
@@ -253,7 +256,7 @@ export function createATokenActivationService({
     return record;
   }
   function reject(record, reason) {
-    if (record.paymentAsset === 'AIX' && record.status === 'confirmed') throw new Error('AIX 激活已扣款销毁并发放矿机，不能驳回');
+    if (isSvxPayment(record) && record.status === 'confirmed') throw new Error('SVX 激活已扣款销毁并发放矿机，不能驳回');
     record.status = 'rejected';
     record.payload = { ...record.payload, rejectReason: reason };
     db.upsertATokenActivationRow(record);
@@ -268,7 +271,7 @@ export function createATokenActivationService({
     if (!record) throw new Error('激活记录不存在');
     if (record.status === 'confirmed') throw new Error('该记录已确认');
     const paidAt = Number(record.payload?.legacyPaidAt);
-    if (record.paymentAsset === 'AIX' || !Number.isFinite(paidAt) || paidAt <= 0 || paidAt > legacyCutoffAt) {
+    if (isSvxPayment(record) || !Number.isFinite(paidAt) || paidAt <= 0 || paidAt > legacyCutoffAt) {
       throw new Error('该记录需要链上核验历史付款时间，不能手动确认');
     }
     return confirm(record);
@@ -300,8 +303,8 @@ export function createATokenActivationService({
       for (const record of pending) {
         try {
           const result = await verify(record);
-          if (result?.status === 'confirmed') console.log(`[A币激活] 自动确认 ${record.id} → 矿机已发放`);
-          else if (result?.status === 'rejected') console.log(`[A币激活] 自动校验驳回 ${record.id}: ${result.reason || ''}`);
+          if (result?.status === 'confirmed') console.log(`[SVX激活] 自动确认 ${record.id} → 矿机已发放`);
+          else if (result?.status === 'rejected') console.log(`[SVX激活] 自动校验驳回 ${record.id}: ${result.reason || ''}`);
         } catch { /* 单条失败不影响其余记录,下轮重试 */ }
       }
     } finally {
@@ -312,7 +315,7 @@ export function createATokenActivationService({
     if (autoVerifyTimer) return;
     autoVerifyTimer = setInterval(() => { runPendingVerify(); }, Math.max(10_000, Number(intervalMs) || 30_000));
     autoVerifyTimer.unref?.();
-    console.log(`[A币激活] 自动校验任务已启动(每 ${Math.max(10, Math.round((Number(intervalMs) || 30_000) / 1000))} 秒扫描 pending 记录)`);
+    console.log(`[SVX激活] 自动校验任务已启动(每 ${Math.max(10, Math.round((Number(intervalMs) || 30_000) / 1000))} 秒扫描 pending 记录)`);
   }
 
   // ── 链上收款对账（兜底漏单）──────────────────────────────────────────
@@ -352,16 +355,16 @@ export function createATokenActivationService({
   function saveReconcileCursor(lastBlock, stats) {
     try { db.saveSetting(RECONCILE_KEY, JSON.stringify({ lastBlock, updatedAt: Date.now(), ...(stats || {}) })); } catch {}
   }
-  // A new AIX Pro must not suppress recovery of an older paid BNB Pro.
+  // A new SVX Pro must not suppress recovery of an older paid BNB Pro.
   function hasLegacyActivation(wallet, planKey) {
     return db.listATokenActivationsByWallet(wallet).some(row => String(row.plan) === String(planKey)
-      && ['pending', 'confirmed'].includes(row.status) && (String(planKey) === '1' || row.paymentAsset !== 'AIX'));
+      && ['pending', 'confirmed'].includes(row.status) && (String(planKey) === '1' || !isSvxPayment(row)));
   }
   function hasLegacyMiner(wallet, minerPlan) {
     return (db.listATokenMiners?.(String(wallet).toLowerCase()) || []).some(m => m.plan === minerPlan
       && (minerPlan === 'mini120' || !String(m.activationId || '').startsWith('ata_aix_')));
   }
-  // 同钱包的历史 BNB 档位仍只补发一次；新 AIX Pro 可单独并行。
+  // 同钱包的历史 BNB 档位仍只补发一次；新 SVX Pro 可单独并行。
   function alreadyServiced(wallet, plan) {
     return hasLegacyActivation(wallet, plan.plan) || hasLegacyMiner(wallet, plan.minerPlan);
   }
@@ -379,7 +382,7 @@ export function createATokenActivationService({
         // 首次运行：只回看最近 N 个块作为起点，避免一上线就全量重扫
         cursor = Math.max(0, latest - Math.max(1, Number(reconcileLookbackBlocks) || 5000));
         saveReconcileCursor(cursor, { init: true });
-        console.log(`[A币激活][对账] 初始化扫描游标 block=${cursor} (latest=${latest})`);
+        console.log(`[SVX激活][对账] 初始化扫描游标 block=${cursor} (latest=${latest})`);
         return { initialized: true, cursor, latest, scanned: 0, created: 0, duplicate: 0 };
       }
       if (latest <= cursor) return { scanned: 0, created: 0, duplicate: 0, cursor, latest };
@@ -410,7 +413,7 @@ export function createATokenActivationService({
                 const retry = await verify(existing).catch(() => null);
                 if (retry?.status === 'confirmed') {
                   recovered++;
-                  console.log(`[A币激活][对账] 驳回记录恢复 ${existing.id} plan=${existing.plan} wallet=${existing.wallet} tx=${tx.hash}`);
+                  console.log(`[SVX激活][对账] 驳回记录恢复 ${existing.id} plan=${existing.plan} wallet=${existing.wallet} tx=${tx.hash}`);
                 }
               }
               continue;
@@ -418,7 +421,7 @@ export function createATokenActivationService({
             const wallet = String(tx.from || '');
             if (alreadyServiced(wallet, plan)) {
               duplicate++;
-              console.warn(`[A币激活][对账] 重复付款已服务,跳过 tx=${tx.hash} plan=${plan.plan} wallet=${wallet}`);
+              console.warn(`[SVX激活][对账] 重复付款已服务,跳过 tx=${tx.hash} plan=${plan.plan} wallet=${wallet}`);
               continue;
             }
             const record = {
@@ -430,19 +433,19 @@ export function createATokenActivationService({
             };
             // 单条补录失败（如付款钱包未在平台注册，外键约束）不得中断整轮扫描
             try { db.upsertATokenActivationRow(record); }
-            catch (error) { console.error(`[A币激活][对账] 补录失败,跳过 tx=${tx.hash} wallet=${wallet}: ${error?.message || error}`); continue; }
+            catch (error) { console.error(`[SVX激活][对账] 补录失败,跳过 tx=${tx.hash} wallet=${wallet}: ${error?.message || error}`); continue; }
             created++;
             await verify(record).catch(() => null);
-            console.log(`[A币激活][对账] 链上漏单补录 ${record.id} plan=${plan.plan} wallet=${wallet} tx=${tx.hash} block=${bn}`);
+            console.log(`[SVX激活][对账] 链上漏单补录 ${record.id} plan=${plan.plan} wallet=${wallet} tx=${tx.hash} block=${bn}`);
           }
         }
       }
       await Promise.all(Array.from({ length: Math.min(Math.max(1, Number(reconcileConcurrency) || 8), blockNumbers.length) }, worker));
       saveReconcileCursor(to, { lastCreated: created, lastDuplicate: duplicate, lastRecovered: recovered });
-      if (created || duplicate || recovered) console.log(`[A币激活][对账] 本轮扫描 ${from}~${to}: 补录=${created} 重复付款=${duplicate} 驳回恢复=${recovered}`);
+      if (created || duplicate || recovered) console.log(`[SVX激活][对账] 本轮扫描 ${from}~${to}: 补录=${created} 重复付款=${duplicate} 驳回恢复=${recovered}`);
       return { scanned: to - cursor, matched, created, duplicate, recovered, cursor: to, latest };
     } catch (error) {
-      console.error('[A币激活][对账] 扫描失败', error?.message || error);
+      console.error('[SVX激活][对账] 扫描失败', error?.message || error);
       return { error: error?.message || String(error) };
     } finally {
       reconcileBusy = false;
@@ -454,7 +457,7 @@ export function createATokenActivationService({
     const ms = Math.max(15_000, Number(intervalMs) || 60_000);
     reconcileTimer = setInterval(() => { runReconcileOnce(); }, ms);
     reconcileTimer.unref?.();
-    console.log(`[A币激活][对账] 链上收款对账任务已启动(每 ${Math.round(ms / 1000)} 秒增量扫描收款地址)`);
+    console.log(`[SVX激活][对账] 链上收款对账任务已启动(每 ${Math.round(ms / 1000)} 秒增量扫描收款地址)`);
     runReconcileOnce(); // 启动即跑一轮，尽快补齐重启期间的缺口
   }
   function stopOnchainReconcile() { if (reconcileTimer) { clearInterval(reconcileTimer); reconcileTimer = null; } }

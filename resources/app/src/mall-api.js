@@ -1,8 +1,8 @@
-// AIX 商城 API /api/mall/*（需钱包 session）。
+// Solvex 商城 API /api/mall/*（需钱包 session）。
 // 2026-10-30 新增板块；2026-10-31 担保交易改版：
-//   · 货款担保：下单扣买家 AIX → 平台担保账户（ESCROW_WALLET）冻结，
+//   · 货款担保：下单扣买家 SVX → 平台担保账户（ESCROW_WALLET）冻结，
 //     买家确认收货后才结算给商户（同时释放商户可卖额度）；待发货取消 = 担保账户原路退款；
-//   · 开店保证金：申请开店需缴纳保证金，可选 USDT（100）或 AIX（5000），记录在商户档案；
+//   · 开店保证金：申请开店需缴纳保证金，可选 USDT（100）或 SVX（5000），记录在商户档案；
 //   · 商品资料：支持最多 6 张图片、规格尺寸（spec）、简介（summary），存于 payload_json；
 //   · 买家评论：completed 订单可发表 1–5 星 + 文字评论，每单一条，商品详情页公开展示；
 //   · 订单状态机：paid（已付款待发货）→ shipped（已发货）→ completed（已收货结算）；
@@ -19,9 +19,9 @@ const PRODUCT_LIMIT = 200;
 const MAX_IMAGES = 6;
 // 货款担保账户：仅商城订单冻结资金进出，不属任何真实用户。
 const ESCROW_WALLET = '0x000000000000000000000000000000000000e5c0';
-// 开店保证金（二选一）：USDT 走平台 USDT 账本（6 位小数），AIX 走 A 账本（18 位小数）。
+// 开店保证金（二选一）：USDT 走平台 USDT 账本（6 位小数），SVX 走 A 账本（18 位小数）。
 const DEPOSIT_USDT = '100';
-const DEPOSIT_AIX = '5000';
+const DEPOSIT_SVX = '5000';
 // 超时自动确认收货：发货满 N 天买家未确认则系统自动确认并结算给商户
 const AUTO_CONFIRM_DAYS = 15;
 
@@ -56,7 +56,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
     if (!/^\d+(\.\d{1,6})?$/.test(String(text || '').trim())) throw apiError('价格需为不超过 6 位小数的正数');
     const priceA = String(text).trim();
     if (parseUnits(priceA, A_TOKEN_DECIMALS) <= 0n) throw apiError('价格必须大于 0');
-    if (parseUnits(priceA, A_TOKEN_DECIMALS) > parseUnits(MAX_PRICE_A, A_TOKEN_DECIMALS)) throw apiError(`价格最高 ${MAX_PRICE_A} AIX`);
+    if (parseUnits(priceA, A_TOKEN_DECIMALS) > parseUnits(MAX_PRICE_A, A_TOKEN_DECIMALS)) throw apiError(`价格最高 ${MAX_PRICE_A} SVX`);
     return priceA;
   }
 
@@ -134,7 +134,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
     try {
       walletService?.verifyOperationSignature({
         address: wallet,
-        message: `AxiX 商城下单确认：商品 ${productId}，数量 ${quantity} 件，时间：${String(body?.timestamp ?? '')}`,
+        message: `Solvex 商城下单确认：商品 ${productId}，数量 ${quantity} 件，时间：${String(body?.timestamp ?? '')}`,
         signature: String(body?.signature ?? ''),
       });
     } catch (e) { throw apiError(e.message || '钱包签名验证失败', 'SIGNATURE_INVALID', 401); }
@@ -165,11 +165,11 @@ export function createMallApi({ aTokenService, database, walletService = null, s
           }, status: 'paid', createdAt: Date.now(),
         });
         db.insertMallOrderEvent({ id: newId('moe'), orderId, actor: 'buyer', type: 'created',
-          note: `下单 ${quantity} 件，付款 ${fmtA(totalUnits)} AIX（平台担保中）`, createdAt: Date.now() });
+          note: `下单 ${quantity} 件，付款 ${fmtA(totalUnits)} SVX（平台担保中）`, createdAt: Date.now() });
         return { order: presentOrder(order), balanceA: fmtA(aTokenService.balanceA(wallet)) };
       } catch (error) {
         // 结算链路失败：已扣押款原路退还（库存若已扣由各分支自行回补）
-        try { aTokenService.creditA(wallet, totalUnits); } catch (e) { console.error(`[AIX商城] ${wallet} 下单失败且退款失败，需人工处理:`, e?.message || e); }
+        try { aTokenService.creditA(wallet, totalUnits); } catch (e) { console.error(`[SVX商城] ${wallet} 下单失败且退款失败，需人工处理:`, e?.message || e); }
         throw error;
       }
     });
@@ -184,19 +184,19 @@ export function createMallApi({ aTokenService, database, walletService = null, s
     try {
       aTokenService.creditA(order.merchantWallet, totalUnits);
     } catch (e) {
-      try { aTokenService.creditA(ESCROW_WALLET, totalUnits); } catch (e2) { console.error(`[AIX商城] ${order.id} 结算回滚担保资金失败，需人工处理:`, e2?.message || e2); }
+      try { aTokenService.creditA(ESCROW_WALLET, totalUnits); } catch (e2) { console.error(`[SVX商城] ${order.id} 结算回滚担保资金失败，需人工处理:`, e2?.message || e2); }
       throw apiError(`商户结算失败，请稍后重试：${e?.message || e}`);
     }
     try { db.addATokenSellQuota(order.merchantWallet, totalUnits); }
-    catch (e) { console.error(`[AIX商城] ${order.merchantWallet} 货款额度释放失败（金额已到账，需人工补发）:`, e?.message || e); }
+    catch (e) { console.error(`[SVX商城] ${order.merchantWallet} 货款额度释放失败（金额已到账，需人工补发）:`, e?.message || e); }
     const updated = db.completeMallOrder(order.id);
     if (!updated) {
       try { aTokenService.debitA(order.merchantWallet, totalUnits); aTokenService.creditA(ESCROW_WALLET, totalUnits); }
-      catch (e) { console.error(`[AIX商城] ${order.id} 状态变更失败且资金回滚失败，需人工处理:`, e?.message || e); }
+      catch (e) { console.error(`[SVX商城] ${order.id} 状态变更失败且资金回滚失败，需人工处理:`, e?.message || e); }
       throw apiError('订单状态已变化，请刷新');
     }
     db.insertMallOrderEvent({ id: newId('moe'), orderId: order.id, actor, type: 'completed',
-      note: `${actor === 'system' ? `发货满 ${AUTO_CONFIRM_DAYS} 天自动确认收货` : '买家确认收货'}，货款 ${fmtA(totalUnits)} AIX 已结算给商户`, createdAt: Date.now() });
+      note: `${actor === 'system' ? `发货满 ${AUTO_CONFIRM_DAYS} 天自动确认收货` : '买家确认收货'}，货款 ${fmtA(totalUnits)} SVX 已结算给商户`, createdAt: Date.now() });
     return updated;
   }
 
@@ -219,9 +219,9 @@ export function createMallApi({ aTokenService, database, walletService = null, s
           if (order?.status !== 'shipped') return;
           settleShippedOrder(order, 'system');
           done += 1;
-          console.log(`[AIX商城] 订单 ${stale.id} 超时自动确认收货，货款已结算给商户`);
+          console.log(`[SVX商城] 订单 ${stale.id} 超时自动确认收货，货款已结算给商户`);
         });
-      } catch (e) { console.error(`[AIX商城] 订单 ${stale.id} 自动确认失败（下轮重试）:`, e?.message || e); }
+      } catch (e) { console.error(`[SVX商城] 订单 ${stale.id} 自动确认失败（下轮重试）:`, e?.message || e); }
     }
     return done;
   }
@@ -243,11 +243,11 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         if (!updated) throw apiError('订单状态已变化，请刷新');
         db.restoreMallStock(order.productId, order.quantity);
         db.insertMallOrderEvent({ id: newId('moe'), orderId, actor: 'buyer', type: 'cancelled',
-          note: `买家取消，担保货款 ${fmtA(refundUnits)} AIX 已退回`, createdAt: Date.now() });
+          note: `买家取消，担保货款 ${fmtA(refundUnits)} SVX 已退回`, createdAt: Date.now() });
         return { order: presentOrder(updated), refundA: fmtA(refundUnits), balanceA: fmtA(aTokenService.balanceA(wallet)) };
       } catch (error) {
-        try { aTokenService.creditA(ESCROW_WALLET, refundUnits); } catch (e) { console.error(`[AIX商城] ${orderId} 取消回滚担保资金失败，需人工处理:`, e?.message || e); }
-        console.error(`[AIX商城] ${wallet} 取消 ${orderId} 异常（已回滚）:`, error?.message || error);
+        try { aTokenService.creditA(ESCROW_WALLET, refundUnits); } catch (e) { console.error(`[SVX商城] ${orderId} 取消回滚担保资金失败，需人工处理:`, e?.message || e); }
+        console.error(`[SVX商城] ${wallet} 取消 ${orderId} 异常（已回滚）:`, error?.message || error);
         throw error instanceof Error && error.code === 'MALL_ERROR' ? error : apiError('取消出现异常，请稍后重试');
       }
     });
@@ -295,14 +295,15 @@ export function createMallApi({ aTokenService, database, walletService = null, s
     // 入驻/关店审核中：仅允许更新店铺资料，不重复收保证金
     if (existing && (existing.status === 'pending' || existing.status === 'closing')) return { merchant: db.upsertMallMerchant({ ...existing, wallet, shopName, intro, status: existing.status }), pending: true };
     // 首次申请或曾被拒（保证金已退，需重新缴纳）：缴纳保证金 + 钱包签名 → 进入待审核
-    const currency = String(body?.depositCurrency ?? '').trim().toUpperCase();
-    if (!['USDT', 'AIX'].includes(currency)) throw apiError('请选择保证金支付方式（USDT 或 AIX）');
-    const deposit = { currency, amount: currency === 'USDT' ? DEPOSIT_USDT : DEPOSIT_AIX, paidAt: Date.now() };
+    const rawCurrency = String(body?.depositCurrency ?? '').trim().toUpperCase();
+    const currency = rawCurrency === 'AIX' ? 'SVX' : rawCurrency;
+    if (!['USDT', 'SVX'].includes(currency)) throw apiError('请选择保证金支付方式（USDT 或 SVX）');
+    const deposit = { currency, amount: currency === 'USDT' ? DEPOSIT_USDT : DEPOSIT_SVX, paidAt: Date.now() };
     // 钱包签名确认：开店保证金必须由本人钱包 personal_sign 授权（签名含时间戳防重放）
     try {
       walletService?.verifyOperationSignature({
         address: wallet,
-        message: `AxiX 商城开店保证金：缴纳 ${deposit.amount} ${currency}，店铺「${shopName}」，时间：${String(body?.timestamp ?? '')}`,
+        message: `Solvex 商城开店保证金：缴纳 ${deposit.amount} ${currency}，店铺「${shopName}」，时间：${String(body?.timestamp ?? '')}`,
         signature: String(body?.signature ?? ''),
       });
     } catch (e) { throw apiError(e.message || '钱包签名验证失败', 'SIGNATURE_INVALID', 401); }
@@ -310,8 +311,8 @@ export function createMallApi({ aTokenService, database, walletService = null, s
       try { walletService.debitBalance(wallet, 'USDT', parseUnits(DEPOSIT_USDT, 6).toString()); }
       catch (e) { throw apiError(`USDT 余额不足，开店保证金需 ${DEPOSIT_USDT} USDT`); }
     } else {
-      try { aTokenService.debitA(wallet, parseUnits(DEPOSIT_AIX, A_TOKEN_DECIMALS).toString()); }
-      catch (e) { throw apiError(`AIX 余额不足，开店保证金需 ${DEPOSIT_AIX} AIX`); }
+      try { aTokenService.debitA(wallet, parseUnits(DEPOSIT_SVX, A_TOKEN_DECIMALS).toString()); }
+      catch (e) { throw apiError(`SVX 余额不足，开店保证金需 ${DEPOSIT_SVX} SVX`); }
     }
     try {
       const merchant = db.upsertMallMerchant({ wallet, shopName, intro, status: 'pending', deposit });
@@ -320,8 +321,8 @@ export function createMallApi({ aTokenService, database, walletService = null, s
       // 申请落库失败：保证金原路退回
       try {
         if (currency === 'USDT') walletService.creditBalance(wallet, 'USDT', parseUnits(DEPOSIT_USDT, 6).toString());
-        else aTokenService.creditA(wallet, parseUnits(DEPOSIT_AIX, A_TOKEN_DECIMALS).toString());
-      } catch (e) { console.error(`[AIX商城] ${wallet} 开店申请失败且保证金退款失败，需人工处理:`, e?.message || e); }
+        else aTokenService.creditA(wallet, parseUnits(DEPOSIT_SVX, A_TOKEN_DECIMALS).toString());
+      } catch (e) { console.error(`[SVX商城] ${wallet} 开店申请失败且保证金退款失败，需人工处理:`, e?.message || e); }
       throw error;
     }
   }
@@ -435,7 +436,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
       if (isGet && pathname === '/api/mall/state') {
         const session = getSession(request);
         const wallet = session?.address;
-        const depositInfo = { usdt: DEPOSIT_USDT, aix: DEPOSIT_AIX, autoConfirmDays: AUTO_CONFIRM_DAYS };
+        const depositInfo = { usdt: DEPOSIT_USDT, svx: DEPOSIT_SVX, autoConfirmDays: AUTO_CONFIRM_DAYS };
         // 游客可逛商城：未登录只返回在售商品，个人数据（余额/地址/订单/商户）为空；
         // 下单、地址等写操作仍要求登录（requireSession）。
         if (!wallet) {
@@ -505,7 +506,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         const session = requireSession(request);
         const wallet = session.address;
         const merchant = db.getMallMerchant(wallet);
-        if (!merchant) return send(res, 200, { merchant: null, products: [], orders: [], depositInfo: { usdt: DEPOSIT_USDT, aix: DEPOSIT_AIX, autoConfirmDays: AUTO_CONFIRM_DAYS } });
+        if (!merchant) return send(res, 200, { merchant: null, products: [], orders: [], depositInfo: { usdt: DEPOSIT_USDT, svx: DEPOSIT_SVX, autoConfirmDays: AUTO_CONFIRM_DAYS } });
         return send(res, 200, {
           merchant,
           balanceA: fmtA(aTokenService.balanceA(wallet)),
@@ -535,7 +536,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
       }
       return send(res, 404, { error: '接口不存在', code: 'NOT_FOUND' });
     } catch (error) {
-      console.warn(`[AIX商城] ${pathname} 失败:`, error?.message || error);
+      console.warn(`[SVX商城] ${pathname} 失败:`, error?.message || error);
       return sendError(res, error);
     }
   }
@@ -577,7 +578,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         if (!merchant) throw apiError('商户不存在');
         if (merchant.status !== 'pending') throw apiError('该商户不在待审核状态');
         db.setMallMerchantStatus(wallet, 'active');
-        console.log(`[AIX商城] 商户审核通过 ${wallet} 「${merchant.shopName}」`);
+        console.log(`[SVX商城] 商户审核通过 ${wallet} 「${merchant.shopName}」`);
         return send(res, 200, { ok: true, merchant: db.getMallMerchant(wallet) });
       }
       if (pathname === '/api/admin/mall/merchants/reject' && request.method === 'POST') {
@@ -588,9 +589,9 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         // 拒绝入驻：保证金原路退回申请人
         const dep = merchant.deposit;
         if (dep?.currency === 'USDT') walletService.creditBalance(wallet, 'USDT', parseUnits(String(dep.amount), 6).toString());
-        else if (dep?.currency === 'AIX') aTokenService.creditA(wallet, parseUnits(String(dep.amount), A_TOKEN_DECIMALS).toString());
+        else if (['AIX', 'SVX'].includes(dep?.currency)) aTokenService.creditA(wallet, parseUnits(String(dep.amount), A_TOKEN_DECIMALS).toString());
         db.setMallMerchantStatus(wallet, 'rejected', { deposit: { ...(dep || {}), refundedAt: Date.now() } });
-        console.log(`[AIX商城] 商户审核拒绝 ${wallet} 「${merchant.shopName}」，保证金已退`);
+        console.log(`[SVX商城] 商户审核拒绝 ${wallet} 「${merchant.shopName}」，保证金已退`);
         return send(res, 200, { ok: true, merchant: db.getMallMerchant(wallet) });
       }
       if (pathname === '/api/admin/mall/merchants/close-approve' && request.method === 'POST') {
@@ -601,9 +602,9 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         // 关店通过：保证金原路退回商户平台余额
         const dep = merchant.deposit;
         if (dep?.currency === 'USDT') walletService.creditBalance(wallet, 'USDT', parseUnits(String(dep.amount), 6).toString());
-        else if (dep?.currency === 'AIX') aTokenService.creditA(wallet, parseUnits(String(dep.amount), A_TOKEN_DECIMALS).toString());
+        else if (['AIX', 'SVX'].includes(dep?.currency)) aTokenService.creditA(wallet, parseUnits(String(dep.amount), A_TOKEN_DECIMALS).toString());
         db.setMallMerchantStatus(wallet, 'closed', { deposit: { ...(dep || {}), refundedAt: Date.now() } });
-        console.log(`[AIX商城] 关店审核通过 ${wallet} 「${merchant.shopName}」，保证金已退`);
+        console.log(`[SVX商城] 关店审核通过 ${wallet} 「${merchant.shopName}」，保证金已退`);
         return send(res, 200, { ok: true, merchant: db.getMallMerchant(wallet) });
       }
       if (pathname === '/api/admin/mall/merchants/close-reject' && request.method === 'POST') {
@@ -612,12 +613,12 @@ export function createMallApi({ aTokenService, database, walletService = null, s
         if (!merchant) throw apiError('商户不存在');
         if (merchant.status !== 'closing') throw apiError('该商户不在关店审核状态');
         db.setMallMerchantStatus(wallet, 'active');
-        console.log(`[AIX商城] 关店申请驳回 ${wallet} 「${merchant.shopName}」，恢复正常经营`);
+        console.log(`[SVX商城] 关店申请驳回 ${wallet} 「${merchant.shopName}」，恢复正常经营`);
         return send(res, 200, { ok: true, merchant: db.getMallMerchant(wallet) });
       }
       return send(res, 404, { error: '接口不存在', code: 'NOT_FOUND' });
     } catch (error) {
-      console.warn(`[AIX商城·后台] ${pathname} 失败:`, error?.message || error);
+      console.warn(`[SVX商城·后台] ${pathname} 失败:`, error?.message || error);
       return sendError(res, error);
     }
   }

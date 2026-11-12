@@ -107,6 +107,25 @@ export function getConfig() {
       { id:'optimism', name:'Optimism (平台结算)', chainId:10, rpcUrl:process.env.OPTIMISM_RPC_URL || 'https://optimism-rpc.publicnode.com', browserRpcUrl:process.env.OPTIMISM_RPC_URL || 'https://optimism-rpc.publicnode.com', nativeSymbol:'ETH', tokenContract:process.env.OPTIMISM_USDT_CONTRACT || '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', tokenDecimals:6, confirmations:Number(process.env.OPTIMISM_CONFIRMATIONS || 20), explorerUrl:'https://optimistic.etherscan.io', public:false },
     ],
     sessionHours: Number(process.env.WALLET_SESSION_HOURS || 24),
+    // 同一设备最多可绑定的钱包账号数（第 N+1 个在建立会话时拒绝）
+    maxWalletsPerDevice: Number(process.env.DEVICE_MAX_WALLETS || 3),
+    // 提现手续费 2% 自动加 LP：链下入队 + 指令生成；执行器默认关闭，建议由运维脚本单独跑，
+    // 避免与提现出款共用同一个出款钱包时并发抢 nonce。
+    autoLp: {
+      enabled: process.env.PLATFORM_AUTO_LP_ENABLE_EXECUTOR === '1',
+      contractAddress: process.env.AUTO_LP_CONTRACT_ADDRESS || '',
+      usdtContract: process.env.AUTO_LP_USDT_CONTRACT || '0x55d398326f99059fF775485246999027B3197955',
+      usdtDecimals: Number(process.env.AUTO_LP_USDT_DECIMALS || 18),
+      svxContract: process.env.AUTO_LP_SVX_CONTRACT || process.env.A_TOKEN_CONTRACT_ADDRESS || '',
+      pairAddress: process.env.AUTO_LP_PAIR_ADDRESS || '',
+      router: process.env.AUTO_LP_ROUTER || '0x10ED43C718714eb63d5aA57B78B54704E256024E',
+      chainId: 56,
+      rpcUrl: process.env.BSC_RPC_URL || 'https://bsc-rpc.publicnode.com',
+      confirmations: Number(process.env.AUTO_LP_CONFIRMATIONS || 3),
+      // 按日批量结算：默认每天 08:00（UTC+8）结算前一日累计；与平台其他每日结算窗口一致。
+      settleEnabled: process.env.AUTO_LP_SETTLE_ENABLED !== '0',
+      settleHourUtc8: Number(process.env.AUTO_LP_SETTLE_HOUR_UTC8 ?? 8),
+    },
     bridge: {
       enabled:process.env.PLATFORM_BRIDGE_ENABLED === '1',
       settlementNetwork:(process.env.PLATFORM_SETTLEMENT_NETWORK || 'optimism').toLowerCase(),

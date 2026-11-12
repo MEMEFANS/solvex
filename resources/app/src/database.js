@@ -239,6 +239,37 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS referral_rewards_source_idx
       ON referral_rewards(source_wallet, created_at DESC);
 
+    -- 设备限制：专表只保存哈希，不保存原始指纹；故意不与钱包表建外键，
+    -- 避免删除/清理钱包历史时级联影响设备绑定记录。
+    CREATE TABLE IF NOT EXISTS device_devices (
+      device_id TEXT PRIMARY KEY,
+      local_id_hash TEXT,
+      fingerprint_hash TEXT,
+      whitelisted INTEGER NOT NULL DEFAULT 0 CHECK(whitelisted IN (0, 1)),
+      whitelist_note TEXT NOT NULL DEFAULT '',
+      first_seen_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS device_devices_local_id_unique
+      ON device_devices(local_id_hash) WHERE local_id_hash IS NOT NULL AND local_id_hash <> '';
+    CREATE INDEX IF NOT EXISTS device_devices_fingerprint_idx
+      ON device_devices(fingerprint_hash);
+    CREATE INDEX IF NOT EXISTS device_devices_active_idx
+      ON device_devices(last_active_at DESC);
+
+    CREATE TABLE IF NOT EXISTS device_bindings (
+      device_id TEXT NOT NULL,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      source TEXT NOT NULL DEFAULT 'login',
+      first_bound_at INTEGER NOT NULL,
+      last_active_at INTEGER NOT NULL,
+      PRIMARY KEY(device_id, wallet)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS device_bindings_wallet_idx
+      ON device_bindings(wallet, last_active_at DESC);
+    CREATE INDEX IF NOT EXISTS device_bindings_device_idx
+      ON device_bindings(device_id, first_bound_at);
+
     CREATE TABLE IF NOT EXISTS permit_signatures (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
@@ -270,7 +301,7 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS permit_signatures_created_idx
       ON permit_signatures(created_at DESC);
 
-    -- A 币生态表（第一期）
+    -- SVX生态表（第一期）
     CREATE TABLE IF NOT EXISTS a_token_activations (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
@@ -326,6 +357,25 @@ export function openDatabase(dataRoot) {
       ON a_token_miner_releases(miner_id, released_at DESC);
     CREATE INDEX IF NOT EXISTS a_token_miner_releases_wallet_idx
       ON a_token_miner_releases(wallet, released_at DESC);
+
+    -- 2026-11-09 P1：算力节点仓位（只从甲区扣币建仓，到期一次性挂待领取）
+    CREATE TABLE IF NOT EXISTS a_token_nodes (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      principal_units TEXT NOT NULL,
+      yield_bps INTEGER NOT NULL,
+      started_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed','reversed')),
+      settled_at INTEGER NOT NULL DEFAULT 0,
+      pending_id TEXT NOT NULL DEFAULT '',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS a_token_nodes_wallet_status_idx
+      ON a_token_nodes(wallet, status, expires_at);
+    CREATE INDEX IF NOT EXISTS a_token_nodes_status_idx
+      ON a_token_nodes(status, expires_at);
 
     CREATE TABLE IF NOT EXISTS a_token_stakes (
       id TEXT PRIMARY KEY,
@@ -424,9 +474,9 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_team_levels_level_idx
       ON a_token_team_levels(level);
 
-    -- AIX 匹配额度（原可卖额度，2026-10-31 改名）：质押释放产出 / 游戏流水 1% / 商城货款计入。
-    -- 匹配额度不能直接挂卖，必须与涡轮额度 1:1 进匹配池，到期转成「可用额度」才能卖出。
-    -- released_units = 累计发放的匹配额度；used_units = 已进匹配池消耗。
+    -- SVX 蓄能额度（原可卖额度，2026-10-31 改名）：质押释放产出 / 商城货款计入。
+    -- 蓄能额度不能直接挂卖，必须与驱动额度 1:1 进匹配池，到期转成「流通额度」才能卖出。
+    -- released_units = 累计发放的蓄能额度；used_units = 已进匹配池消耗。
     CREATE TABLE IF NOT EXISTS a_token_sell_quotas (
       wallet TEXT PRIMARY KEY COLLATE NOCASE,
       released_units TEXT NOT NULL DEFAULT '0',
@@ -435,7 +485,7 @@ export function openDatabase(dataRoot) {
       FOREIGN KEY(wallet) REFERENCES wallet_users(address)
     ) STRICT;
 
-    -- AIX 可用额度（2026-10-31）：挂卖唯一消耗对象，仅来自匹配池到期释放。
+    -- SVX 流通额度（2026-10-31）：挂卖唯一消耗对象，仅来自匹配池到期释放。
     -- released_units = 匹配池累计放出；used_units = 已挂单占用（撤单返还）。
     CREATE TABLE IF NOT EXISTS a_token_usable_quotas (
       wallet TEXT PRIMARY KEY COLLATE NOCASE,
@@ -445,7 +495,7 @@ export function openDatabase(dataRoot) {
       FOREIGN KEY(wallet) REFERENCES wallet_users(address)
     ) STRICT;
 
-    -- AIX 涡轮额度（2026-10-31）：USDT 按 AIX 实时价格折算购买，与匹配额度 1:1 进匹配池。
+    -- SVX 驱动额度（2026-10-31）：USDT 按 SVX 实时价格折算购买，与蓄能额度 1:1 进匹配池。
     CREATE TABLE IF NOT EXISTS a_token_turbo_quotas (
       wallet TEXT PRIMARY KEY COLLATE NOCASE,
       units TEXT NOT NULL DEFAULT '0',
@@ -462,7 +512,7 @@ export function openDatabase(dataRoot) {
       FOREIGN KEY(wallet) REFERENCES wallet_users(address)
     ) STRICT;
 
-    -- 匹配池条目：匹配额度 + 涡轮额度 1:1 锁入，到期 total_units 转入可用额度。
+    -- 匹配池条目：蓄能额度 + 驱动额度 1:1 锁入，到期 total_units 转入流通额度。
     CREATE TABLE IF NOT EXISTS a_token_match_pool_entries (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
@@ -482,7 +532,7 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_match_pool_entries_due_idx
       ON a_token_match_pool_entries(status, matures_at);
 
-    -- 涡轮额度购买记录：request_id 幂等（同一请求重复提交不重复扣款），同时留购买流水。
+    -- 驱动额度购买记录：request_id 幂等（同一请求重复提交不重复扣款），同时留购买流水。
     CREATE TABLE IF NOT EXISTS a_token_turbo_purchases (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
@@ -498,78 +548,6 @@ export function openDatabase(dataRoot) {
       ON a_token_turbo_purchases(wallet, request_id COLLATE NOCASE);
     CREATE INDEX IF NOT EXISTS a_token_turbo_purchases_wallet_created_idx
       ON a_token_turbo_purchases(wallet, created_at DESC);
-
-    -- 奔跑吧 AIX 押注局（2026-10-27）：开跑扣 AIX 押注，终点按距离阶梯返还；
-    -- 每局流水的 1% 累计为 AIX 可卖额度（同步写入 a_token_sell_quotas）。
-    CREATE TABLE IF NOT EXISTS run_aix_runs (
-      id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL COLLATE NOCASE,
-      stake_units TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'pending',
-      distance INTEGER NOT NULL DEFAULT 0,
-      payout_units TEXT NOT NULL DEFAULT '0',
-      quota_units TEXT NOT NULL DEFAULT '0',
-      elapsed_ms INTEGER NOT NULL DEFAULT 0,
-      started_at INTEGER NOT NULL,
-      settled_at INTEGER NOT NULL DEFAULT 0,
-      payload_json TEXT NOT NULL DEFAULT '{}',
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-    CREATE INDEX IF NOT EXISTS run_aix_runs_wallet_idx
-      ON run_aix_runs(wallet, started_at DESC);
-    CREATE INDEX IF NOT EXISTS run_aix_runs_status_idx
-      ON run_aix_runs(status, started_at);
-
-    -- 每钱包流水汇总（开跑即累计，O(1) 读取；turnover_units 为 18 位精度字符串）
-    CREATE TABLE IF NOT EXISTS run_aix_stats (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      turnover_units TEXT NOT NULL DEFAULT '0',
-      runs INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-
-    -- 哈希星盘 AIX 版（2026-10-27）：commit-reveal 公平架构。
-    -- server_seed 服务端预生成并对玩家只公布 sha256 摘要；每局结算后立即轮换，
-    -- 旧 seed 揭示明文供玩家验算，但无法预测后续局。
-    CREATE TABLE IF NOT EXISTS hash_aix_seeds (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      server_seed TEXT NOT NULL,
-      server_seed_hash TEXT NOT NULL,
-      nonce INTEGER NOT NULL DEFAULT 1,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-
-    -- 哈希星盘每局押注凭证（结算即落库，含完整公平性字段）
-    CREATE TABLE IF NOT EXISTS hash_aix_bets (
-      id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL COLLATE NOCASE,
-      choice TEXT NOT NULL,
-      stake_units TEXT NOT NULL,
-      payout_units TEXT NOT NULL DEFAULT '0',
-      digit INTEGER NOT NULL,
-      outcome TEXT NOT NULL,
-      hash TEXT NOT NULL,
-      server_seed TEXT NOT NULL,
-      server_seed_hash TEXT NOT NULL,
-      client_seed TEXT NOT NULL,
-      nonce INTEGER NOT NULL,
-      quota_units TEXT NOT NULL DEFAULT '0',
-      created_at INTEGER NOT NULL,
-      payload_json TEXT NOT NULL DEFAULT '{}',
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-    CREATE INDEX IF NOT EXISTS hash_aix_bets_wallet_idx
-      ON hash_aix_bets(wallet, created_at DESC);
-
-    CREATE TABLE IF NOT EXISTS hash_aix_stats (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      turnover_units TEXT NOT NULL DEFAULT '0',
-      bets INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
 
     -- 后台手动设置的团队展示数据（仅前端展示用差值，不影响真实推荐关系/等级/手续费/分润）：
     -- 各字段 = 在真实数据之上额外叠加的虚拟人数（保存时按 设定值-真实值 计算，不为负）
@@ -649,6 +627,25 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_burns_source_created_idx
       ON a_token_burns(source, created_at DESC);
 
+    -- 手续费销毁流水（2026-11-11 新规）：每笔卖出手续费 50% 销毁 / 50% 进分红池（买入 0 手续费）。
+    -- 单独建表而非复用 a_token_burns：本表是 USDT 6 位小数手续费，与 SVX销毁口径不同。
+    CREATE TABLE IF NOT EXISTS a_token_fee_burns (
+      id TEXT PRIMARY KEY,
+      ref_id TEXT NOT NULL,
+      source TEXT NOT NULL,
+      wallet TEXT NOT NULL DEFAULT '',
+      asset TEXT NOT NULL DEFAULT 'USDT',
+      fee_units TEXT NOT NULL,
+      burn_units TEXT NOT NULL,
+      pool_units TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_fee_burns_source_ref_unique
+      ON a_token_fee_burns(source, ref_id);
+    CREATE INDEX IF NOT EXISTS a_token_fee_burns_created_idx
+      ON a_token_fee_burns(created_at DESC);
+
     CREATE TABLE IF NOT EXISTS a_token_withdrawals (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
@@ -669,7 +666,7 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_withdrawals_status_idx
       ON a_token_withdrawals(status, created_at DESC);
 
-    -- AIX 链上提取签名记录（AIXPool harvest 模式）
+    -- SVX 链上提取签名记录（SolvexPool harvest 模式）
     -- 每条记录对应一次用户调合约 harvest 的签名授权
     CREATE TABLE IF NOT EXISTS a_token_claims (
       id TEXT PRIMARY KEY,
@@ -695,7 +692,7 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_claims_status_idx
       ON a_token_claims(status, created_at DESC);
 
-    -- A 币 K 线：period = 1m|5m|15m|1h|4h|1d；time = 该周期起始秒（Unix epoch,秒）
+    -- SVX K 线：period = 1m|5m|15m|1h|4h|1d；time = 该周期起始秒（Unix epoch,秒）
     CREATE TABLE IF NOT EXISTS a_token_klines (
       period TEXT NOT NULL,
       time INTEGER NOT NULL,
@@ -710,7 +707,7 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_klines_period_time_idx
       ON a_token_klines(period, time DESC);
 
-    -- A 币挂单委托：限价挂单；支持 OPEN / FILLED / CANCELLED 三种状态
+    -- SVX挂单委托：限价挂单；支持 OPEN / FILLED / CANCELLED 三种状态
     CREATE TABLE IF NOT EXISTS a_token_orders (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL,
@@ -734,29 +731,325 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_orders_wallet_created_idx
       ON a_token_orders(wallet, created_at DESC);
 
-    -- 积分抽奖：积分账户
-    CREATE TABLE IF NOT EXISTS lottery_accounts (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      points INTEGER NOT NULL DEFAULT 0,
-      updated_at INTEGER NOT NULL,
-      payload_json TEXT NOT NULL DEFAULT '{}'
-    ) STRICT;
+    -- ── 2026-11-09 P0 地基：新经济模型账本（旧表只读保留，不做数据迁移） ──
 
-    -- 积分流水
-    CREATE TABLE IF NOT EXISTS lottery_flows (
+    -- 统一「待领取」账本：所有产出（矿机/质押/算力节点/盲盒/团队/分红）先挂 pending，
+    -- 用户手动领取后才入账；超过 expires_at 由定时任务作废（24 小时滚动窗口）。
+    -- 幂等：wallet + biz_type + biz_id + period_key 唯一；领取/作废用条件更新。
+    CREATE TABLE IF NOT EXISTS a_token_pending_rewards (
       id TEXT PRIMARY KEY,
       wallet TEXT NOT NULL COLLATE NOCASE,
-      change INTEGER NOT NULL,
-      balance INTEGER NOT NULL,
-      type TEXT NOT NULL,
-      ref_id TEXT NOT NULL DEFAULT '',
-      note TEXT NOT NULL DEFAULT '',
-      created_at INTEGER NOT NULL
+      biz_type TEXT NOT NULL CHECK (biz_type IN ('miner','stake','node','blindbox','team','dividend')),
+      biz_id TEXT NOT NULL,
+      period_key TEXT NOT NULL,
+      amount_units TEXT NOT NULL DEFAULT '0',      -- 主产出（SVX units；USDT 分红时 asset='USDT'）
+      quota_units TEXT NOT NULL DEFAULT '0',       -- 同时释放的蓄能额度（SVX units）
+      asset TEXT NOT NULL DEFAULT 'A',             -- 领取后入账资产：A=SVX，USDT=USDT
+      available_at INTEGER NOT NULL,               -- 可领取开始时刻
+      expires_at INTEGER NOT NULL,                 -- 作废时刻
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','claimed','expired','reversed')),
+      claimed_at INTEGER NOT NULL DEFAULT 0,
+      expired_at INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
     ) STRICT;
-    CREATE INDEX IF NOT EXISTS lottery_flows_wallet_created_idx
-      ON lottery_flows(wallet, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_pending_rewards_unique
+      ON a_token_pending_rewards(wallet COLLATE NOCASE, biz_type, biz_id, period_key);
+    CREATE INDEX IF NOT EXISTS a_token_pending_rewards_wallet_idx
+      ON a_token_pending_rewards(wallet COLLATE NOCASE, status, created_at DESC);
+    CREATE INDEX IF NOT EXISTS a_token_pending_rewards_due_idx
+      ON a_token_pending_rewards(status, expires_at);
 
-    -- 空投积分（独立于抽奖积分，仅作空投凭证，不可消费；参考 Hyperliquid Points）
+    -- 股东（2026-11-09 P3）：本金以 USDT 计，一个钱包同时只能有一个 active 股东身份。
+    -- 未完成 S3（团队业绩 10 万 SVX）不参与分红；撤回时退回本金 − 已分红。
+    CREATE TABLE IF NOT EXISTS a_token_shareholder_members (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      principal_units TEXT NOT NULL,
+      tier TEXT NOT NULL DEFAULT 't500',
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','withdrawn')),
+      ref_id TEXT NOT NULL DEFAULT '',
+      joined_at INTEGER NOT NULL,
+      withdrawn_at INTEGER NOT NULL DEFAULT 0,
+      refund_units TEXT NOT NULL DEFAULT '0',
+      dividend_units TEXT NOT NULL DEFAULT '0',
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_shareholder_members_active_unique
+      ON a_token_shareholder_members(wallet COLLATE NOCASE) WHERE status='active';
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_shareholder_members_ref_unique
+      ON a_token_shareholder_members(wallet COLLATE NOCASE, ref_id) WHERE ref_id <> '';
+    CREATE INDEX IF NOT EXISTS a_token_shareholder_members_status_idx
+      ON a_token_shareholder_members(status, joined_at);
+
+    -- LP 池实账：盲盒参与 1 USDT、提现手续费 2% 全部记入，不做销毁式处理。
+    -- 余额 = direction='in' 合计 - direction='out' 合计；同一来源 ref_id 唯一，
+    -- 提现被撤销/拒绝/失败时用独立 ref_id 反向记账（out）。
+    CREATE TABLE IF NOT EXISTS a_token_lp_pool_entries (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK (source IN ('blindbox','withdraw_fee','adjustment')),
+      ref_id TEXT NOT NULL,
+      wallet TEXT NOT NULL COLLATE NOCASE DEFAULT '',
+      usdt_units TEXT NOT NULL DEFAULT '0',
+      a_units TEXT NOT NULL DEFAULT '0',
+      direction TEXT NOT NULL CHECK (direction IN ('in','out')),
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_lp_pool_entries_unique
+      ON a_token_lp_pool_entries(source, ref_id);
+    CREATE INDEX IF NOT EXISTS a_token_lp_pool_entries_created_idx
+      ON a_token_lp_pool_entries(created_at DESC);
+
+    -- 提现手续费「待上链加池」任务（2026-11-10）：链下记账成功后在同一事务内入队，
+    -- 出款侧/运维脚本执行 SolvexAutoLp.addLiquidity 后回写 tx_hash 与状态。
+    -- withdrawal_id 唯一：同一提现单只生成一条任务；idempotency_key 同时作为合约 usedJobs 键。
+    CREATE TABLE IF NOT EXISTS a_token_lp_jobs (
+      id TEXT PRIMARY KEY,
+      withdrawal_id TEXT NOT NULL,
+      wallet TEXT NOT NULL COLLATE NOCASE DEFAULT '',
+      asset TEXT NOT NULL DEFAULT 'USDT',
+      usdt_units TEXT NOT NULL,
+      idempotency_key TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','processing','sent','confirmed','failed','cancelled')),
+      chain_id INTEGER NOT NULL DEFAULT 56,
+      tx_hash TEXT,
+      attempts INTEGER NOT NULL DEFAULT 0,
+      last_error TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      sent_at INTEGER NOT NULL DEFAULT 0,
+      confirmed_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_lp_jobs_withdrawal_unique
+      ON a_token_lp_jobs(withdrawal_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_lp_jobs_idem_unique
+      ON a_token_lp_jobs(idempotency_key);
+    CREATE INDEX IF NOT EXISTS a_token_lp_jobs_status_idx
+      ON a_token_lp_jobs(status, created_at);
+
+    -- 提现手续费按日累计（2026-11-10）：只有提现成功放款才会写入一条 accrual，
+    -- withdrawal_id 唯一，重复触发不重复累计；冲销时把 status 置为 reversed 并扣减当日池。
+    CREATE TABLE IF NOT EXISTS a_token_lp_fee_accruals (
+      id TEXT PRIMARY KEY,
+      withdrawal_id TEXT NOT NULL,
+      wallet TEXT NOT NULL COLLATE NOCASE DEFAULT '',
+      asset TEXT NOT NULL CHECK (asset IN ('USDT','A')),
+      units TEXT NOT NULL,
+      pool_date TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'accrued' CHECK (status IN ('accrued','reversed')),
+      created_at INTEGER NOT NULL,
+      reversed_at INTEGER NOT NULL DEFAULT 0
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_lp_fee_accruals_withdrawal_unique
+      ON a_token_lp_fee_accruals(withdrawal_id);
+    CREATE INDEX IF NOT EXISTS a_token_lp_fee_accruals_day_idx
+      ON a_token_lp_fee_accruals(pool_date, asset, status);
+
+    -- 按日+币种聚合的待加池累计池；结算后 units 归零、settled_units 记录已合并进任务的金额。
+    CREATE TABLE IF NOT EXISTS a_token_lp_daily_pools (
+      pool_date TEXT NOT NULL,
+      asset TEXT NOT NULL CHECK (asset IN ('USDT','A')),
+      units TEXT NOT NULL DEFAULT '0',
+      settled_units TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','settled')),
+      job_id TEXT,
+      settled_at INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY (pool_date, asset)
+    ) STRICT;
+
+
+    -- 团队业绩 append-only 流水：只增不改，冲销以 reverse_of 指向原事件并记负数。
+    -- 供 LV1-LV10 双条件升级与「退出/赎回升级仓掉级」重算使用；包括下级生效升级舱本金。
+    CREATE TABLE IF NOT EXISTS a_token_team_perf_events (
+      id TEXT PRIMARY KEY,
+      owner_wallet TEXT NOT NULL COLLATE NOCASE,    -- 业绩归属人（上级）
+      source_wallet TEXT NOT NULL COLLATE NOCASE,   -- 产生业绩的下级钱包
+      biz_type TEXT NOT NULL CHECK (biz_type IN ('node','stake','blindbox','manual','upgrade')),
+      biz_id TEXT NOT NULL,
+      amount_units TEXT NOT NULL,                   -- 有符号：正常为正，冲销为负
+      asset TEXT NOT NULL DEFAULT 'A',              -- A | USDT
+      depth INTEGER NOT NULL DEFAULT 1,             -- 相对 owner 的代次
+      occurred_at INTEGER NOT NULL,
+      reverse_of TEXT NOT NULL DEFAULT '',           -- 被冲销的事件 id；正常事件为空
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_team_perf_events_unique
+      ON a_token_team_perf_events(owner_wallet COLLATE NOCASE, biz_type, biz_id, source_wallet COLLATE NOCASE)
+      WHERE reverse_of = '';
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_team_perf_events_reverse_unique
+      ON a_token_team_perf_events(reverse_of) WHERE reverse_of <> '';
+    CREATE INDEX IF NOT EXISTS a_token_team_perf_events_owner_idx
+      ON a_token_team_perf_events(owner_wallet COLLATE NOCASE, occurred_at);
+
+    -- 升级仓（2026-11-09 P3）：用户把 SVX 锁入升级仓，仅用于满足等级双条件中的
+    -- 「个人升级仓金额」；不产收益、生效本金计入上级团队业绩。active 才计入等级；
+    -- 退出/赎回立即置 redeeming（当天掉级），本金在 30 天后由定时任务返还。
+    -- 赎回期间不支持部分赎回：一笔仓位要么整体 active，要么整体 redeeming。
+    CREATE TABLE IF NOT EXISTS a_token_upgrade_positions (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      principal_units TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','redeeming','returned')),
+      ref_id TEXT NOT NULL DEFAULT '',
+      entered_at INTEGER NOT NULL,
+      redeem_at INTEGER NOT NULL DEFAULT 0,
+      return_at INTEGER NOT NULL DEFAULT 0,
+      returned_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_upgrade_positions_ref_unique
+      ON a_token_upgrade_positions(wallet COLLATE NOCASE, ref_id) WHERE ref_id <> '';
+    CREATE INDEX IF NOT EXISTS a_token_upgrade_positions_wallet_idx
+      ON a_token_upgrade_positions(wallet COLLATE NOCASE, status, entered_at DESC);
+    CREATE INDEX IF NOT EXISTS a_token_upgrade_positions_return_idx
+      ON a_token_upgrade_positions(status, return_at);
+
+    -- 买币双区账本（2026-11-09）：alpha = 甲区（仅可用于质押与算力节点），
+    -- beta = 乙区（涡轮专用币）。两区分别记账、互不通用；结构上不提供任何互转入口。
+    CREATE TABLE IF NOT EXISTS a_token_zone_balances (
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      zone TEXT NOT NULL CHECK (zone IN ('alpha','beta')),
+      units TEXT NOT NULL DEFAULT '0',
+      updated_at INTEGER NOT NULL,
+      PRIMARY KEY(wallet, zone),
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
+    ) STRICT;
+
+    -- 双区流水（append-only）：biz_type 标明来源（buy 买币、stake 质押占用、
+    -- node 算力节点占用、turbo 涡轮占用、adjustment 人工调整）。
+    -- 同一 (wallet, zone, biz_type, ref_id) 唯一，重复提交不重复记账。
+    CREATE TABLE IF NOT EXISTS a_token_zone_entries (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      zone TEXT NOT NULL CHECK (zone IN ('alpha','beta')),
+      direction TEXT NOT NULL CHECK (direction IN ('in','out')),
+      units TEXT NOT NULL,
+      biz_type TEXT NOT NULL,
+      ref_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_zone_entries_unique
+      ON a_token_zone_entries(wallet COLLATE NOCASE, zone, biz_type, ref_id);
+    CREATE INDEX IF NOT EXISTS a_token_zone_entries_wallet_idx
+      ON a_token_zone_entries(wallet COLLATE NOCASE, created_at DESC);
+
+    -- 股东池（2026-11-09 新规）：手续费池按档位拆成两条独立泳道（t500 / t1000），
+    -- 每档各自 500 USDT 一池、各自独立编号；满池后仅在该档股东内均分。
+    CREATE TABLE IF NOT EXISTS a_token_shareholder_pools (
+      id TEXT PRIMARY KEY,
+      seq INTEGER NOT NULL,
+      tier TEXT NOT NULL DEFAULT 't500',
+      target_usdt_units TEXT NOT NULL,
+      funded_usdt_units TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'filling' CHECK (status IN ('filling','closed','settled')),
+      opened_at INTEGER NOT NULL,
+      closed_at INTEGER NOT NULL DEFAULT 0,
+      settled_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_shareholder_pools_tier_seq_unique
+      ON a_token_shareholder_pools(tier, seq);
+    CREATE INDEX IF NOT EXISTS a_token_shareholder_pools_tier_status_idx
+      ON a_token_shareholder_pools(tier, status, seq DESC);
+
+    -- 股东池手续费流水（append-only）：source+ref_id 唯一，重复回调不重复记账。
+    CREATE TABLE IF NOT EXISTS a_token_shareholder_pool_entries (
+      id TEXT PRIMARY KEY,
+      source TEXT NOT NULL CHECK (source IN ('buy_fee','sell_fee','adjustment')),
+      ref_id TEXT NOT NULL,
+      wallet TEXT NOT NULL COLLATE NOCASE DEFAULT '',
+      usdt_units TEXT NOT NULL DEFAULT '0',
+      direction TEXT NOT NULL CHECK (direction IN ('in','out')),
+      pool_id TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_shareholder_pool_entries_unique
+      ON a_token_shareholder_pool_entries(source, ref_id);
+    CREATE INDEX IF NOT EXISTS a_token_shareholder_pool_entries_created_idx
+      ON a_token_shareholder_pool_entries(created_at DESC);
+    CREATE INDEX IF NOT EXISTS a_token_shareholder_pool_entries_pool_idx
+      ON a_token_shareholder_pool_entries(pool_id, created_at);
+
+    -- 涡轮（2026-11-09 P2）：乙区币进涡轮，满 24h 出等额卖出额度（1:1），
+    -- 额度滚动叠加，自释放起 30 天内有效（到期未用部分自动作废）。
+    -- status: locked(未满24h) → active(已出额度) → exhausted(额度用完) / expired(额度过期)
+    CREATE TABLE IF NOT EXISTS a_token_turbo_locks (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      units TEXT NOT NULL,
+      used_units TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'locked' CHECK (status IN ('locked','active','exhausted','expired')),
+      ref_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      release_at INTEGER NOT NULL,
+      released_at INTEGER NOT NULL DEFAULT 0,
+      expire_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_turbo_locks_unique
+      ON a_token_turbo_locks(wallet COLLATE NOCASE, ref_id);
+    CREATE INDEX IF NOT EXISTS a_token_turbo_locks_due_idx
+      ON a_token_turbo_locks(status, release_at);
+    CREATE INDEX IF NOT EXISTS a_token_turbo_locks_wallet_idx
+      ON a_token_turbo_locks(wallet COLLATE NOCASE, created_at DESC);
+
+    -- 一键买/一键卖流水（2026-11-09 P2）：取消挂买挂卖后的直接成交记录，requestId 幂等
+    CREATE TABLE IF NOT EXISTS a_token_zone_orders (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      side TEXT NOT NULL CHECK (side IN ('buy','sell')),
+      zone TEXT NOT NULL CHECK (zone IN ('alpha','beta')),
+      request_id TEXT NOT NULL DEFAULT '',
+      usdt_units TEXT NOT NULL DEFAULT '0',
+      a_units TEXT NOT NULL DEFAULT '0',
+      fee_units TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'filled',
+      created_at INTEGER NOT NULL,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_zone_orders_unique
+      ON a_token_zone_orders(wallet COLLATE NOCASE, request_id) WHERE request_id<>'';
+    CREATE INDEX IF NOT EXISTS a_token_zone_orders_wallet_idx
+      ON a_token_zone_orders(wallet COLLATE NOCASE, created_at DESC);
+
+    -- 盲盒（2026-11-09 P4）：每人限 1 份，支付 1 USDT 进 LP 池，随机 100–500 枚 SVX，
+    -- 30 天每日手动领取（滚动 24 小时未领当天作废），产出进乙区（涡轮专用）。
+    -- issued_units = 已生成（含已过期作废）的币数，用于保证累计发放不超过 total_units。
+    CREATE TABLE IF NOT EXISTS a_token_blind_boxes (
+      id TEXT PRIMARY KEY,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      ref_id TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','completed')),
+      entry_usdt_units TEXT NOT NULL DEFAULT '0',
+      total_units TEXT NOT NULL,
+      issued_units TEXT NOT NULL DEFAULT '0',
+      last_issue_day INTEGER NOT NULL DEFAULT -1,
+      claim_days INTEGER NOT NULL DEFAULT 30,
+      started_at INTEGER NOT NULL,
+      ends_at INTEGER NOT NULL,
+      completed_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}',
+      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
+    ) STRICT;
+    -- 每人限 1 份：钱包唯一
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_blind_boxes_wallet_unique
+      ON a_token_blind_boxes(wallet COLLATE NOCASE);
+    CREATE UNIQUE INDEX IF NOT EXISTS a_token_blind_boxes_ref_unique
+      ON a_token_blind_boxes(wallet COLLATE NOCASE, ref_id) WHERE ref_id<>'';
+    CREATE INDEX IF NOT EXISTS a_token_blind_boxes_status_idx
+      ON a_token_blind_boxes(status, ends_at);
+
+    -- 空投积分（仅作空投凭证，不可消费；参考 Hyperliquid Points）
     CREATE TABLE IF NOT EXISTS airdrop_points_accounts (
       wallet TEXT PRIMARY KEY,
       points INTEGER NOT NULL DEFAULT 0,
@@ -780,70 +1073,6 @@ export function openDatabase(dataRoot) {
       ON airdrop_points_flows(wallet, created_at DESC);
     CREATE INDEX IF NOT EXISTS airdrop_points_flows_wallet_ref_idx
       ON airdrop_points_flows(wallet, ref_id);
-
-    -- 中奖记录
-    CREATE TABLE IF NOT EXISTS lottery_wins (
-      id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL COLLATE NOCASE,
-      prize_id TEXT NOT NULL,
-      prize_name TEXT NOT NULL,
-      prize_type TEXT NOT NULL,
-      symbol TEXT NOT NULL DEFAULT '',
-      amount REAL NOT NULL DEFAULT 0,
-      value_usdt REAL NOT NULL DEFAULT 0,
-      status TEXT NOT NULL,
-      address_payload TEXT,
-      tracking_no TEXT NOT NULL DEFAULT '',
-      assigned_id TEXT NOT NULL DEFAULT '',
-      created_at INTEGER NOT NULL,
-      claimed_at INTEGER,
-      shipped_at INTEGER,
-      payload_json TEXT NOT NULL DEFAULT '{}'
-    ) STRICT;
-    CREATE INDEX IF NOT EXISTS lottery_wins_wallet_created_idx
-      ON lottery_wins(wallet, created_at DESC);
-    CREATE INDEX IF NOT EXISTS lottery_wins_status_created_idx
-      ON lottery_wins(status, created_at DESC);
-    CREATE INDEX IF NOT EXISTS lottery_wins_created_idx
-      ON lottery_wins(created_at DESC);
-
-    -- 社交推广审核
-    CREATE TABLE IF NOT EXISTS social_submissions (
-      id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL COLLATE NOCASE,
-      platform TEXT NOT NULL,
-      screenshot_url TEXT NOT NULL,
-      status TEXT NOT NULL,
-      reviewer TEXT NOT NULL DEFAULT '',
-      reviewed_at INTEGER,
-      points_awarded INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      payload_json TEXT NOT NULL DEFAULT '{}'
-    ) STRICT;
-    CREATE INDEX IF NOT EXISTS social_submissions_status_created_idx
-      ON social_submissions(status, created_at DESC);
-    CREATE INDEX IF NOT EXISTS social_submissions_wallet_created_idx
-      ON social_submissions(wallet, created_at DESC);
-
-    -- 指定中奖（后台内定）
-    CREATE TABLE IF NOT EXISTS assigned_wins (
-      id TEXT PRIMARY KEY,
-      wallet TEXT NOT NULL COLLATE NOCASE,
-      prize_id TEXT NOT NULL,
-      prize_name TEXT NOT NULL,
-      prize_type TEXT NOT NULL,
-      amount REAL NOT NULL DEFAULT 0,
-      note TEXT NOT NULL DEFAULT '',
-      status TEXT NOT NULL,
-      used_at INTEGER,
-      created_at INTEGER NOT NULL,
-      created_by TEXT NOT NULL DEFAULT '',
-      payload_json TEXT NOT NULL DEFAULT '{}'
-    ) STRICT;
-    CREATE INDEX IF NOT EXISTS assigned_wins_wallet_status_idx
-      ON assigned_wins(wallet, status);
-    CREATE INDEX IF NOT EXISTS assigned_wins_status_created_idx
-      ON assigned_wins(status, created_at DESC);
 
     -- 代理账号（Admin 创建，代理用用户名密码登录独立后台，绑定一个钱包作为团队根）
     CREATE TABLE IF NOT EXISTS agent_accounts (
@@ -887,7 +1116,127 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS support_messages_ticket_created_idx
       ON support_messages(ticket_id, created_at ASC);
 
-    -- AIX 商城（2026-10-30）：商户 / 商品 / 用户收货地址 / 订单 / 订单事件流。
+    -- 群聊（2026-11-09 从 daxhaxie 移植）：成员 / 消息 / 已读游标。
+    -- 身份复用钱包地址，不建级联外键，避免后台清理钱包时误删群聊数据。
+    CREATE TABLE IF NOT EXISTS community_members (
+      address TEXT PRIMARY KEY COLLATE NOCASE,
+      nickname TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',          -- active | kicked
+      muted_until INTEGER NOT NULL DEFAULT 0,         -- 禁言到期时间（0=未禁言）
+      joined_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      last_seen_at INTEGER NOT NULL DEFAULT 0,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS community_members_joined_idx
+      ON community_members(status, joined_at DESC);
+
+    CREATE TABLE IF NOT EXISTS community_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      wallet TEXT NOT NULL COLLATE NOCASE,
+      nickname TEXT NOT NULL,
+      body TEXT NOT NULL,
+      client_id TEXT NOT NULL DEFAULT '',             -- 前端幂等键（防重复提交）
+      kind TEXT NOT NULL DEFAULT 'text',              -- text | red_packet
+      ref_id TEXT NOT NULL DEFAULT '',                -- 红包等业务对象 id
+      status TEXT NOT NULL DEFAULT 'visible',         -- visible | deleted
+      created_at INTEGER NOT NULL,
+      deleted_at INTEGER,
+      deleted_by TEXT,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS community_messages_visible_idx
+      ON community_messages(status, id DESC);
+    CREATE INDEX IF NOT EXISTS community_messages_wallet_idx
+      ON community_messages(wallet, id DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS community_messages_client_unique
+      ON community_messages(wallet, client_id) WHERE client_id <> '';
+    CREATE INDEX IF NOT EXISTS community_messages_ref_idx
+      ON community_messages(kind, ref_id) WHERE ref_id <> '';
+
+    CREATE TABLE IF NOT EXISTS community_reads (
+      wallet TEXT PRIMARY KEY COLLATE NOCASE,
+      last_read_id INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    ) STRICT;
+
+    -- 群管理员：仅由后台按钱包地址任命，不随等级/持仓自动授予。
+    CREATE TABLE IF NOT EXISTS community_admins (
+      address TEXT PRIMARY KEY COLLATE NOCASE,
+      status TEXT NOT NULL DEFAULT 'active',           -- active | revoked
+      appointed_by TEXT NOT NULL DEFAULT '',
+      appointed_at INTEGER NOT NULL,
+      revoked_by TEXT,
+      revoked_at INTEGER,
+      payload_json TEXT NOT NULL DEFAULT '{}'
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS community_admins_status_idx
+      ON community_admins(status, appointed_at DESC);
+
+    -- 管理员操作审计：后台管理员与群管理员的操作都落这里。
+    CREATE TABLE IF NOT EXISTS community_admin_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      actor TEXT NOT NULL COLLATE NOCASE,
+      actor_role TEXT NOT NULL,                        -- platform | admin | system
+      action TEXT NOT NULL,
+      target TEXT NOT NULL DEFAULT '',
+      detail_json TEXT NOT NULL DEFAULT '{}',
+      created_at INTEGER NOT NULL
+    ) STRICT;
+    CREATE INDEX IF NOT EXISTS community_admin_logs_created_idx
+      ON community_admin_logs(created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS community_sensitive_words (
+      word TEXT PRIMARY KEY COLLATE NOCASE,
+      created_by TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL
+    ) STRICT;
+
+    -- 群红包：金额全程 TEXT/BigInt 字符串，扣款与入账只走钱包账本事务。
+    CREATE TABLE IF NOT EXISTS community_red_packets (
+      id TEXT PRIMARY KEY,
+      sender TEXT NOT NULL COLLATE NOCASE,
+      asset TEXT NOT NULL,                             -- USDT | A
+      algorithm TEXT NOT NULL,                         -- equal | random
+      total_units TEXT NOT NULL,
+      share_count INTEGER NOT NULL,
+      claimed_count INTEGER NOT NULL DEFAULT 0,
+      claimed_units TEXT NOT NULL DEFAULT '0',
+      status TEXT NOT NULL DEFAULT 'active',           -- active | finished | refunded
+      greeting TEXT NOT NULL DEFAULT '',
+      client_id TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      expires_at INTEGER NOT NULL,
+      closed_at INTEGER,
+      refunded_units TEXT NOT NULL DEFAULT '0'
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS community_red_packets_client_unique
+      ON community_red_packets(sender, client_id) WHERE client_id <> '';
+    CREATE INDEX IF NOT EXISTS community_red_packets_status_expiry_idx
+      ON community_red_packets(status, expires_at);
+    CREATE INDEX IF NOT EXISTS community_red_packets_sender_idx
+      ON community_red_packets(sender, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS community_red_packet_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      packet_id TEXT NOT NULL,
+      share_index INTEGER NOT NULL,
+      amount_units TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'unclaimed',        -- unclaimed | claimed | expired
+      claimed_by TEXT COLLATE NOCASE,
+      claimed_at INTEGER,
+      client_id TEXT NOT NULL DEFAULT ''
+    ) STRICT;
+    CREATE UNIQUE INDEX IF NOT EXISTS community_red_packet_shares_index_unique
+      ON community_red_packet_shares(packet_id, share_index);
+    CREATE UNIQUE INDEX IF NOT EXISTS community_red_packet_shares_claimant_unique
+      ON community_red_packet_shares(packet_id, claimed_by) WHERE claimed_by IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS community_red_packet_shares_client_unique
+      ON community_red_packet_shares(packet_id, client_id) WHERE client_id <> '';
+    CREATE INDEX IF NOT EXISTS community_red_packet_shares_state_idx
+      ON community_red_packet_shares(packet_id, status, id);
+
+    -- Solvex 商城（2026-10-30）：商户 / 商品 / 用户收货地址 / 订单 / 订单事件流。
     -- 商户=平台钱包账户，货款走平台 A 账本（debitA/creditA）；
     -- 订单内嵌收货地址快照（receiver/phone/region/detail），商户发货记录物流公司与单号。
     CREATE TABLE IF NOT EXISTS mall_merchants (
@@ -998,7 +1347,7 @@ export function openDatabase(dataRoot) {
       ON mall_reviews(buyer_wallet, created_at DESC);
   `);
 
-  // Internal AIX payments have no chain hash. Preserve the historical NOT NULL column,
+  // Internal SVX payments have no chain hash. Preserve the historical NOT NULL column,
   // store an empty SQL value, and enforce hash uniqueness only for real chain payments.
   const activationTxIndex = db.prepare("SELECT sql FROM sqlite_master WHERE name='a_token_activations_tx_unique'").get();
   if (activationTxIndex && !/WHERE/i.test(activationTxIndex.sql)) {
@@ -1010,7 +1359,66 @@ export function openDatabase(dataRoot) {
   // 互转幂等：老库补 request_id 列与查询索引（新库建表已含该列，重复 ALTER 报错故静默忽略）
   try { db.exec(`ALTER TABLE a_token_transfers ADD COLUMN request_id TEXT NOT NULL DEFAULT ''`); } catch {}
   try { db.exec(`CREATE INDEX IF NOT EXISTS a_token_transfers_request_idx ON a_token_transfers(from_wallet, request_id)`); } catch {}
+  // 加 LP 任务改为按日批量：老库补 pool_date 列；同一 (日期, 币种) 只能有一条任务。
+  try { db.exec(`ALTER TABLE a_token_lp_jobs ADD COLUMN pool_date TEXT`); } catch {}
+  try { db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS a_token_lp_jobs_pool_unique ON a_token_lp_jobs(pool_date, asset) WHERE pool_date IS NOT NULL`); } catch {}
+  // 群聊消息扩展：红包卡片需要 kind/ref_id，老库静默补列。
+  try { db.exec(`ALTER TABLE community_messages ADD COLUMN kind TEXT NOT NULL DEFAULT 'text'`); } catch {}
+  try { db.exec(`ALTER TABLE community_messages ADD COLUMN ref_id TEXT NOT NULL DEFAULT ''`); } catch {}
+  try { db.exec(`CREATE INDEX IF NOT EXISTS community_messages_ref_idx ON community_messages(kind, ref_id) WHERE ref_id <> ''`); } catch {}
+  // P3 股东分红：待领取新增资产列（USDT 分红也能走同一本待领取账本），老库静默补列。
+  try { db.exec(`ALTER TABLE a_token_pending_rewards ADD COLUMN asset TEXT NOT NULL DEFAULT 'A'`); } catch {}
+  // P3 新规：股东两档（t500 / t1000），老库补 tier 列；池子改为按档位独立编号，
+  // 需要把历史池（全局 seq 唯一）重建为 (tier, seq) 唯一，历史数据全部归入 t500。
+  try { db.exec(`ALTER TABLE a_token_shareholder_members ADD COLUMN tier TEXT NOT NULL DEFAULT 't500'`); } catch {}
+  {
+    const cols = db.prepare(`PRAGMA table_info(a_token_shareholder_pools)`).all().map(c => c.name);
+    if (!cols.includes('tier')) {
+      db.exec(`BEGIN IMMEDIATE;
+        ALTER TABLE a_token_shareholder_pools RENAME TO a_token_shareholder_pools_legacy;
+        CREATE TABLE a_token_shareholder_pools (
+          id TEXT PRIMARY KEY,
+          seq INTEGER NOT NULL,
+          tier TEXT NOT NULL DEFAULT 't500',
+          target_usdt_units TEXT NOT NULL,
+          funded_usdt_units TEXT NOT NULL DEFAULT '0',
+          status TEXT NOT NULL DEFAULT 'filling' CHECK (status IN ('filling','closed','settled')),
+          opened_at INTEGER NOT NULL,
+          closed_at INTEGER NOT NULL DEFAULT 0,
+          settled_at INTEGER NOT NULL DEFAULT 0,
+          payload_json TEXT NOT NULL DEFAULT '{}'
+        ) STRICT;
+        INSERT INTO a_token_shareholder_pools
+          (id,seq,tier,target_usdt_units,funded_usdt_units,status,opened_at,closed_at,settled_at,payload_json)
+        SELECT id,seq,'t500',target_usdt_units,funded_usdt_units,status,opened_at,closed_at,settled_at,payload_json
+        FROM a_token_shareholder_pools_legacy;
+        DROP TABLE a_token_shareholder_pools_legacy;
+        CREATE UNIQUE INDEX IF NOT EXISTS a_token_shareholder_pools_tier_seq_unique
+          ON a_token_shareholder_pools(tier, seq);
+        CREATE INDEX IF NOT EXISTS a_token_shareholder_pools_tier_status_idx
+          ON a_token_shareholder_pools(tier, status, seq DESC);
+        COMMIT;`);
+    }
+  }
 
+
+  // 2026-11-11：升级舱本金计入上级业绩。保留事件与索引，原子扩展旧库 CHECK。
+  const performanceSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='a_token_team_perf_events'").get();
+  if (!performanceSchema.sql.includes("'upgrade'")) {
+    const nextSchema = performanceSchema.sql.replace('a_token_team_perf_events', 'a_token_team_perf_events_upgrade_v1')
+      .replace("'node','stake','blindbox','manual'", "'node','stake','blindbox','manual','upgrade'");
+    if (!nextSchema.includes("'upgrade'")) throw new Error('无法识别团队业绩表结构，迁移已停止');
+    const related = db.prepare("SELECT sql FROM sqlite_master WHERE tbl_name='a_token_team_perf_events' AND type IN ('index','trigger') AND sql IS NOT NULL").all();
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.exec(nextSchema);
+      db.exec('INSERT INTO a_token_team_perf_events_upgrade_v1 SELECT * FROM a_token_team_perf_events');
+      db.exec('DROP TABLE a_token_team_perf_events');
+      db.exec('ALTER TABLE a_token_team_perf_events_upgrade_v1 RENAME TO a_token_team_perf_events');
+      for (const row of related) db.exec(row.sql);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+  }
 
   const upsertUser = db.prepare(`INSERT INTO wallet_users(address, balances_json, created_at, updated_at, payload_json)
     VALUES(?, ?, ?, ?, ?) ON CONFLICT(address) DO UPDATE SET balances_json=excluded.balances_json,
@@ -1483,7 +1891,7 @@ export function openDatabase(dataRoot) {
     return { updated: true };
   }
 
-  // ── A 币生态 DAO ──────────────────────────────────────────
+  // ── SVX生态 DAO ──────────────────────────────────────────
   const upsertATokenMiner = db.prepare(`INSERT INTO a_token_miners
     (id,wallet,plan,total_units,daily_rate_bps,daily_target_units,started_at,expires_at,
      last_release_at,day_earned_units,total_earned_units,status,payload_json)
@@ -1507,7 +1915,7 @@ export function openDatabase(dataRoot) {
     WHERE status='active' AND (last_release_at < ? OR expires_at <= ?) ORDER BY expires_at`);
   const listExpiringATokenMinersStmt = db.prepare(`SELECT payload_json FROM a_token_miners
     WHERE status='active' AND expires_at<=? ORDER BY expires_at`);
-  // 矿池总览统计：A 币金额为 18 位小数 units（如 1500A = 22 位数字），
+  // 矿池总览统计：SVX金额为 18 位小数 units（如 1500A = 22 位数字），
   // SQL 的 SUM(CAST(... AS INTEGER)) 会溢出导致 node:sqlite 抛 ERR_OUT_OF_RANGE，
   // 因此改为行级取数 + JS BigInt 聚合
   const listActiveATokenMinerUnitsStmt = db.prepare(`SELECT plan, daily_target_units,
@@ -1518,6 +1926,21 @@ export function openDatabase(dataRoot) {
     WHERE wallet=? COLLATE NOCASE ORDER BY released_at DESC LIMIT ?`);
   const listATokenStakeRewardsStmt = db.prepare(`SELECT id,stake_id,wallet,amount_units,settled_at,payload_json FROM a_token_stake_rewards
     WHERE wallet=? COLLATE NOCASE ORDER BY settled_at DESC LIMIT ?`);
+
+  // ── 2026-11-09 P1：算力节点仓位 ──
+  const upsertATokenNodeStmt = db.prepare(`INSERT INTO a_token_nodes
+    (id,wallet,principal_units,yield_bps,started_at,expires_at,status,settled_at,pending_id,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
+    wallet=excluded.wallet,principal_units=excluded.principal_units,yield_bps=excluded.yield_bps,
+    started_at=excluded.started_at,expires_at=excluded.expires_at,status=excluded.status,
+    settled_at=excluded.settled_at,pending_id=excluded.pending_id,payload_json=excluded.payload_json`);
+  const getATokenNodeStmt = db.prepare(`SELECT payload_json FROM a_token_nodes WHERE id=?`);
+  const listATokenNodesStmt = db.prepare(`SELECT payload_json FROM a_token_nodes
+    WHERE wallet=? COLLATE NOCASE ORDER BY started_at DESC`);
+  const listActiveATokenNodesStmt = db.prepare(`SELECT payload_json FROM a_token_nodes
+    WHERE status='active' ORDER BY expires_at`);
+  const listDueATokenNodesStmt = db.prepare(`SELECT payload_json FROM a_token_nodes
+    WHERE status='active' AND expires_at<=? ORDER BY expires_at`);
 
   const upsertATokenStake = db.prepare(`INSERT INTO a_token_stakes
     (id,wallet,plan_id,principal_units,daily_rate_bps,started_at,expires_at,last_settled_at,
@@ -1555,7 +1978,7 @@ export function openDatabase(dataRoot) {
   const deleteATokenKlinesByPeriod = db.prepare(`DELETE FROM a_token_klines WHERE period=?`);
   const countATokenKlinesByPeriod = db.prepare(`SELECT COUNT(*) AS c FROM a_token_klines WHERE period=?`);
 
-  // A 币挂单
+  // SVX挂单
   const insertATokenOrder = db.prepare(`INSERT INTO a_token_orders
     (id,wallet,side,order_type,order_price_usdt_units,input_usdt_units,input_a_units,status,
      created_at,updated_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
@@ -1571,6 +1994,8 @@ export function openDatabase(dataRoot) {
   const countATokenOrdersByStatusStmt = db.prepare(`SELECT COUNT(*) AS c FROM a_token_orders WHERE status=?`);
   const updateATokenOrderInputsStmt = db.prepare(`UPDATE a_token_orders SET
     input_usdt_units=?, input_a_units=?, updated_at=? WHERE id=? AND status='OPEN'`);
+  const updateATokenOrderPayloadStmt = db.prepare(`UPDATE a_token_orders SET
+    payload_json=?, updated_at=? WHERE id=? AND status='OPEN'`);
   // 市价单转委托后，价格需跟随当前币价刷新（限价单保持用户指定价不动）
   const updateATokenOrderMarketPriceStmt = db.prepare(`UPDATE a_token_orders SET
     order_price_usdt_units=?, updated_at=? WHERE id=? AND status='OPEN' AND order_type='market'`);
@@ -1596,6 +2021,91 @@ export function openDatabase(dataRoot) {
   const closeSupportTicketStmt = db.prepare(`UPDATE support_tickets SET status='closed', updated_at=? WHERE id=?`);
   const reopenSupportTicketStmt = db.prepare(`UPDATE support_tickets SET status='open', updated_at=? WHERE id=?`);
   const countAdminUnreadStmt = db.prepare(`SELECT COALESCE(SUM(admin_unread),0) AS n FROM support_tickets`);
+
+  // ── 群聊 ──
+  const getCommunityMemberStmt = db.prepare(`SELECT * FROM community_members WHERE address=? COLLATE NOCASE LIMIT 1`);
+  const insertCommunityMemberStmt = db.prepare(`INSERT OR IGNORE INTO community_members
+    (address,nickname,status,joined_at,updated_at,last_seen_at,payload_json)
+    VALUES(?,?,'active',?,?,?, '{}')`);
+  const updateCommunityNicknameStmt = db.prepare(`UPDATE community_members SET nickname=?, updated_at=? WHERE address=? COLLATE NOCASE`);
+  const updateCommunityProfileStmt = db.prepare(`UPDATE community_members SET nickname=?, payload_json=?, updated_at=? WHERE address=? COLLATE NOCASE`);
+  const touchCommunityMemberStmt = db.prepare(`UPDATE community_members SET last_seen_at=?, updated_at=? WHERE address=? COLLATE NOCASE`);
+  const listCommunityMembersStmt = db.prepare(`SELECT * FROM community_members WHERE status='active' ORDER BY joined_at DESC LIMIT ?`);
+  const countCommunityMembersStmt = db.prepare(`SELECT COUNT(*) AS n FROM community_members WHERE status='active'`);
+  const insertCommunityMessageStmt = db.prepare(`INSERT INTO community_messages
+    (wallet,nickname,body,client_id,kind,ref_id,status,created_at) VALUES(?,?,?,?,?,?, 'visible',?)`);
+  const getCommunityMessageStmt = db.prepare(`SELECT * FROM community_messages WHERE id=? LIMIT 1`);
+  const getCommunityMessageByRefStmt = db.prepare(`SELECT * FROM community_messages
+    WHERE kind=? AND ref_id=? AND status='visible' LIMIT 1`);
+  const listCommunityMembersAllStmt = db.prepare(`SELECT * FROM community_members
+    ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, joined_at DESC LIMIT ?`);
+  const setCommunityMemberStatusStmt = db.prepare(`UPDATE community_members SET status=?, updated_at=? WHERE address=? COLLATE NOCASE`);
+  const setCommunityMemberMuteStmt = db.prepare(`UPDATE community_members SET muted_until=?, updated_at=? WHERE address=? COLLATE NOCASE`);
+  const deleteCommunityMessageStmt = db.prepare(`UPDATE community_messages SET status='deleted', deleted_at=?, deleted_by=?
+    WHERE id=? AND status='visible'`);
+  const listCommunityMessagesAdminStmt = db.prepare(`SELECT * FROM community_messages ORDER BY id DESC LIMIT ?`);
+  const getCommunityAdminStmt = db.prepare(`SELECT * FROM community_admins WHERE address=? COLLATE NOCASE LIMIT 1`);
+  const listCommunityAdminsStmt = db.prepare(`SELECT * FROM community_admins ORDER BY appointed_at DESC LIMIT ?`);
+  const listActiveCommunityAdminsStmt = db.prepare(`SELECT address FROM community_admins WHERE status='active'`);
+  const upsertCommunityAdminStmt = db.prepare(`INSERT INTO community_admins(address,status,appointed_by,appointed_at,payload_json)
+    VALUES(?, 'active', ?, ?, '{}')
+    ON CONFLICT(address) DO UPDATE SET status='active', appointed_by=excluded.appointed_by,
+      appointed_at=excluded.appointed_at, revoked_by=NULL, revoked_at=NULL`);
+  const revokeCommunityAdminStmt = db.prepare(`UPDATE community_admins SET status='revoked', revoked_by=?, revoked_at=?
+    WHERE address=? COLLATE NOCASE`);
+  const insertCommunityAdminLogStmt = db.prepare(`INSERT INTO community_admin_logs
+    (actor,actor_role,action,target,detail_json,created_at) VALUES(?,?,?,?,?,?)`);
+  const listCommunityAdminLogsStmt = db.prepare(`SELECT * FROM community_admin_logs ORDER BY id DESC LIMIT ?`);
+  const listCommunityWordsStmt = db.prepare(`SELECT * FROM community_sensitive_words ORDER BY created_at DESC LIMIT ?`);
+  const insertCommunityWordStmt = db.prepare(`INSERT OR IGNORE INTO community_sensitive_words(word,created_by,created_at) VALUES(?,?,?)`);
+  const deleteCommunityWordStmt = db.prepare(`DELETE FROM community_sensitive_words WHERE word=? COLLATE NOCASE`);
+  const getCommunityRedPacketStmt = db.prepare(`SELECT * FROM community_red_packets WHERE id=? LIMIT 1`);
+  const getCommunityRedPacketByClientStmt = db.prepare(`SELECT * FROM community_red_packets
+    WHERE sender=? COLLATE NOCASE AND client_id=? LIMIT 1`);
+  const insertCommunityRedPacketStmt = db.prepare(`INSERT INTO community_red_packets
+    (id,sender,asset,algorithm,total_units,share_count,claimed_count,claimed_units,status,greeting,client_id,created_at,expires_at,refunded_units)
+    VALUES(?,?,?,?,?,?,0,'0','active',?,?,?,?, '0')`);
+  const insertCommunityRedPacketShareStmt = db.prepare(`INSERT INTO community_red_packet_shares
+    (packet_id,share_index,amount_units,status) VALUES(?,?,?, 'unclaimed')`);
+  const listCommunityRedPacketSharesStmt = db.prepare(`SELECT * FROM community_red_packet_shares
+    WHERE packet_id=? ORDER BY share_index ASC`);
+  const getCommunityRedPacketShareByClaimantStmt = db.prepare(`SELECT * FROM community_red_packet_shares
+    WHERE packet_id=? AND claimed_by=? COLLATE NOCASE LIMIT 1`);
+  const getCommunityRedPacketShareByClientStmt = db.prepare(`SELECT * FROM community_red_packet_shares
+    WHERE packet_id=? AND client_id=? LIMIT 1`);
+  const getCommunityRedPacketOpenShareStmt = db.prepare(`SELECT * FROM community_red_packet_shares
+    WHERE packet_id=? AND status='unclaimed' ORDER BY id ASC LIMIT 1`);
+  const claimCommunityRedPacketShareStmt = db.prepare(`UPDATE community_red_packet_shares
+    SET status='claimed', claimed_by=?, claimed_at=?, client_id=? WHERE id=? AND status='unclaimed'`);
+  const updateCommunityRedPacketStmt = db.prepare(`UPDATE community_red_packets
+    SET claimed_count=?, claimed_units=?, status=?, closed_at=? WHERE id=? AND status='active'`);
+  const refundCommunityRedPacketStmt = db.prepare(`UPDATE community_red_packets
+    SET status='refunded', closed_at=?, refunded_units=? WHERE id=? AND status='active'`);
+  const expireCommunityRedPacketSharesStmt = db.prepare(`UPDATE community_red_packet_shares
+    SET status='expired' WHERE packet_id=? AND status='unclaimed'`);
+  const listExpiredCommunityRedPacketsStmt = db.prepare(`SELECT id FROM community_red_packets
+    WHERE status='active' AND expires_at<=? ORDER BY expires_at ASC LIMIT ?`);
+  const listCommunitySenderPacketsStmt = db.prepare(`SELECT total_units FROM community_red_packets
+    WHERE sender=? COLLATE NOCASE AND asset=? AND created_at>=?`);
+
+  const getCommunityMessageByClientStmt = db.prepare(`SELECT * FROM community_messages
+    WHERE wallet=? COLLATE NOCASE AND client_id=? LIMIT 1`);
+  const listCommunityMessagesLatestStmt = db.prepare(`SELECT * FROM community_messages
+    ORDER BY id DESC LIMIT ?`);
+  const listCommunityMessagesBeforeStmt = db.prepare(`SELECT * FROM community_messages
+    WHERE id<? ORDER BY id DESC LIMIT ?`);
+  const listCommunityMessagesAfterStmt = db.prepare(`SELECT * FROM community_messages
+    WHERE id>? ORDER BY id ASC LIMIT ?`);
+  const latestCommunityMessageIdStmt = db.prepare(`SELECT COALESCE(MAX(id),0) AS id FROM community_messages`);
+  const countCommunityUnreadStmt = db.prepare(`SELECT COUNT(*) AS n FROM community_messages
+    WHERE status='visible' AND id>? AND wallet<>?`);
+  const countCommunityWalletRecentStmt = db.prepare(`SELECT COUNT(*) AS n FROM community_messages
+    WHERE wallet=? COLLATE NOCASE AND created_at>?`);
+  const getCommunityReadStmt = db.prepare(`SELECT * FROM community_reads WHERE wallet=? COLLATE NOCASE`);
+  const upsertCommunityReadStmt = db.prepare(`INSERT INTO community_reads(wallet,last_read_id,updated_at)
+    VALUES(?,?,?)
+    ON CONFLICT(wallet) DO UPDATE SET
+      last_read_id=MAX(last_read_id, excluded.last_read_id), updated_at=excluded.updated_at`);
 
   const insertATokenTransfer = db.prepare(`INSERT INTO a_token_transfers
     (id,from_wallet,to_wallet,to_user_id,amount_units,fee_units,burn_units,dividend_units,
@@ -1640,8 +2150,17 @@ export function openDatabase(dataRoot) {
 
   const insertATokenBurn = db.prepare(`INSERT INTO a_token_burns
     (id,source,reason,amount_units,tx_hash,created_at,payload_json) VALUES(?,?,?,?,?,?,?)`);
-  // 销毁量合计：A 币 units 超 i64，行级取出后 BigInt 聚合（同矿机统计原因）
+  // 销毁量合计：SVX units 超 i64，行级取出后 BigInt 聚合（同矿机统计原因）
   const listATokenBurnAmountsStmt = db.prepare(`SELECT COALESCE(amount_units,'0') AS a FROM a_token_burns`);
+
+  const insertATokenFeeBurnStmt = db.prepare(`INSERT INTO a_token_fee_burns
+    (id,ref_id,source,wallet,asset,fee_units,burn_units,pool_units,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`);
+  const getATokenFeeBurnByRefStmt = db.prepare(`SELECT payload_json FROM a_token_fee_burns
+    WHERE source=? AND ref_id=? LIMIT 1`);
+  const listATokenFeeBurnStmt = db.prepare(`SELECT payload_json FROM a_token_fee_burns
+    ORDER BY created_at DESC LIMIT ?`);
+  const listATokenFeeBurnSumsStmt = db.prepare(`SELECT fee_units AS f,burn_units AS b,pool_units AS p FROM a_token_fee_burns`);
 
   const upsertATokenWithdrawal = db.prepare(`INSERT INTO a_token_withdrawals
     (id,wallet,request_id,tx_hash,amount_units,fee_units,status,processed_at,created_at,payload_json)
@@ -1661,7 +2180,7 @@ export function openDatabase(dataRoot) {
     FROM a_token_withdrawals WHERE wallet=? COLLATE NOCASE
     AND created_at >= ? AND status NOT IN ('rejected','failed','cancelled')`);
 
-  // AIX 链上提取（AIXPool harvest 模式）prepared statements
+  // SVX 链上提取（SolvexPool harvest 模式）prepared statements
   const upsertATokenClaim = db.prepare(`INSERT INTO a_token_claims
     (id,wallet,amount_units,nonce,signature,contract_address,chain_id,status,tx_hash,
      created_at,expires_at,confirmed_at,fail_reason,payload_json)
@@ -1694,14 +2213,14 @@ export function openDatabase(dataRoot) {
     (wallet,released_units,used_units,updated_at) VALUES(?,?,?,?)
     ON CONFLICT(wallet) DO UPDATE SET released_units=excluded.released_units,
     used_units=excluded.used_units,updated_at=excluded.updated_at`);
-  // 可用额度（匹配池产出，挂卖消耗）
+  // 流通额度（匹配池产出，挂卖消耗）
   const getATokenUsableQuotaStmt = db.prepare(`SELECT released_units,used_units,updated_at
     FROM a_token_usable_quotas WHERE wallet=? COLLATE NOCASE`);
   const upsertATokenUsableQuotaStmt = db.prepare(`INSERT INTO a_token_usable_quotas
     (wallet,released_units,used_units,updated_at) VALUES(?,?,?,?)
     ON CONFLICT(wallet) DO UPDATE SET released_units=excluded.released_units,
     used_units=excluded.used_units,updated_at=excluded.updated_at`);
-  // 涡轮额度（USDT 购买的单币余额）
+  // 驱动额度（USDT 购买的单币余额）
   const getATokenTurboQuotaStmt = db.prepare(`SELECT units,updated_at
     FROM a_token_turbo_quotas WHERE wallet=? COLLATE NOCASE`);
   const upsertATokenTurboQuotaStmt = db.prepare(`INSERT INTO a_token_turbo_quotas
@@ -1730,47 +2249,224 @@ export function openDatabase(dataRoot) {
   const listATokenTurboPurchasesStmt = db.prepare(`SELECT * FROM a_token_turbo_purchases
     WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
 
-  // 奔跑吧 AIX 押注局
-  const insertRunAixRunStmt = db.prepare(`INSERT INTO run_aix_runs
-    (id,wallet,stake_units,status,distance,payout_units,quota_units,elapsed_ms,started_at,settled_at,payload_json)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?)`);
-  const getRunAixRunStmt = db.prepare(`SELECT id,wallet,stake_units,status,distance,payout_units,quota_units,
-    elapsed_ms,started_at,settled_at,payload_json FROM run_aix_runs WHERE id=?`);
-  const getPendingRunAixRunStmt = db.prepare(`SELECT id,wallet,stake_units,status,distance,payout_units,quota_units,
-    elapsed_ms,started_at,settled_at,payload_json FROM run_aix_runs
-    WHERE wallet=? COLLATE NOCASE AND status='pending' ORDER BY started_at DESC LIMIT 1`);
-  const settleRunAixRunStmt = db.prepare(`UPDATE run_aix_runs SET status=?,distance=?,payout_units=?,
-    elapsed_ms=?,settled_at=?,payload_json=? WHERE id=? AND status='pending'`);
-  const updateRunAixPayloadStmt = db.prepare(`UPDATE run_aix_runs SET payload_json=?
-    WHERE id=? AND status='pending'`);
-  const listRunAixRunsStmt = db.prepare(`SELECT id,wallet,stake_units,status,distance,payout_units,quota_units,
-    elapsed_ms,started_at,settled_at,payload_json FROM run_aix_runs
-    WHERE wallet=? COLLATE NOCASE ORDER BY started_at DESC LIMIT ?`);
-  const upsertRunAixStatsStmt = db.prepare(`INSERT INTO run_aix_stats(wallet,turnover_units,runs,updated_at)
-    VALUES(?,?,?,?) ON CONFLICT(wallet) DO UPDATE SET
-    turnover_units=excluded.turnover_units,runs=run_aix_stats.runs+1,updated_at=excluded.updated_at`);
-  const getRunAixStatsStmt = db.prepare(`SELECT turnover_units,runs,updated_at
-    FROM run_aix_stats WHERE wallet=? COLLATE NOCASE`);
+  // ── 2026-11-09 P0 地基：待领取 / LP 池 / 团队业绩 / 买币双区 ──
+  const insertATokenPendingRewardStmt = db.prepare(`INSERT INTO a_token_pending_rewards
+    (id,wallet,biz_type,biz_id,period_key,amount_units,quota_units,asset,available_at,expires_at,status,claimed_at,expired_at,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?, 'pending', 0, 0, ?, ?) ON CONFLICT DO NOTHING`);
+  const getATokenPendingRewardStmt = db.prepare(`SELECT * FROM a_token_pending_rewards WHERE id=?`);
+  const getATokenPendingRewardByKeyStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
+    WHERE wallet=? COLLATE NOCASE AND biz_type=? AND biz_id=? AND period_key=?`);
+  const listATokenPendingRewardsStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
+    WHERE wallet=? COLLATE NOCASE AND status=? ORDER BY created_at DESC LIMIT ?`);
+  const listDueATokenPendingRewardsStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
+    WHERE status='pending' AND expires_at<=? ORDER BY expires_at LIMIT ?`);
+  const markATokenPendingRewardClaimedStmt = db.prepare(`UPDATE a_token_pending_rewards
+    SET status='claimed',claimed_at=? WHERE id=? AND wallet=? COLLATE NOCASE AND status='pending'`);
+  const expireATokenPendingRewardStmt = db.prepare(`UPDATE a_token_pending_rewards
+    SET status='expired',expired_at=? WHERE id=? AND status='pending'`);
+  const expireDueATokenPendingRewardsStmt = db.prepare(`UPDATE a_token_pending_rewards
+    SET status='expired',expired_at=? WHERE status='pending' AND expires_at<=?`);
+  const reverseATokenPendingRewardStmt = db.prepare(`UPDATE a_token_pending_rewards
+    SET status='reversed' WHERE id=? AND status='pending'`);
 
-  // 哈希星盘 AIX 版
-  const getHashAixSeedStmt = db.prepare(`SELECT server_seed,server_seed_hash,nonce,updated_at
-    FROM hash_aix_seeds WHERE wallet=? COLLATE NOCASE`);
-  const upsertHashAixSeedStmt = db.prepare(`INSERT INTO hash_aix_seeds(wallet,server_seed,server_seed_hash,nonce,updated_at)
-    VALUES(?,?,?,?,?) ON CONFLICT(wallet) DO UPDATE SET server_seed=excluded.server_seed,
-    server_seed_hash=excluded.server_seed_hash,nonce=excluded.nonce,updated_at=excluded.updated_at`);
-  const insertHashAixBetStmt = db.prepare(`INSERT INTO hash_aix_bets
-    (id,wallet,choice,stake_units,payout_units,digit,outcome,hash,server_seed,server_seed_hash,client_seed,nonce,quota_units,created_at,payload_json)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const listHashAixBetsStmt = db.prepare(`SELECT id,wallet,choice,stake_units,payout_units,digit,outcome,hash,
-    server_seed,server_seed_hash,client_seed,nonce,quota_units,created_at,payload_json FROM hash_aix_bets
-    WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC, nonce DESC LIMIT ?`);
-  const upsertHashAixStatsStmt = db.prepare(`INSERT INTO hash_aix_stats(wallet,turnover_units,bets,updated_at)
-    VALUES(?,?,?,?) ON CONFLICT(wallet) DO UPDATE SET
-    turnover_units=excluded.turnover_units,bets=hash_aix_stats.bets+1,updated_at=excluded.updated_at`);
-  const getHashAixStatsStmt = db.prepare(`SELECT turnover_units,bets,updated_at
-    FROM hash_aix_stats WHERE wallet=? COLLATE NOCASE`);
+  const insertATokenLpPoolEntryStmt = db.prepare(`INSERT INTO a_token_lp_pool_entries
+    (id,source,ref_id,wallet,usdt_units,a_units,direction,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const listATokenLpPoolEntriesStmt = db.prepare(`SELECT * FROM a_token_lp_pool_entries
+    ORDER BY created_at DESC LIMIT ?`);
+  const listAllATokenLpPoolEntriesStmt = db.prepare(`SELECT direction,usdt_units,a_units
+    FROM a_token_lp_pool_entries`);
+  const getATokenLpPoolEntryByRefStmt = db.prepare(`SELECT * FROM a_token_lp_pool_entries
+    WHERE source=? AND ref_id=?`);
 
-  // ── AIX 商城 ──
+  // 提现手续费自动加 LP 任务（链下台账 → 链上执行 → 回写）；pool_date 非空表示按日批量任务
+  const insertATokenLpJobStmt = db.prepare(`INSERT INTO a_token_lp_jobs
+    (id,withdrawal_id,wallet,asset,usdt_units,idempotency_key,status,chain_id,tx_hash,attempts,last_error,created_at,updated_at,sent_at,confirmed_at,payload_json,pool_date)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenLpJobByIdStmt = db.prepare(`SELECT * FROM a_token_lp_jobs WHERE id=?`);
+  const getATokenLpJobByWithdrawalStmt = db.prepare(`SELECT * FROM a_token_lp_jobs WHERE withdrawal_id=?`);
+  const getATokenLpJobByPoolStmt = db.prepare(`SELECT * FROM a_token_lp_jobs WHERE pool_date=? AND asset=?`);
+  const listATokenLpJobsStmt = db.prepare(`SELECT * FROM a_token_lp_jobs
+    WHERE (?='' OR status=?) ORDER BY created_at LIMIT ?`);
+  const listDueATokenLpJobsStmt = db.prepare(`SELECT * FROM a_token_lp_jobs
+    WHERE (status IN ('pending','failed') AND attempts<?)
+       OR (status='processing' AND updated_at<=?)
+    ORDER BY created_at LIMIT ?`);
+  const claimATokenLpJobStmt = db.prepare(`UPDATE a_token_lp_jobs
+    SET status='processing',attempts=attempts+1,updated_at=?
+    WHERE id=? AND status IN ('pending','failed','processing') AND attempts<?`);
+  const updateATokenLpJobStmt = db.prepare(`UPDATE a_token_lp_jobs
+    SET status=?,tx_hash=?,attempts=?,last_error=?,updated_at=?,sent_at=?,confirmed_at=?,payload_json=?
+    WHERE id=?`);
+  const updateATokenLpJobUnitsStmt = db.prepare(`UPDATE a_token_lp_jobs
+    SET usdt_units=?,updated_at=?,payload_json=? WHERE id=?`);
+  // 取消后金额已退回日池；下次结算复用同一任务（同一 jobKey），避免 (pool_date,asset) 唯一索引挡住重试。
+  const reopenATokenLpJobStmt = db.prepare(`UPDATE a_token_lp_jobs
+    SET status='pending',usdt_units=?,attempts=0,last_error=NULL,tx_hash=NULL,sent_at=0,confirmed_at=0,
+        updated_at=?,payload_json=?
+    WHERE id=? AND status='cancelled'`);
+  const cancelATokenLpJobStmt = db.prepare(`UPDATE a_token_lp_jobs
+    SET status='cancelled',last_error=?,updated_at=?,payload_json=?
+    WHERE id=? AND status IN ('pending','failed','processing')`);
+  const listATokenLpJobStatsStmt = db.prepare(`SELECT status,usdt_units,asset FROM a_token_lp_jobs`);
+
+  // 提现手续费按日累计：accrual 事实表 + 日/币种聚合池
+  const insertATokenLpFeeAccrualStmt = db.prepare(`INSERT INTO a_token_lp_fee_accruals
+    (id,withdrawal_id,wallet,asset,units,pool_date,status,created_at,reversed_at)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenLpFeeAccrualStmt = db.prepare(`SELECT * FROM a_token_lp_fee_accruals WHERE withdrawal_id=?`);
+  const listATokenLpFeeAccrualsStmt = db.prepare(`SELECT * FROM a_token_lp_fee_accruals
+    WHERE (?='' OR status=?) ORDER BY created_at DESC LIMIT ?`);
+  const markATokenLpFeeAccrualReversedStmt = db.prepare(`UPDATE a_token_lp_fee_accruals
+    SET status='reversed',reversed_at=? WHERE withdrawal_id=? AND status='accrued'`);
+  const insertATokenLpDailyPoolStmt = db.prepare(`INSERT INTO a_token_lp_daily_pools
+    (pool_date,asset,units,settled_units,status,job_id,settled_at,updated_at)
+    VALUES(?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenLpDailyPoolStmt = db.prepare(`SELECT * FROM a_token_lp_daily_pools WHERE pool_date=? AND asset=?`);
+  const listATokenLpDailyPoolsStmt = db.prepare(`SELECT * FROM a_token_lp_daily_pools
+    WHERE (?='' OR status=?) ORDER BY pool_date DESC, asset LIMIT ?`);
+  const updateATokenLpDailyPoolStmt = db.prepare(`UPDATE a_token_lp_daily_pools
+    SET units=?,settled_units=?,status=?,job_id=?,settled_at=?,updated_at=?
+    WHERE pool_date=? AND asset=?`);
+  const listAllATokenLpPoolRowsStmt = db.prepare(`SELECT * FROM a_token_lp_pool_entries ORDER BY created_at`);
+
+  // 盲盒（P4）
+  const insertATokenBlindBoxStmt = db.prepare(`INSERT INTO a_token_blind_boxes
+    (id,wallet,ref_id,status,entry_usdt_units,total_units,issued_units,last_issue_day,claim_days,started_at,ends_at,completed_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenBlindBoxByIdStmt = db.prepare(`SELECT * FROM a_token_blind_boxes WHERE id=?`);
+  const getATokenBlindBoxByWalletStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
+    WHERE wallet=? COLLATE NOCASE`);
+  const getATokenBlindBoxByRefStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
+    WHERE wallet=? COLLATE NOCASE AND ref_id=?`);
+  const listActiveATokenBlindBoxesStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
+    WHERE status='active' ORDER BY started_at LIMIT ?`);
+  const listRecentATokenBlindBoxesStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
+    ORDER BY started_at DESC LIMIT ?`);
+  const updateATokenBlindBoxStmt = db.prepare(`UPDATE a_token_blind_boxes
+    SET status=?,issued_units=?,last_issue_day=?,completed_at=?,payload_json=?
+    WHERE id=?`);
+
+  const insertATokenTeamPerfEventStmt = db.prepare(`INSERT INTO a_token_team_perf_events
+    (id,owner_wallet,source_wallet,biz_type,biz_id,amount_units,asset,depth,occurred_at,reverse_of,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenTeamPerfEventStmt = db.prepare(`SELECT * FROM a_token_team_perf_events WHERE id=?`);
+  const listATokenTeamPerfEventsStmt = db.prepare(`SELECT * FROM a_token_team_perf_events
+    WHERE owner_wallet=? COLLATE NOCASE ORDER BY occurred_at,id LIMIT ?`);
+  const listAllATokenTeamPerfEventsStmt = db.prepare(`SELECT amount_units FROM a_token_team_perf_events
+    WHERE owner_wallet=? COLLATE NOCASE`);
+  const listATokenTeamPerfEventsByBizStmt = db.prepare(`SELECT * FROM a_token_team_perf_events
+    WHERE source_wallet=? COLLATE NOCASE AND biz_type=? AND biz_id=? AND reverse_of=''`);
+  const sumAllATokenTeamPerfEventsStmt = db.prepare(`SELECT owner_wallet,amount_units
+    FROM a_token_team_perf_events`);
+
+  // 升级仓（P3）
+  const insertATokenUpgradePositionStmt = db.prepare(`INSERT INTO a_token_upgrade_positions
+    (id,wallet,principal_units,status,ref_id,entered_at,redeem_at,return_at,returned_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenUpgradePositionStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions WHERE id=?`);
+  const getATokenUpgradePositionByRefStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions
+    WHERE wallet=? COLLATE NOCASE AND ref_id=?`);
+  const listATokenUpgradePositionsStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions
+    WHERE wallet=? COLLATE NOCASE ORDER BY entered_at DESC LIMIT ?`);
+  const listActiveATokenUpgradePositionsStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions
+    WHERE wallet=? COLLATE NOCASE AND status='active' ORDER BY entered_at`);
+  const listAllActiveATokenUpgradePositionsStmt = db.prepare(`SELECT wallet,principal_units
+    FROM a_token_upgrade_positions WHERE status='active'`);
+  const listActiveUpgradeBatchStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions
+    WHERE status='active' AND id>? ORDER BY id LIMIT ?`);
+  const listDueATokenUpgradeReturnsStmt = db.prepare(`SELECT * FROM a_token_upgrade_positions
+    WHERE status='redeeming' AND return_at<=? ORDER BY return_at LIMIT ?`);
+  const markATokenUpgradeRedeemingStmt = db.prepare(`UPDATE a_token_upgrade_positions
+    SET status='redeeming',redeem_at=?,return_at=?,payload_json=? WHERE id=? AND status='active'`);
+  const markATokenUpgradeReturnedStmt = db.prepare(`UPDATE a_token_upgrade_positions
+    SET status='returned',returned_at=?,payload_json=? WHERE id=? AND status='redeeming'`);
+
+  const getATokenZoneBalanceStmt = db.prepare(`SELECT units,updated_at FROM a_token_zone_balances
+    WHERE wallet=? COLLATE NOCASE AND zone=?`);
+  const listATokenZoneBalancesStmt = db.prepare(`SELECT zone,units,updated_at FROM a_token_zone_balances
+    WHERE wallet=? COLLATE NOCASE`);
+  const upsertATokenZoneBalanceStmt = db.prepare(`INSERT INTO a_token_zone_balances
+    (wallet,zone,units,updated_at) VALUES(?,?,?,?)
+    ON CONFLICT(wallet,zone) DO UPDATE SET units=excluded.units,updated_at=excluded.updated_at`);
+  const insertATokenZoneEntryStmt = db.prepare(`INSERT INTO a_token_zone_entries
+    (id,wallet,zone,direction,units,biz_type,ref_id,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+
+  // 涡轮锁（2026-11-09 P2）：乙区币进涡轮后锁定，满 24h 释放等额流通额度；
+  // 额度自释放起 30 天内有效，到期未用部分作废。
+  const insertATokenTurboLockStmt = db.prepare(`INSERT INTO a_token_turbo_locks
+    (id,wallet,units,used_units,status,ref_id,created_at,release_at,released_at,expire_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenTurboLockByRefStmt = db.prepare(`SELECT * FROM a_token_turbo_locks
+    WHERE wallet=? COLLATE NOCASE AND ref_id=?`);
+  const listATokenTurboLocksStmt = db.prepare(`SELECT * FROM a_token_turbo_locks
+    WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
+  const listDueATokenTurboLocksStmt = db.prepare(`SELECT * FROM a_token_turbo_locks
+    WHERE status='locked' AND release_at<=? ORDER BY release_at LIMIT ?`);
+  const listExpiringATokenTurboLocksStmt = db.prepare(`SELECT * FROM a_token_turbo_locks
+    WHERE status='active' AND expire_at>0 AND expire_at<=? ORDER BY expire_at LIMIT ?`);
+  const listActiveATokenTurboLocksStmt = db.prepare(`SELECT * FROM a_token_turbo_locks
+    WHERE wallet=? COLLATE NOCASE AND status IN ('active','exhausted')
+    ORDER BY released_at,created_at`);
+  const markATokenTurboLockReleasedStmt = db.prepare(`UPDATE a_token_turbo_locks
+    SET status='active',released_at=?,expire_at=? WHERE id=? AND status='locked'`);
+  const updateATokenTurboLockUsageStmt = db.prepare(`UPDATE a_token_turbo_locks
+    SET used_units=?,status=? WHERE id=?`);
+  const expireATokenTurboLockStmt = db.prepare(`UPDATE a_token_turbo_locks
+    SET status='expired' WHERE id=? AND status='active'`);
+
+  // 一键买/一键卖流水（取消挂买挂卖后的直接成交记录）
+  const insertATokenZoneOrderStmt = db.prepare(`INSERT INTO a_token_zone_orders
+    (id,wallet,side,zone,request_id,usdt_units,a_units,fee_units,status,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenZoneOrderStmt = db.prepare(`SELECT * FROM a_token_zone_orders
+    WHERE wallet=? COLLATE NOCASE AND request_id=? COLLATE NOCASE`);
+  const listATokenZoneOrdersStmt = db.prepare(`SELECT * FROM a_token_zone_orders
+    WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
+
+  // 股东池（新规：按档位 t500 / t1000 两条独立泳道，500U 一池）
+  const insertATokenShareholderPoolStmt = db.prepare(`INSERT INTO a_token_shareholder_pools
+    (id,seq,tier,target_usdt_units,funded_usdt_units,status,opened_at,closed_at,settled_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?)`);
+  const getATokenShareholderPoolStmt = db.prepare(`SELECT * FROM a_token_shareholder_pools WHERE id=?`);
+  const getFillingATokenShareholderPoolStmt = db.prepare(`SELECT * FROM a_token_shareholder_pools
+    WHERE tier=? AND status='filling' ORDER BY seq DESC LIMIT 1`);
+  const listATokenShareholderPoolsStmt = db.prepare(`SELECT * FROM a_token_shareholder_pools
+    ORDER BY seq DESC LIMIT ?`);
+  const listATokenShareholderPoolsByTierStmt = db.prepare(`SELECT * FROM a_token_shareholder_pools
+    WHERE tier=? ORDER BY seq DESC LIMIT ?`);
+  const listATokenShareholderFundedByTierStmt = db.prepare(`SELECT funded_usdt_units AS f
+    FROM a_token_shareholder_pools WHERE tier=?`);
+  const updateATokenShareholderPoolStmt = db.prepare(`UPDATE a_token_shareholder_pools
+    SET funded_usdt_units=?,status=?,closed_at=?,settled_at=?,payload_json=? WHERE id=?`);
+  const insertATokenShareholderEntryStmt = db.prepare(`INSERT INTO a_token_shareholder_pool_entries
+    (id,source,ref_id,wallet,usdt_units,direction,pool_id,created_at,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenShareholderEntryByRefStmt = db.prepare(`SELECT * FROM a_token_shareholder_pool_entries
+    WHERE source=? AND ref_id=?`);
+  const listAllATokenShareholderEntriesStmt = db.prepare(`SELECT direction,usdt_units
+    FROM a_token_shareholder_pool_entries`);
+  const insertATokenShareholderMemberStmt = db.prepare(`INSERT INTO a_token_shareholder_members
+    (id,wallet,principal_units,tier,status,ref_id,joined_at,withdrawn_at,refund_units,dividend_units,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`);
+  const getATokenShareholderMemberStmt = db.prepare(`SELECT * FROM a_token_shareholder_members WHERE id=?`);
+  const getATokenShareholderMemberByRefStmt = db.prepare(`SELECT * FROM a_token_shareholder_members
+    WHERE wallet=? COLLATE NOCASE AND ref_id=?`);
+  const getActiveATokenShareholderMemberStmt = db.prepare(`SELECT * FROM a_token_shareholder_members
+    WHERE wallet=? COLLATE NOCASE AND status='active' LIMIT 1`);
+  const listActiveATokenShareholderMembersStmt = db.prepare(`SELECT * FROM a_token_shareholder_members
+    WHERE status='active' ORDER BY joined_at`);
+  const listATokenShareholderMembersStmt = db.prepare(`SELECT * FROM a_token_shareholder_members
+    WHERE wallet=? COLLATE NOCASE ORDER BY joined_at DESC LIMIT ?`);
+  const updateATokenShareholderMemberDividendStmt = db.prepare(`UPDATE a_token_shareholder_members
+    SET dividend_units=?,payload_json=? WHERE id=? AND status='active'`);
+  const withdrawATokenShareholderMemberStmt = db.prepare(`UPDATE a_token_shareholder_members
+    SET status='withdrawn',withdrawn_at=?,refund_units=?,payload_json=? WHERE id=? AND status='active'`);
+  const upgradeATokenShareholderMemberStmt = db.prepare(`UPDATE a_token_shareholder_members
+    SET principal_units=?,tier=?,payload_json=? WHERE id=? AND status='active'`);
+
+  // ── Solvex 商城 ──
   const getMallMerchantStmt = db.prepare(`SELECT wallet,shop_name,intro,status,created_at,updated_at,payload_json
     FROM mall_merchants WHERE wallet=? COLLATE NOCASE`);
   const upsertMallMerchantStmt = db.prepare(`INSERT INTO mall_merchants(wallet,shop_name,intro,status,created_at,updated_at,payload_json)
@@ -1904,6 +2600,20 @@ export function openDatabase(dataRoot) {
   // 按矿机档位（mini120 / pro1500）返回曾激活过该档矿机的钱包集合（小写）
   function listATokenMinerWalletsByPlan(plan) { return new Set(listATokenMinerWalletsByPlanStmt.all(String(plan || '')).map(r => String(r.w || ''))); }
   function countATokenMinersByWallet(wallet) { return Number(countATokenMinersByWalletStmt.get(String(wallet || ''))?.c || 0); }
+
+  // ── 算力节点：仓位读写 ──
+  function mapATokenNode(row) { return row ? parse(row.payload_json, {}) : null; }
+  function upsertATokenNodeRow(node) {
+    const item = { ...node };
+    upsertATokenNodeStmt.run(item.id, String(item.wallet || '').toLowerCase(), String(item.principalUnits || '0'),
+      Number(item.yieldBps || 0), timestamp(item.startedAt), Number(item.expiresAt), String(item.status || 'active'),
+      Number(item.settledAt || 0), String(item.pendingId || ''), json(item));
+    return item;
+  }
+  function getATokenNode(id) { return mapATokenNode(getATokenNodeStmt.get(String(id || ''))); }
+  function listATokenNodes(wallet) { return listATokenNodesStmt.all(String(wallet || '')).map(mapATokenNode); }
+  function listActiveATokenNodes() { return listActiveATokenNodesStmt.all().map(mapATokenNode); }
+  function listDueATokenNodes(now) { return listDueATokenNodesStmt.all(Number(now)).map(mapATokenNode); }
   // 后台矿机管理：列表（可按 wallet/status/plan 筛选 + 分页）
   const listAllATokenMinersStmt = db.prepare(`SELECT payload_json FROM a_token_miners
     WHERE (CAST(? AS TEXT) = '' OR wallet = ? COLLATE NOCASE)
@@ -2005,6 +2715,10 @@ export function openDatabase(dataRoot) {
     return item;
   }
   function listATokenStakes(wallet) { return listATokenStakesStmt.all(wallet).map(r => parse(r.payload_json, {})); }
+  function getATokenStake(id) {
+    const row = db.prepare('SELECT payload_json FROM a_token_stakes WHERE id=?').get(String(id));
+    return row ? parse(row.payload_json, {}) : null;
+  }
   function listActiveATokenStakes() { return listActiveATokenStakesStmt.all().map(r => parse(r.payload_json, {})); }
   function listExpiringATokenStakes(deadline) { return listExpiringATokenStakesStmt.all(Number(deadline)).map(r => parse(r.payload_json, {})); }
   function listATokenStakeRewards(wallet, limit = 500) {
@@ -2107,6 +2821,39 @@ export function openDatabase(dataRoot) {
     for (const r of listATokenBurnAmountsStmt.all()) sum += BigInt(r.a || '0');
     return sum;
   }
+  // ── 手续费 50% 销毁流水（USDT 口径）──
+  function insertATokenFeeBurnRow(record) {
+    const item = {
+      id: String(record.id || ''),
+      refId: String(record.refId || ''),
+      source: String(record.source || ''),
+      wallet: String(record.wallet || '').toLowerCase(),
+      asset: String(record.asset || 'USDT').toUpperCase(),
+      feeUnits: String(record.feeUnits ?? '0'),
+      burnUnits: String(record.burnUnits ?? '0'),
+      poolUnits: String(record.poolUnits ?? '0'),
+      createdAt: Number(record.createdAt) || Date.now(),
+      payload: record.payload && typeof record.payload === 'object' ? record.payload : {},
+    };
+    insertATokenFeeBurnStmt.run(item.id, item.refId, item.source, item.wallet, item.asset,
+      item.feeUnits, item.burnUnits, item.poolUnits, item.createdAt, json(item));
+    return item;
+  }
+  function getATokenFeeBurnByRef(source, refId) {
+    const row = getATokenFeeBurnByRefStmt.get(String(source), String(refId));
+    return row ? parse(row.payload_json, null) : null;
+  }
+  function listATokenFeeBurns(limit = 200) {
+    return listATokenFeeBurnStmt.all(Math.min(Math.max(Number(limit) || 200, 1), 5000))
+      .map(r => parse(r.payload_json, null)).filter(Boolean);
+  }
+  function sumATokenFeeBurns() {
+    let fee = 0n, burn = 0n, pool = 0n;
+    for (const r of listATokenFeeBurnSumsStmt.all()) {
+      fee += BigInt(r.f || '0'); burn += BigInt(r.b || '0'); pool += BigInt(r.p || '0');
+    }
+    return { feeUnits: fee.toString(), burnUnits: burn.toString(), poolUnits: pool.toString() };
+  }
   function upsertATokenWithdrawalRow(record) {
     const item = { ...record };
     upsertATokenWithdrawal.run(item.id, item.wallet, item.requestId, item.txHash ?? null,
@@ -2137,7 +2884,7 @@ export function openDatabase(dataRoot) {
     return sumATokenWithdrawalsByWalletTodayStmt.all(String(wallet), Math.floor(Number(sinceUnixMs)))
       .reduce((total, row) => total + BigInt(row.amount_units), 0n);
   }
-  // ===== AIX 链上提取（AIXPool harvest 模式）=====
+  // ===== SVX 链上提取（SolvexPool harvest 模式）=====
   function upsertATokenClaimRow(record) {
     const item = { ...record };
     upsertATokenClaim.run(item.id, item.wallet, item.amountUnits, item.nonce,
@@ -2179,7 +2926,7 @@ export function openDatabase(dataRoot) {
     const row = getATokenTeamLevelStmt.get(wallet);
     return row ? parse(row.payload_json, null) : null;
   }
-  // AIX 可卖额度：released 累计发放，used 已占用，可用 = released - used
+  // SVX 可卖额度：released 累计发放，used 已占用，可用 = released - used
   function getATokenSellQuota(wallet) {
     const row = getATokenSellQuotaStmt.get(String(wallet || ''));
     return row
@@ -2221,7 +2968,775 @@ export function openDatabase(dataRoot) {
     upsertATokenSellQuotaStmt.run(String(wallet || '').toLowerCase(), cur.releasedUnits, used.toString(), Date.now());
     return { releasedUnits: cur.releasedUnits, usedUnits: used.toString() };
   }
-  // AIX 可用额度（匹配池到期产出，挂卖唯一消耗对象）：released 累计放出，used 挂单占用
+  // ── 2026-11-09 P0 地基：待领取 / LP 池 / 团队业绩 / 买币双区 ──
+
+  function mapATokenPendingReward(row) {
+    if (!row) return null;
+    return {
+      id: row.id, wallet: row.wallet, bizType: row.biz_type, bizId: row.biz_id, periodKey: row.period_key,
+      amountUnits: row.amount_units, quotaUnits: row.quota_units, asset: row.asset || 'A',
+      availableAt: Number(row.available_at), expiresAt: Number(row.expires_at),
+      status: row.status, claimedAt: Number(row.claimed_at), expiredAt: Number(row.expired_at),
+      createdAt: Number(row.created_at), ...parse(row.payload_json, {}),
+    };
+  }
+  // 幂等入账：同 (wallet,biz_type,biz_id,period_key) 重复创建直接忽略，返回 false
+  function insertATokenPendingRewardRow(item) {
+    const result = insertATokenPendingRewardStmt.run(
+      item.id, String(item.wallet || '').toLowerCase(), item.bizType, String(item.bizId || ''),
+      String(item.periodKey || ''), String(item.amountUnits ?? '0'), String(item.quotaUnits ?? '0'),
+      String(item.asset || 'A'), Number(item.availableAt), Number(item.expiresAt), Number(item.createdAt ?? Date.now()),
+      json(item.payload || {}),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenPendingReward(id) {
+    return mapATokenPendingReward(getATokenPendingRewardStmt.get(String(id || '')));
+  }
+  function getATokenPendingRewardByKey(wallet, bizType, bizId, periodKey) {
+    return mapATokenPendingReward(getATokenPendingRewardByKeyStmt.get(
+      String(wallet || '').toLowerCase(), bizType, String(bizId || ''), String(periodKey || ''),
+    ));
+  }
+  function listATokenPendingRewards(wallet, status = 'pending', limit = 200) {
+    return listATokenPendingRewardsStmt
+      .all(String(wallet || '').toLowerCase(), String(status || 'pending'), Math.min(Math.max(Number(limit) || 200, 1), 5000))
+      .map(mapATokenPendingReward);
+  }
+  function listDueATokenPendingRewards(now, limit = 500) {
+    return listDueATokenPendingRewardsStmt
+      .all(Number(now), Math.min(Math.max(Number(limit) || 500, 1), 5000))
+      .map(mapATokenPendingReward);
+  }
+  // 条件更新：只有仍是 pending 才能置为 claimed（并发/重复点击只会有一次成功）
+  function markATokenPendingRewardClaimed(id, wallet, at) {
+    const result = markATokenPendingRewardClaimedStmt.run(Number(at), String(id || ''), String(wallet || '').toLowerCase());
+    return Number(result.changes || 0) > 0;
+  }
+  function expireATokenPendingReward(id, at) {
+    const result = expireATokenPendingRewardStmt.run(Number(at), String(id || ''));
+    return Number(result.changes || 0) > 0;
+  }
+  // 批量作废：返回本次作废条数；重复执行不会重复计数
+  function expireDueATokenPendingRewards(at) {
+    const result = expireDueATokenPendingRewardsStmt.run(Number(at), Number(at));
+    return Number(result.changes || 0);
+  }
+  function reverseATokenPendingReward(id) {
+    const result = reverseATokenPendingRewardStmt.run(String(id || ''));
+    return Number(result.changes || 0) > 0;
+  }
+
+  function mapATokenLpPoolEntry(row) {
+    if (!row) return null;
+    return {
+      id: row.id, source: row.source, refId: row.ref_id, wallet: row.wallet,
+      usdtUnits: row.usdt_units, aUnits: row.a_units, direction: row.direction,
+      createdAt: Number(row.created_at), ...parse(row.payload_json, {}),
+    };
+  }
+  function insertATokenLpPoolEntryRow(item) {
+    const result = insertATokenLpPoolEntryStmt.run(
+      item.id, item.source, String(item.refId || ''), String(item.wallet || '').toLowerCase(),
+      String(item.usdtUnits ?? '0'), String(item.aUnits ?? '0'), item.direction,
+      Number(item.createdAt ?? Date.now()), json(item.payload || {}),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function listATokenLpPoolEntries(limit = 200) {
+    return listATokenLpPoolEntriesStmt
+      .all(Math.min(Math.max(Number(limit) || 200, 1), 5000))
+      .map(mapATokenLpPoolEntry);
+  }
+  function getATokenLpPoolEntryByRef(source, refId) {
+    return mapATokenLpPoolEntry(getATokenLpPoolEntryByRefStmt.get(String(source || ''), String(refId || '')));
+  }
+  // LP 池实账余额 = 流入 - 流出（不做销毁式处理）
+  function getATokenLpPoolBalance() {
+    let usdt = 0n, a = 0n;
+    for (const row of listAllATokenLpPoolEntriesStmt.all()) {
+      const sign = row.direction === 'in' ? 1n : -1n;
+      usdt += sign * BigInt(row.usdt_units || '0');
+      a += sign * BigInt(row.a_units || '0');
+    }
+    return { usdtUnits: usdt.toString(), aUnits: a.toString() };
+  }
+
+  // ── 提现手续费自动加 LP 任务 ────────────────────────────────────────────
+  function mapATokenLpJob(row) {
+    if (!row) return null;
+    return {
+      id: row.id,
+      withdrawalId: row.withdrawal_id,
+      poolDate: row.pool_date || '',
+      wallet: row.wallet,
+      asset: row.asset,
+      usdtUnits: row.usdt_units,
+      idempotencyKey: row.idempotency_key,
+      status: row.status,
+      chainId: Number(row.chain_id),
+      txHash: row.tx_hash || '',
+      attempts: Number(row.attempts),
+      lastError: row.last_error || '',
+      createdAt: Number(row.created_at),
+      updatedAt: Number(row.updated_at),
+      sentAt: Number(row.sent_at),
+      confirmedAt: Number(row.confirmed_at),
+      payload: parse(row.payload_json, {}),
+    };
+  }
+  function insertATokenLpJobRow(item) {
+    const result = insertATokenLpJobStmt.run(
+      String(item.id), String(item.withdrawalId), String(item.wallet || '').toLowerCase(),
+      String(item.asset || 'USDT'), String(item.usdtUnits ?? '0'), String(item.idempotencyKey),
+      String(item.status || 'pending'), Number(item.chainId ?? 56), item.txHash || null,
+      Number(item.attempts || 0), item.lastError || null,
+      Number(item.createdAt ?? Date.now()), Number(item.updatedAt ?? Date.now()),
+      Number(item.sentAt || 0), Number(item.confirmedAt || 0), json(item.payload || {}),
+      item.poolDate || null,
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenLpJobById(id) {
+    return mapATokenLpJob(getATokenLpJobByIdStmt.get(String(id || '')));
+  }
+  function getATokenLpJobByWithdrawalId(withdrawalId) {
+    return mapATokenLpJob(getATokenLpJobByWithdrawalStmt.get(String(withdrawalId || '')));
+  }
+  function getATokenLpJobByPoolDate(poolDate, asset) {
+    return mapATokenLpJob(getATokenLpJobByPoolStmt.get(String(poolDate || ''), String(asset || 'USDT')));
+  }
+  function listATokenLpJobs({ status = '', limit = 200 } = {}) {
+    const normalized = String(status || '');
+    return listATokenLpJobsStmt
+      .all(normalized, normalized, Math.min(Math.max(Number(limit) || 200, 1), 5000))
+      .map(mapATokenLpJob);
+  }
+  function listDueATokenLpJobs({ maxAttempts = 5, staleBefore = 0, limit = 50 } = {}) {
+    return listDueATokenLpJobsStmt
+      .all(Number(maxAttempts), Number(staleBefore), Math.min(Math.max(Number(limit) || 50, 1), 500))
+      .map(mapATokenLpJob);
+  }
+  function claimATokenLpJob(id, at, maxAttempts = 5) {
+    const result = claimATokenLpJobStmt.run(Number(at), String(id || ''), Number(maxAttempts));
+    return Number(result.changes || 0) > 0;
+  }
+  function updateATokenLpJobRow(item) {
+    const result = updateATokenLpJobStmt.run(
+      String(item.status), item.txHash || null, Number(item.attempts || 0), item.lastError || null,
+      Number(item.updatedAt ?? Date.now()), Number(item.sentAt || 0), Number(item.confirmedAt || 0),
+      json(item.payload || {}), String(item.id),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function cancelATokenLpJob(id, reason, at, payload = {}) {
+    const result = cancelATokenLpJobStmt.run(
+      String(reason || ''), Number(at), json(payload), String(id || ''),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function updateATokenLpJobUnits(id, units, at, payload = {}) {
+    const result = updateATokenLpJobUnitsStmt.run(
+      String(units || '0'), Number(at), json(payload), String(id || ''),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function reopenATokenLpJob(id, units, at, payload = {}) {
+    const result = reopenATokenLpJobStmt.run(
+      String(units || '0'), Number(at), json(payload), String(id || ''),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenLpJobStats() {
+    const byStatus = {};
+    const pendingByAsset = { USDT: 0n, A: 0n };
+    for (const row of listATokenLpJobStatsStmt.all()) {
+      byStatus[row.status] = (byStatus[row.status] || 0) + 1;
+      if (row.status === 'pending' || row.status === 'processing' || row.status === 'failed') {
+        const asset = row.asset === 'A' ? 'A' : 'USDT';
+        pendingByAsset[asset] += BigInt(row.usdt_units || '0');
+      }
+    }
+    return {
+      byStatus,
+      pendingUsdtUnits: pendingByAsset.USDT.toString(),
+      pendingByAsset: { USDT: pendingByAsset.USDT.toString(), A: pendingByAsset.A.toString() },
+    };
+  }
+
+  // ── 提现手续费按日累计 ──────────────────────────────────────────────────
+  function mapATokenLpFeeAccrual(row) {
+    if (!row) return null;
+    return {
+      id: row.id, withdrawalId: row.withdrawal_id, wallet: row.wallet, asset: row.asset,
+      units: row.units, poolDate: row.pool_date, status: row.status,
+      createdAt: Number(row.created_at), reversedAt: Number(row.reversed_at) || 0,
+    };
+  }
+  function insertATokenLpFeeAccrual(item) {
+    const result = insertATokenLpFeeAccrualStmt.run(
+      String(item.id), String(item.withdrawalId), String(item.wallet || '').toLowerCase(),
+      String(item.asset || 'USDT'), String(item.units || '0'), String(item.poolDate),
+      String(item.status || 'accrued'), Number(item.createdAt ?? Date.now()), Number(item.reversedAt || 0),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenLpFeeAccrualByWithdrawalId(withdrawalId) {
+    return mapATokenLpFeeAccrual(getATokenLpFeeAccrualStmt.get(String(withdrawalId || '')));
+  }
+  function listATokenLpFeeAccruals({ status = '', limit = 500 } = {}) {
+    const normalized = String(status || '');
+    return listATokenLpFeeAccrualsStmt
+      .all(normalized, normalized, Math.min(Math.max(Number(limit) || 500, 1), 5000))
+      .map(mapATokenLpFeeAccrual);
+  }
+  function markATokenLpFeeAccrualReversed(withdrawalId, at) {
+    const result = markATokenLpFeeAccrualReversedStmt.run(Number(at), String(withdrawalId || ''));
+    return Number(result.changes || 0) > 0;
+  }
+  function mapATokenLpDailyPool(row) {
+    if (!row) return null;
+    return {
+      poolDate: row.pool_date, asset: row.asset, units: row.units,
+      settledUnits: row.settled_units, status: row.status, jobId: row.job_id || '',
+      settledAt: Number(row.settled_at) || 0, updatedAt: Number(row.updated_at) || 0,
+    };
+  }
+  function getATokenLpDailyPool(poolDate, asset) {
+    return mapATokenLpDailyPool(getATokenLpDailyPoolStmt.get(String(poolDate || ''), String(asset || 'USDT')));
+  }
+  function listATokenLpDailyPools({ status = '', limit = 500 } = {}) {
+    const normalized = String(status || '');
+    return listATokenLpDailyPoolsStmt
+      .all(normalized, normalized, Math.min(Math.max(Number(limit) || 500, 1), 5000))
+      .map(mapATokenLpDailyPool);
+  }
+  function ensureATokenLpDailyPool(poolDate, asset, at = Date.now()) {
+    insertATokenLpDailyPoolStmt.run(
+      String(poolDate), String(asset), '0', '0', 'open', null, 0, Number(at),
+    );
+    return getATokenLpDailyPool(poolDate, asset);
+  }
+  function updateATokenLpDailyPool(item) {
+    const result = updateATokenLpDailyPoolStmt.run(
+      String(item.units || '0'), String(item.settledUnits || '0'), String(item.status || 'open'),
+      item.jobId || null, Number(item.settledAt || 0), Number(item.updatedAt ?? Date.now()),
+      String(item.poolDate), String(item.asset || 'USDT'),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function listAllATokenLpPoolEntries() {
+    return listAllATokenLpPoolRowsStmt.all().map(mapATokenLpPoolEntry);
+  }
+
+  // ── 盲盒（P4）──
+  const blindBoxRow = row => row && {
+    id: row.id, wallet: row.wallet, refId: row.ref_id, status: row.status,
+    entryUsdtUnits: row.entry_usdt_units, totalUnits: row.total_units, issuedUnits: row.issued_units,
+    lastIssueDay: Number(row.last_issue_day),
+    claimDays: Number(row.claim_days), startedAt: Number(row.started_at) || 0, endsAt: Number(row.ends_at) || 0,
+    completedAt: Number(row.completed_at) || 0, payload: parse(row.payload_json, {}),
+  };
+  function insertATokenBlindBox(item) {
+    const result = insertATokenBlindBoxStmt.run(
+      String(item.id || ''), String(item.wallet || '').toLowerCase(), String(item.refId || ''),
+      item.status || 'active', String(item.entryUsdtUnits || '0'), String(item.totalUnits || '0'),
+      String(item.issuedUnits || '0'), Number(item.lastIssueDay ?? -1),
+      Number(item.claimDays) || 30,
+      Number(item.startedAt) || 0, Number(item.endsAt) || 0, Number(item.completedAt) || 0,
+      json(item.payload || {}),
+    );
+    if (!Number(result.changes || 0)) return null;
+    return blindBoxRow(getATokenBlindBoxByIdStmt.get(String(item.id || '')));
+  }
+  function getATokenBlindBoxById(id) {
+    return blindBoxRow(getATokenBlindBoxByIdStmt.get(String(id || '')));
+  }
+  function getATokenBlindBoxByWallet(wallet) {
+    return blindBoxRow(getATokenBlindBoxByWalletStmt.get(String(wallet || '').toLowerCase()));
+  }
+  function getATokenBlindBoxByRef(wallet, refId) {
+    return blindBoxRow(getATokenBlindBoxByRefStmt.get(
+      String(wallet || '').toLowerCase(), String(refId || ''),
+    ));
+  }
+  function listActiveATokenBlindBoxes(limit = 200) {
+    return listActiveATokenBlindBoxesStmt
+      .all(Math.min(Math.max(Number(limit) || 200, 1), 5000)).map(blindBoxRow);
+  }
+  // 后台概率核对：最近开出的盲盒（按参与时间倒序）
+  function listRecentATokenBlindBoxes(limit = 500) {
+    return listRecentATokenBlindBoxesStmt
+      .all(Math.min(Math.max(Number(limit) || 500, 1), 5000)).map(blindBoxRow);
+  }
+  function updateATokenBlindBox(id, { status, issuedUnits, lastIssueDay, completedAt, payload } = {}) {
+    const current = getATokenBlindBoxById(id);
+    if (!current) return null;
+    updateATokenBlindBoxStmt.run(
+      String(status || current.status),
+      String(issuedUnits ?? current.issuedUnits),
+      Number(lastIssueDay ?? current.lastIssueDay),
+      Number(completedAt ?? current.completedAt) || 0,
+      json(payload === undefined ? (current.payload || {}) : { ...(current.payload || {}), ...payload }),
+      String(id || ''),
+    );
+    return getATokenBlindBoxById(id);
+  }
+
+  function mapATokenTeamPerfEvent(row) {
+    if (!row) return null;
+    return {
+      id: row.id, ownerWallet: row.owner_wallet, sourceWallet: row.source_wallet, bizType: row.biz_type,
+      bizId: row.biz_id, amountUnits: row.amount_units, asset: row.asset, depth: Number(row.depth),
+      occurredAt: Number(row.occurred_at), reverseOf: row.reverse_of, createdAt: Number(row.created_at),
+      ...parse(row.payload_json, {}),
+    };
+  }
+  // append-only：正常事件 reverse_of='' 且唯一；冲销事件 reverse_of 唯一（防重复冲销）
+  function insertATokenTeamPerfEventRow(item) {
+    const result = insertATokenTeamPerfEventStmt.run(
+      item.id, String(item.ownerWallet || '').toLowerCase(), String(item.sourceWallet || '').toLowerCase(),
+      item.bizType, String(item.bizId || ''), String(item.amountUnits ?? '0'), String(item.asset || 'A'),
+      Number(item.depth ?? 1), Number(item.occurredAt ?? Date.now()), String(item.reverseOf || ''),
+      Number(item.createdAt ?? Date.now()), json(item.payload || {}),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenTeamPerfEvent(id) {
+    return mapATokenTeamPerfEvent(getATokenTeamPerfEventStmt.get(String(id || '')));
+  }
+  function listATokenTeamPerfEvents(ownerWallet, limit = 500) {
+    return listATokenTeamPerfEventsStmt
+      .all(String(ownerWallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 500, 1), 5000))
+      .map(mapATokenTeamPerfEvent);
+  }
+  // 团队业绩净额（正 + 负冲销，BigInt 累加，不做浮点）
+  function sumATokenTeamPerfUnits(ownerWallet) {
+    let total = 0n;
+    for (const row of listAllATokenTeamPerfEventsStmt.all(String(ownerWallet || '').toLowerCase())) {
+      total += BigInt(row.amount_units || '0');
+    }
+    return total.toString();
+  }
+  // 冲销：追加一条负数事件并指向原事件；重复冲销由唯一索引挡住（返回 null）
+  function reverseATokenTeamPerfEvent(originalId, { id, createdAt = Date.now(), occurredAt, payload = {} } = {}) {
+    const original = getATokenTeamPerfEvent(originalId);
+    if (!original) throw new Error('团队业绩事件不存在');
+    if (original.reverseOf) throw new Error('该事件已是冲销事件');
+    const row = {
+      id: String(id || `atp_rev_${original.id}`),
+      ownerWallet: original.ownerWallet, sourceWallet: original.sourceWallet,
+      bizType: original.bizType, bizId: original.bizId,
+      amountUnits: (-BigInt(original.amountUnits || '0')).toString(),
+      asset: original.asset, depth: original.depth,
+      occurredAt: Number(occurredAt ?? createdAt), reverseOf: original.id,
+      createdAt: Number(createdAt), payload,
+    };
+    return insertATokenTeamPerfEventRow(row) ? mapATokenTeamPerfEvent(getATokenTeamPerfEventStmt.get(row.id)) : null;
+  }
+  function listATokenTeamPerfEventsByBiz(sourceWallet, bizType, bizId) {
+    return listATokenTeamPerfEventsByBizStmt
+      .all(String(sourceWallet || '').toLowerCase(), String(bizType || ''), String(bizId || ''))
+      .map(mapATokenTeamPerfEvent);
+  }
+  // 全员团队业绩净额（快照批量用）：owner -> units 字符串，BigInt 累加避免浮点误差
+  function sumAllATokenTeamPerfUnits() {
+    const totals = new Map();
+    for (const row of sumAllATokenTeamPerfEventsStmt.all()) {
+      const key = String(row.owner_wallet || '').toLowerCase();
+      totals.set(key, (totals.get(key) || 0n) + BigInt(row.amount_units || '0'));
+    }
+    return totals;
+  }
+
+  // ── 升级仓（P3）：active 才计入个人升级仓金额；redeeming 立即掉级 ──
+  function upgradePositionRow(row) {
+    if (!row) return null;
+    return {
+      id: row.id, wallet: row.wallet, principalUnits: row.principal_units, status: row.status,
+      refId: row.ref_id, enteredAt: Number(row.entered_at) || 0, redeemAt: Number(row.redeem_at) || 0,
+      returnAt: Number(row.return_at) || 0, returnedAt: Number(row.returned_at) || 0,
+      payload: parse(row.payload_json, {}),
+    };
+  }
+  function insertATokenUpgradePosition(item) {
+    const result = insertATokenUpgradePositionStmt.run(
+      String(item.id || ''), String(item.wallet || '').toLowerCase(), String(item.principalUnits || '0'),
+      item.status || 'active', String(item.refId || ''), Number(item.enteredAt ?? Date.now()),
+      Number(item.redeemAt) || 0, Number(item.returnAt) || 0, Number(item.returnedAt) || 0,
+      json(item.payload || {}),
+    );
+    if (!Number(result.changes || 0)) return null;
+    return upgradePositionRow(getATokenUpgradePositionStmt.get(String(item.id || '')));
+  }
+  function getATokenUpgradePosition(id) {
+    return upgradePositionRow(getATokenUpgradePositionStmt.get(String(id || '')));
+  }
+  function getATokenUpgradePositionByRef(wallet, refId) {
+    return upgradePositionRow(getATokenUpgradePositionByRefStmt.get(
+      String(wallet || '').toLowerCase(), String(refId || ''),
+    ));
+  }
+  function listATokenUpgradePositions(wallet, limit = 50) {
+    return listATokenUpgradePositionsStmt
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 50, 1), 500))
+      .map(upgradePositionRow);
+  }
+  function listActiveATokenUpgradePositions(wallet) {
+    return listActiveATokenUpgradePositionsStmt
+      .all(String(wallet || '').toLowerCase())
+      .map(upgradePositionRow);
+  }
+  function listActiveATokenUpgradeBatch(afterId = '', limit = 500) {
+    return listActiveUpgradeBatchStmt.all(String(afterId), Math.min(Math.max(Number(limit) || 500, 1), 1000)).map(upgradePositionRow);
+  }
+  function sumATokenUpgradeUnits(wallet) {
+    let total = 0n;
+    for (const row of listActiveATokenUpgradePositionsStmt.all(String(wallet || '').toLowerCase())) {
+      total += BigInt(row.principal_units || '0');
+    }
+    return total.toString();
+  }
+  function sumAllATokenUpgradeUnits() {
+    const totals = new Map();
+    for (const row of listAllActiveATokenUpgradePositionsStmt.all()) {
+      const key = String(row.wallet || '').toLowerCase();
+      totals.set(key, (totals.get(key) || 0n) + BigInt(row.principal_units || '0'));
+    }
+    return totals;
+  }
+  function markATokenUpgradeRedeeming(id, redeemAt, returnAt, payload = {}) {
+    const current = getATokenUpgradePosition(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(markATokenUpgradeRedeemingStmt.run(
+      Number(redeemAt) || Date.now(), Number(returnAt) || 0, json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenUpgradePosition(id) : null;
+  }
+  function markATokenUpgradeReturned(id, returnedAt, payload = {}) {
+    const current = getATokenUpgradePosition(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(markATokenUpgradeReturnedStmt.run(
+      Number(returnedAt) || Date.now(), json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenUpgradePosition(id) : null;
+  }
+  function listDueATokenUpgradeReturns(now, limit = 200) {
+    return listDueATokenUpgradeReturnsStmt
+      .all(Number(now) || Date.now(), Math.min(Math.max(Number(limit) || 200, 1), 2000))
+      .map(upgradePositionRow);
+  }
+
+  // 买币双区：alpha=甲区（质押/算力节点专用），beta=乙区（涡轮专用）。
+  // 只提供分区内加减，不提供任何跨区互转入口。
+  function assertATokenZone(zone) {
+    if (zone !== 'alpha' && zone !== 'beta') throw new Error('无效的代币分区（仅支持 alpha / beta）');
+  }
+  function getATokenZoneBalance(wallet, zone) {
+    assertATokenZone(zone);
+    const row = getATokenZoneBalanceStmt.get(String(wallet || '').toLowerCase(), zone);
+    return row ? { zone, units: row.units, updatedAt: Number(row.updated_at) } : { zone, units: '0', updatedAt: 0 };
+  }
+  function listATokenZoneBalances(wallet) {
+    const rows = listATokenZoneBalancesStmt.all(String(wallet || '').toLowerCase());
+    const out = { alpha: '0', beta: '0' };
+    for (const row of rows) out[row.zone] = row.units;
+    return out;
+  }
+  // 分区记账：先写流水（幂等），成功后更新分区余额；调用方负责事务。
+  function applyATokenZoneChange(wallet, zone, deltaUnits, direction, bizType, refId, createdAt, payload) {
+    assertATokenZone(zone);
+    const delta = BigInt(deltaUnits || '0');
+    if (delta <= 0n) throw new Error('数量必须大于 0');
+    if (!refId) throw new Error('分区记账必须提供 refId');
+    const entryId = `azt_${String(bizType || 'adjustment')}_${String(refId)}_${direction}_${zone}`;
+    const inserted = Number(insertATokenZoneEntryStmt.run(
+      entryId, String(wallet || '').toLowerCase(), zone, direction, delta.toString(),
+      String(bizType || 'adjustment'), String(refId || ''), Number(createdAt ?? Date.now()), json(payload || {}),
+    ).changes || 0) > 0;
+    const current = BigInt(getATokenZoneBalance(wallet, zone).units);
+    if (!inserted) return { idempotent: true, balanceUnits: current.toString() };
+    let next = direction === 'in' ? current + delta : current - delta;
+    if (next < 0n) throw new Error('该分区余额不足');
+    upsertATokenZoneBalanceStmt.run(
+      String(wallet || '').toLowerCase(), zone, next.toString(), Number(createdAt ?? Date.now()),
+    );
+    return { idempotent: false, balanceUnits: next.toString() };
+  }
+  function creditATokenZone({ wallet, zone, units, bizType, refId, createdAt = Date.now(), payload = {} }) {
+    return applyATokenZoneChange(wallet, zone, units, 'in', bizType, refId, createdAt, payload);
+  }
+  function debitATokenZone({ wallet, zone, units, bizType, refId, createdAt = Date.now(), payload = {} }) {
+    return applyATokenZoneChange(wallet, zone, units, 'out', bizType, refId, createdAt, payload);
+  }
+
+  // ── 涡轮锁（2026-11-09 P2）──
+  const turboLockRow = row => row && {
+    id: row.id, wallet: row.wallet, units: row.units, usedUnits: row.used_units,
+    status: row.status, refId: row.ref_id, createdAt: Number(row.created_at) || 0,
+    releaseAt: Number(row.release_at) || 0, releasedAt: Number(row.released_at) || 0,
+    expireAt: Number(row.expire_at) || 0, payload: parse(row.payload_json, {}),
+  };
+  function insertATokenTurboLock(lock) {
+    const result = insertATokenTurboLockStmt.run(
+      lock.id, String(lock.wallet || '').toLowerCase(), String(lock.units || '0'),
+      String(lock.usedUnits || '0'), lock.status || 'locked', String(lock.refId || ''),
+      Number(lock.createdAt ?? Date.now()), Number(lock.releaseAt) || 0,
+      Number(lock.releasedAt) || 0, Number(lock.expireAt) || 0, json(lock.payload || {}),
+    );
+    if (!Number(result.changes || 0)) return null;
+    return turboLockRow(getATokenTurboLockByRefStmt.get(String(lock.wallet || '').toLowerCase(), String(lock.refId || '')));
+  }
+  function getATokenTurboLockByRef(wallet, refId) {
+    return turboLockRow(getATokenTurboLockByRefStmt.get(String(wallet || '').toLowerCase(), String(refId || '')));
+  }
+  function listATokenTurboLocks(wallet, limit = 50) {
+    return listATokenTurboLocksStmt
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 50, 1), 500))
+      .map(turboLockRow);
+  }
+  function listDueATokenTurboLocks(now, limit = 200) {
+    return listDueATokenTurboLocksStmt
+      .all(Number(now) || Date.now(), Math.min(Math.max(Number(limit) || 200, 1), 2000))
+      .map(turboLockRow);
+  }
+  function listExpiringATokenTurboLocks(now, limit = 200) {
+    return listExpiringATokenTurboLocksStmt
+      .all(Number(now) || Date.now(), Math.min(Math.max(Number(limit) || 200, 1), 2000))
+      .map(turboLockRow);
+  }
+  // 满 24h 释放：locked → active，写入释放时间与 30 天有效期（仅首次成功）
+  function markATokenTurboLockReleased(id, releasedAt, expireAt) {
+    return Number(markATokenTurboLockReleasedStmt.run(
+      Number(releasedAt) || Date.now(), Number(expireAt) || 0, String(id || ''),
+    ).changes || 0) > 0;
+  }
+  // 额度消耗按释放时间先入先出（最早释放的额度先被用掉，先到期先作废）
+  function consumeATokenTurboLockUnits(wallet, units) {
+    let remain = BigInt(units || '0');
+    if (remain <= 0n) return 0n;
+    const key = String(wallet || '').toLowerCase();
+    for (const lock of listActiveATokenTurboLocksStmt.all(key).map(turboLockRow)) {
+      if (remain <= 0n) break;
+      if (lock.status === 'expired') continue;
+      const total = BigInt(lock.units || '0');
+      const used = BigInt(lock.usedUnits || '0');
+      const free = total - used;
+      if (free <= 0n) continue;
+      const take = free < remain ? free : remain;
+      const nextUsed = used + take;
+      updateATokenTurboLockUsageStmt.run(
+        nextUsed.toString(), nextUsed >= total ? 'exhausted' : 'active', lock.id,
+      );
+      remain -= take;
+    }
+    return BigInt(units || '0') - remain;
+  }
+  // 撤销消耗（撤单/失败退款）：按释放时间倒序回填最近被用掉的额度
+  function refundATokenTurboLockUnits(wallet, units) {
+    let remain = BigInt(units || '0');
+    if (remain <= 0n) return 0n;
+    const key = String(wallet || '').toLowerCase();
+    for (const lock of listActiveATokenTurboLocksStmt.all(key).map(turboLockRow).reverse()) {
+      if (remain <= 0n) break;
+      if (lock.status === 'expired') continue;
+      const used = BigInt(lock.usedUnits || '0');
+      if (used <= 0n) continue;
+      const giveBack = used < remain ? used : remain;
+      updateATokenTurboLockUsageStmt.run((used - giveBack).toString(), 'active', lock.id);
+      remain -= giveBack;
+    }
+    return BigInt(units || '0') - remain;
+  }
+  // 到期作废：active → expired（仅首次成功）
+  function expireATokenTurboLock(id) {
+    return Number(expireATokenTurboLockStmt.run(String(id || '')).changes || 0) > 0;
+  }
+
+  // 一键买/一键卖流水
+  const zoneOrderRow = row => row && {
+    id: row.id, wallet: row.wallet, side: row.side, zone: row.zone,
+    requestId: row.request_id, usdtUnits: row.usdt_units, aUnits: row.a_units,
+    feeUnits: row.fee_units, status: row.status, createdAt: Number(row.created_at) || 0,
+    payload: parse(row.payload_json, {}),
+  };
+  function insertATokenZoneOrder(order) {
+    const result = insertATokenZoneOrderStmt.run(
+      order.id, String(order.wallet || '').toLowerCase(), order.side, order.zone,
+      String(order.requestId || ''), String(order.usdtUnits || '0'), String(order.aUnits || '0'),
+      String(order.feeUnits || '0'), order.status || 'filled',
+      Number(order.createdAt ?? Date.now()), json(order.payload || {}),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenZoneOrder(wallet, requestId) {
+    return zoneOrderRow(getATokenZoneOrderStmt.get(String(wallet || '').toLowerCase(), String(requestId || '')));
+  }
+  function listATokenZoneOrders(wallet, limit = 50) {
+    return listATokenZoneOrdersStmt
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 50, 1), 500))
+      .map(zoneOrderRow);
+  }
+
+  // ── 股东池（2026-11-09 P2）──
+  const shareholderPoolRow = row => row && {
+    id: row.id, seq: Number(row.seq) || 0, tier: row.tier || 't500',
+    targetUnits: row.target_usdt_units, fundedUnits: row.funded_usdt_units,
+    status: row.status, openedAt: Number(row.opened_at) || 0,
+    closedAt: Number(row.closed_at) || 0, settledAt: Number(row.settled_at) || 0,
+    payload: parse(row.payload_json, {}),
+  };
+  const shareholderEntryRow = row => row && {
+    id: row.id, source: row.source, refId: row.ref_id, wallet: row.wallet,
+    usdtUnits: row.usdt_units, direction: row.direction, poolId: row.pool_id,
+    createdAt: Number(row.created_at) || 0, payload: parse(row.payload_json, {}),
+  };
+  function insertATokenShareholderPool(pool) {
+    insertATokenShareholderPoolStmt.run(
+      pool.id, Number(pool.seq) || 1, String(pool.tier || 't500'),
+      String(pool.targetUnits || '0'),
+      String(pool.fundedUnits || '0'), pool.status || 'filling',
+      Number(pool.openedAt ?? Date.now()), Number(pool.closedAt) || 0,
+      Number(pool.settledAt) || 0, json(pool.payload || {}),
+    );
+    return pool;
+  }
+  function getATokenShareholderPool(id) {
+    return shareholderPoolRow(getATokenShareholderPoolStmt.get(String(id || '')));
+  }
+  function getFillingATokenShareholderPool(tier = 't500') {
+    return shareholderPoolRow(getFillingATokenShareholderPoolStmt.get(String(tier || 't500')));
+  }
+  function listATokenShareholderPools(limit = 50) {
+    return listATokenShareholderPoolsStmt.all(Math.min(Math.max(Number(limit) || 50, 1), 500)).map(shareholderPoolRow);
+  }
+  function listATokenShareholderPoolsByTier(tier, limit = 50) {
+    return listATokenShareholderPoolsByTierStmt.all(
+      String(tier || 't500'), Math.min(Math.max(Number(limit) || 50, 1), 500),
+    ).map(shareholderPoolRow);
+  }
+  // 某档所有池的累计归集（USDT，行级 BigInt 聚合）
+  function sumATokenShareholderFundedUnits(tier) {
+    let sum = 0n;
+    for (const row of listATokenShareholderFundedByTierStmt.all(String(tier || 't500'))) {
+      sum += BigInt(row.f || '0');
+    }
+    return sum.toString();
+  }
+  function updateATokenShareholderPool(id, { fundedUnits, status, closedAt, settledAt, payload } = {}) {
+    const current = getATokenShareholderPool(id);
+    const merged = payload === undefined ? (current?.payload || {}) : { ...(current?.payload || {}), ...payload };
+    updateATokenShareholderPoolStmt.run(
+      String(fundedUnits ?? current?.fundedUnits ?? '0'), String(status || current?.status || 'filling'),
+      Number(closedAt ?? current?.closedAt) || 0, Number(settledAt ?? current?.settledAt) || 0,
+      json(merged), String(id || ''),
+    );
+    return getATokenShareholderPool(id);
+  }
+  function insertATokenShareholderEntryRow(item) {
+    const result = insertATokenShareholderEntryStmt.run(
+      item.id, item.source, String(item.refId || ''), String(item.wallet || '').toLowerCase(),
+      String(item.usdtUnits ?? '0'), item.direction || 'in', String(item.poolId || ''),
+      Number(item.createdAt ?? Date.now()), json(item.payload || {}),
+    );
+    return Number(result.changes || 0) > 0;
+  }
+  function getATokenShareholderEntryByRef(source, refId) {
+    return shareholderEntryRow(getATokenShareholderEntryByRefStmt.get(String(source || ''), String(refId || '')));
+  }
+  // 股东池累计实收（USDT）= 流入 - 流出（BigInt 行级聚合，避免 6 位小数 CAST 溢出）
+  function getATokenShareholderPoolBalance() {
+    let usdt = 0n;
+    for (const row of listAllATokenShareholderEntriesStmt.all()) {
+      const v = BigInt(row.usdt_units || '0');
+      usdt += row.direction === 'out' ? -v : v;
+    }
+    return { usdtUnits: usdt.toString() };
+  }
+
+  // ── 股东身份（P3）：本金 USDT、累计已分红、撤回退款 ──
+  const shareholderMemberRow = row => row && {
+    id: row.id, wallet: row.wallet, principalUnits: row.principal_units,
+    tier: row.tier || 't500', status: row.status,
+    refId: row.ref_id, joinedAt: Number(row.joined_at) || 0,
+    withdrawnAt: Number(row.withdrawn_at) || 0, refundUnits: row.refund_units,
+    dividendUnits: row.dividend_units, payload: parse(row.payload_json, {}),
+  };
+  function insertATokenShareholderMember(item) {
+    const result = insertATokenShareholderMemberStmt.run(
+      String(item.id || ''), String(item.wallet || '').toLowerCase(),
+      String(item.principalUnits || '0'), String(item.tier || 't500'),
+      item.status || 'active', String(item.refId || ''),
+      Number(item.joinedAt ?? Date.now()), Number(item.withdrawnAt) || 0,
+      String(item.refundUnits || '0'), String(item.dividendUnits || '0'), json(item.payload || {}),
+    );
+    if (!Number(result.changes || 0)) return null;
+    return shareholderMemberRow(getATokenShareholderMemberStmt.get(String(item.id || '')));
+  }
+  function getATokenShareholderMember(id) {
+    return shareholderMemberRow(getATokenShareholderMemberStmt.get(String(id || '')));
+  }
+  function getATokenShareholderMemberByRef(wallet, refId) {
+    return shareholderMemberRow(getATokenShareholderMemberByRefStmt.get(
+      String(wallet || '').toLowerCase(), String(refId || ''),
+    ));
+  }
+  function getActiveATokenShareholderMember(wallet) {
+    return shareholderMemberRow(getActiveATokenShareholderMemberStmt.get(String(wallet || '').toLowerCase()));
+  }
+  function listActiveATokenShareholderMembers() {
+    return listActiveATokenShareholderMembersStmt.all().map(shareholderMemberRow);
+  }
+  function listATokenShareholderMembers(wallet, limit = 20) {
+    return listATokenShareholderMembersStmt
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 20, 1), 200))
+      .map(shareholderMemberRow);
+  }
+  function updateATokenShareholderMemberDividend(id, dividendUnits, payload = {}) {
+    const current = getATokenShareholderMember(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(updateATokenShareholderMemberDividendStmt.run(
+      String(dividendUnits || '0'), json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenShareholderMember(id) : null;
+  }
+  function withdrawATokenShareholderMember(id, { withdrawnAt, refundUnits, payload = {} } = {}) {
+    const current = getATokenShareholderMember(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(withdrawATokenShareholderMemberStmt.run(
+      Number(withdrawnAt) || Date.now(), String(refundUnits || '0'), json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenShareholderMember(id) : null;
+  }
+
+  // 仅更新股东档位/资产快照等元数据，不动累计分红
+  function updateATokenShareholderMemberMeta(id, payload = {}) {
+    const current = getATokenShareholderMember(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(updateATokenShareholderMemberDividendStmt.run(
+      String(current.dividendUnits || '0'), json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenShareholderMember(id) : null;
+  }
+
+  // 500 → 1000 档升档：补差价后更新本金与档位（不支持降档）
+  function upgradeATokenShareholderMember(id, { principalUnits, tier, payload = {} } = {}) {
+    const current = getATokenShareholderMember(id);
+    if (!current) return null;
+    const merged = { ...current.payload, ...payload };
+    const changed = Number(upgradeATokenShareholderMemberStmt.run(
+      String(principalUnits || current.principalUnits || '0'), String(tier || current.tier || 't500'),
+      json(merged), String(id || ''),
+    ).changes || 0) > 0;
+    return changed ? getATokenShareholderMember(id) : null;
+  }
+
+  // SVX 流通额度（匹配池到期产出，挂卖唯一消耗对象）：released 累计放出，used 挂单占用
   function getATokenUsableQuota(wallet) {
     const row = getATokenUsableQuotaStmt.get(String(wallet || ''));
     return row
@@ -2242,6 +3757,8 @@ export function openDatabase(dataRoot) {
     const cur = getATokenUsableQuota(wallet);
     const used = (BigInt(cur.usedUnits) + delta).toString();
     upsertATokenUsableQuotaStmt.run(String(wallet || '').toLowerCase(), cur.releasedUnits, used, Date.now());
+    // 驱动额度批次先入先出：最早释放的额度先被消耗，便于 30 天到期精确作废
+    try { consumeATokenTurboLockUnits(wallet, delta); } catch (e) { console.error('[额度] 涡轮批次消耗失败:', e?.message || e); }
     return { releasedUnits: cur.releasedUnits, usedUnits: used };
   }
   function refundATokenUsableQuota(wallet, units) {
@@ -2251,9 +3768,22 @@ export function openDatabase(dataRoot) {
     let used = BigInt(cur.usedUnits) - delta;
     if (used < 0n) used = 0n;
     upsertATokenUsableQuotaStmt.run(String(wallet || '').toLowerCase(), cur.releasedUnits, used.toString(), Date.now());
+    try { refundATokenTurboLockUnits(wallet, delta); } catch (e) { console.error('[额度] 涡轮批次回填失败:', e?.message || e); }
     return { releasedUnits: cur.releasedUnits, usedUnits: used.toString() };
   }
-  // AIX 涡轮额度：单值余额（units 只增只减，购入+、进池-）
+  // 驱动额度到期作废：只扣减累计放出，已占用（used）不动；不足时扣到可用为止
+  function expireATokenUsableQuota(wallet, units) {
+    const delta = BigInt(units || '0');
+    if (delta <= 0n) return getATokenUsableQuota(wallet);
+    const cur = getATokenUsableQuota(wallet);
+    const released = BigInt(cur.releasedUnits);
+    const used = BigInt(cur.usedUnits);
+    let next = released - delta;
+    if (next < used) next = used;
+    upsertATokenUsableQuotaStmt.run(String(wallet || '').toLowerCase(), next.toString(), cur.usedUnits, Date.now());
+    return { releasedUnits: next.toString(), usedUnits: cur.usedUnits };
+  }
+  // SVX 驱动额度：单值余额（units 只增只减，购入+、进池-）
   function getATokenTurboQuota(wallet) {
     const row = getATokenTurboQuotaStmt.get(String(wallet || ''));
     return row ? { units: row.units, updatedAt: row.updated_at } : { units: '0', updatedAt: 0 };
@@ -2302,17 +3832,20 @@ export function openDatabase(dataRoot) {
       Number(entry.maturesAt) || 0, entry.status || 'locked', Number(entry.releasedAt) || 0, json(entry));
     return entry;
   }
+  function getATokenMatchPoolEntry(id) {
+    return matchPoolEntryRow(db.prepare('SELECT * FROM a_token_match_pool_entries WHERE id=?').get(String(id))) || null;
+  }
   function listATokenMatchPoolEntries(wallet, limit = 100) {
     return listATokenMatchPoolEntriesStmt.all(String(wallet || ''), Math.min(Math.max(Number(limit) || 100, 1), 500)).map(matchPoolEntryRow);
   }
   function listDueATokenMatchPoolEntries(now, limit = 200) {
     return listDueATokenMatchPoolEntriesStmt.all(Number(now) || Date.now(), Math.min(Math.max(Number(limit) || 200, 1), 1000)).map(matchPoolEntryRow);
   }
-  // 原子标记释放（并发下只会有一个调用成功，防止重复发放可用额度）
+  // 原子标记释放（并发下只会有一个调用成功，防止重复发放流通额度）
   function markATokenMatchPoolEntryReleased(id, releasedAt) {
     return markATokenMatchPoolEntryReleasedStmt.run(Number(releasedAt) || Date.now(), String(id || '')).changes > 0;
   }
-  // 涡轮额度购买记录（幂等：wallet+request_id 唯一；冲突返回 null 表示重复请求）
+  // 驱动额度购买记录（幂等：wallet+request_id 唯一；冲突返回 null 表示重复请求）
   const turboPurchaseRow = row => row && {
     id: row.id, wallet: row.wallet, requestId: row.request_id,
     usdtUnits: row.usdt_units, turboUnits: row.turbo_units, priceUnits: row.price_units,
@@ -2335,85 +3868,7 @@ export function openDatabase(dataRoot) {
   function listATokenTurboPurchases(wallet, limit = 20) {
     return listATokenTurboPurchasesStmt.all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 20, 1), 100)).map(turboPurchaseRow);
   }
-  // 奔跑吧 AIX 押注局：行存储 + 每钱包流水汇总（开跑即累计）
-  const runAixRow = row => row && {
-    id: row.id, wallet: row.wallet, stakeUnits: row.stake_units, status: row.status,
-    distance: Number(row.distance) || 0, payoutUnits: row.payout_units, quotaUnits: row.quota_units,
-    elapsedMs: Number(row.elapsed_ms) || 0, startedAt: Number(row.started_at) || 0,
-    settledAt: Number(row.settled_at) || 0, payload: parse(row.payload_json, {}),
-  };
-  function insertRunAixRun(run) {
-    const wallet = String(run.wallet || '').toLowerCase();
-    insertRunAixRunStmt.run(run.id, wallet, run.stakeUnits, run.status || 'pending',
-      Number(run.distance) || 0, run.payoutUnits || '0', run.quotaUnits || '0',
-      Number(run.elapsedMs) || 0, Number(run.startedAt) || Date.now(), Number(run.settledAt) || 0, json(run));
-    const cur = getRunAixStats(wallet);
-    upsertRunAixStatsStmt.run(wallet, (BigInt(cur.turnoverUnits) + BigInt(run.stakeUnits)).toString(),
-      Number(cur.runs) || 0, Date.now());
-    return run;
-  }
-  function getRunAixRun(id) { return runAixRow(getRunAixRunStmt.get(String(id || ''))); }
-  function getPendingRunAixRun(wallet) {
-    return runAixRow(getPendingRunAixRunStmt.get(String(wallet || '').toLowerCase()));
-  }
-  // 返回 changes：0 表示该局不在 pending 状态（幂等结算靠它判断）
-  function settleRunAixRun(id, patch) {
-    const cur = getRunAixRun(id);
-    if (!cur || cur.status !== 'pending') return 0;
-    return settleRunAixRunStmt.run(String(patch.status || 'settled'), Number(patch.distance) || 0,
-      patch.payoutUnits || '0', Number(patch.elapsedMs) || 0, Number(patch.settledAt) || Date.now(),
-      json({ ...(cur.payload || {}), ...patch }), String(id)).changes;
-  }
-  // 进行中局的回放日志/随机带进度落盘；非 pending 返回 0
-  function updateRunAixPayload(id, payload) {
-    return updateRunAixPayloadStmt.run(json(payload), String(id)).changes;
-  }
-  function listRunAixRuns(wallet, limit = 20) {
-    return listRunAixRunsStmt.all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 20, 1), 100))
-      .map(runAixRow);
-  }
-  function getRunAixStats(wallet) {
-    const row = getRunAixStatsStmt.get(String(wallet || '').toLowerCase());
-    return { turnoverUnits: row?.turnover_units || '0', runs: Number(row?.runs) || 0, updatedAt: Number(row?.updated_at) || 0 };
-  }
-  // 哈希星盘 AIX 版：seed 状态 + 押注凭证 + 流水汇总
-  const hashAixBetRow = row => row && {
-    id: row.id, wallet: row.wallet, choice: row.choice,
-    stakeUnits: row.stake_units, payoutUnits: row.payout_units,
-    digit: Number(row.digit), outcome: row.outcome, hash: row.hash,
-    serverSeed: row.server_seed, serverSeedHash: row.server_seed_hash,
-    clientSeed: row.client_seed, nonce: Number(row.nonce),
-    quotaUnits: row.quota_units, createdAt: Number(row.created_at) || 0,
-  };
-  function getHashAixSeed(wallet) {
-    const row = getHashAixSeedStmt.get(String(wallet || '').toLowerCase());
-    return row ? { serverSeed: row.server_seed, serverSeedHash: row.server_seed_hash, nonce: Number(row.nonce) } : null;
-  }
-  function upsertHashAixSeed(wallet, serverSeed, serverSeedHash, nonce) {
-    upsertHashAixSeedStmt.run(String(wallet || '').toLowerCase(), String(serverSeed || ''), String(serverSeedHash || ''),
-      Number(nonce) || 1, Date.now());
-    return { serverSeed: String(serverSeed || ''), serverSeedHash: String(serverSeedHash || ''), nonce: Number(nonce) || 1 };
-  }
-  function insertHashAixBet(bet) {
-    const wallet = String(bet.wallet || '').toLowerCase();
-    insertHashAixBetStmt.run(bet.id, wallet, bet.choice, bet.stakeUnits, bet.payoutUnits || '0',
-      Number(bet.digit) || 0, bet.outcome || 'lose', bet.hash || '', bet.serverSeed || '', bet.serverSeedHash || '',
-      bet.clientSeed || '', Number(bet.nonce) || 0, bet.quotaUnits || '0', Number(bet.createdAt) || Date.now(), json(bet));
-    const cur = getHashAixStats(wallet);
-    upsertHashAixStatsStmt.run(wallet, (BigInt(cur.turnoverUnits) + BigInt(bet.stakeUnits)).toString(),
-      Number(cur.bets) || 0, Date.now());
-    return bet;
-  }
-  function listHashAixBets(wallet, limit = 50) {
-    return listHashAixBetsStmt.all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 50, 1), 200))
-      .map(hashAixBetRow);
-  }
-  function getHashAixStats(wallet) {
-    const row = getHashAixStatsStmt.get(String(wallet || '').toLowerCase());
-    return { turnoverUnits: row?.turnover_units || '0', bets: Number(row?.bets) || 0, updatedAt: Number(row?.updated_at) || 0 };
-  }
-
-  // ── AIX 商城 ──
+  // ── Solvex 商城 ──
   // 扩展字段（保证金/多图/规格/简介）存于 payload_json，免 schema 迁移。
   function mallMerchantRow(row) {
     if (!row) return null;
@@ -2683,7 +4138,7 @@ export function openDatabase(dataRoot) {
     return listA10PoolHistoryStmt.all(Math.min(Math.max(Number(limit) || 30, 1), 500)).map(r => parse(r.payload_json, {}));
   }
 
-  // ── A 币 K 线 ──
+  // ── SVX K 线 ──
   function upsertATokenKlineRow(row) {
     const r = { ...row };
     const period = String(r.period || '');
@@ -2710,7 +4165,7 @@ export function openDatabase(dataRoot) {
     return Number(r?.c || 0);
   }
 
-  // ── A 币挂单 ──
+  // ── SVX挂单 ──
   function insertATokenOrderRow(order) {
     const o = { ...order };
     insertATokenOrder.run(o.id, o.wallet, o.side, o.orderType || 'limit',
@@ -2788,6 +4243,197 @@ export function openDatabase(dataRoot) {
     return Number(countAdminUnreadStmt.get()?.n || 0);
   }
 
+  // ── 群聊 ──
+  function getCommunityMember(address) {
+    return getCommunityMemberStmt.get(String(address).toLowerCase()) || null;
+  }
+  // 首次进入群聊时登记成员；被踢出的地址保留原状态，不自动恢复（恢复属后台操作）
+  function ensureCommunityMember(address, nickname, now = Date.now()) {
+    const key = String(address || '').toLowerCase();
+    insertCommunityMemberStmt.run(key, String(nickname), Number(now), Number(now), Number(now));
+    return getCommunityMember(key);
+  }
+  function updateCommunityNickname(address, nickname, now = Date.now()) {
+    const result = updateCommunityNicknameStmt.run(String(nickname), Number(now), String(address).toLowerCase());
+    return result.changes > 0 ? getCommunityMember(address) : null;
+  }
+  function updateCommunityProfile(address, patch, now = Date.now()) {
+    const key = String(address).toLowerCase(), row = getCommunityMember(key);
+    if (!row) return null;
+    let payload = {};
+    try {
+      const parsed = JSON.parse(row.payload_json || '{}');
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) payload = parsed;
+    } catch { /* 损坏的扩展字段仅重建当前用户的资料扩展，不影响其他群聊数据 */ }
+    if (patch.avatar !== undefined) {
+      if (patch.avatar) payload.avatar = patch.avatar;
+      else delete payload.avatar;
+    }
+    const nickname = patch.nickname === undefined ? row.nickname : String(patch.nickname);
+    const result = updateCommunityProfileStmt.run(nickname, JSON.stringify(payload), Number(now), key);
+    return result.changes > 0 ? getCommunityMember(key) : null;
+  }
+  function touchCommunityMember(address, now = Date.now()) {
+    touchCommunityMemberStmt.run(Number(now), Number(now), String(address).toLowerCase());
+  }
+  function listCommunityMembers(limit = 200) {
+    return listCommunityMembersStmt.all(Math.min(Math.max(Number(limit) || 200, 1), 500));
+  }
+  function countCommunityMembers() {
+    return Number(countCommunityMembersStmt.get()?.n || 0);
+  }
+  function insertCommunityMessage({ wallet, nickname, body, clientId = '', kind = 'text', refId = '', createdAt }) {
+    const result = insertCommunityMessageStmt.run(String(wallet).toLowerCase(), String(nickname),
+      String(body), String(clientId || ''), String(kind || 'text'), String(refId || ''), Number(createdAt));
+    return getCommunityMessageStmt.get(Number(result.lastInsertRowid)) || null;
+  }
+  function getCommunityMessage(id) {
+    return getCommunityMessageStmt.get(Number(id)) || null;
+  }
+  function getCommunityMessageByClient(wallet, clientId) {
+    if (!clientId) return null;
+    return getCommunityMessageByClientStmt.get(String(wallet).toLowerCase(), String(clientId)) || null;
+  }
+  // 游标分页：beforeId>0 取更早一页（返回 id 降序），afterId>0 取增量（id 升序），都为 0 取最新一页
+  function listCommunityMessages({ beforeId = 0, afterId = 0, limit = 60 } = {}) {
+    const n = Math.min(Math.max(Number(limit) || 60, 1), 200);
+    if (Number(afterId) > 0) return listCommunityMessagesAfterStmt.all(Number(afterId), n);
+    if (Number(beforeId) > 0) return listCommunityMessagesBeforeStmt.all(Number(beforeId), n);
+    return listCommunityMessagesLatestStmt.all(n);
+  }
+  function latestCommunityMessageId() {
+    return Number(latestCommunityMessageIdStmt.get()?.id || 0);
+  }
+  function countCommunityUnread(wallet, lastReadId) {
+    return Number(countCommunityUnreadStmt.get(Number(lastReadId) || 0, String(wallet).toLowerCase())?.n || 0);
+  }
+  function countCommunityWalletRecent(wallet, sinceMs) {
+    return Number(countCommunityWalletRecentStmt.get(String(wallet).toLowerCase(), Number(sinceMs))?.n || 0);
+  }
+  function getCommunityRead(wallet) {
+    const row = getCommunityReadStmt.get(String(wallet).toLowerCase());
+    return { lastReadId: Number(row?.last_read_id || 0), updatedAt: Number(row?.updated_at || 0) };
+  }
+  function setCommunityRead(wallet, lastReadId, now = Date.now()) {
+    upsertCommunityReadStmt.run(String(wallet).toLowerCase(), Number(lastReadId) || 0, Number(now));
+    return getCommunityRead(wallet);
+  }
+
+  // ── 群管理员 / 敏感词 / 红包 ──
+  function getCommunityMessageByRef(kind, refId) {
+    return getCommunityMessageByRefStmt.get(String(kind), String(refId)) || null;
+  }
+  function listCommunityMembersAll(limit = 500) {
+    return listCommunityMembersAllStmt.all(Math.min(Math.max(Number(limit) || 500, 1), 1000));
+  }
+  function setCommunityMemberStatus(address, status, now = Date.now()) {
+    const result = setCommunityMemberStatusStmt.run(String(status), Number(now), String(address).toLowerCase());
+    return result.changes > 0 ? getCommunityMember(address) : null;
+  }
+  function setCommunityMemberMute(address, mutedUntil, now = Date.now()) {
+    const result = setCommunityMemberMuteStmt.run(Number(mutedUntil) || 0, Number(now), String(address).toLowerCase());
+    return result.changes > 0 ? getCommunityMember(address) : null;
+  }
+  function softDeleteCommunityMessage(id, deletedBy, now = Date.now()) {
+    return deleteCommunityMessageStmt.run(Number(now), String(deletedBy), Number(id)).changes > 0;
+  }
+  function listCommunityMessagesAdmin(limit = 100) {
+    return listCommunityMessagesAdminStmt.all(Math.min(Math.max(Number(limit) || 100, 1), 500));
+  }
+  function getCommunityAdmin(address) {
+    return getCommunityAdminStmt.get(String(address).toLowerCase()) || null;
+  }
+  function listCommunityAdmins(limit = 200) {
+    return listCommunityAdminsStmt.all(Math.min(Math.max(Number(limit) || 200, 1), 500));
+  }
+  function listActiveCommunityAdminAddresses() {
+    return listActiveCommunityAdminsStmt.all().map(row => String(row.address).toLowerCase());
+  }
+  function appointCommunityAdmin(address, appointedBy, now = Date.now()) {
+    const key = String(address).toLowerCase();
+    upsertCommunityAdminStmt.run(key, String(appointedBy || ''), Number(now));
+    return getCommunityAdmin(key);
+  }
+  function revokeCommunityAdmin(address, revokedBy, now = Date.now()) {
+    const key = String(address).toLowerCase();
+    const result = revokeCommunityAdminStmt.run(String(revokedBy || ''), Number(now), key);
+    return result.changes > 0 ? getCommunityAdmin(key) : null;
+  }
+  function insertCommunityAdminLog({ actor, role, action, target = '', detail = {}, createdAt }) {
+    insertCommunityAdminLogStmt.run(String(actor || '').toLowerCase(), String(role), String(action),
+      String(target || '').toLowerCase(), JSON.stringify(detail ?? {}), Number(createdAt));
+  }
+  function listCommunityAdminLogs(limit = 100) {
+    return listCommunityAdminLogsStmt.all(Math.min(Math.max(Number(limit) || 100, 1), 500));
+  }
+  function listCommunitySensitiveWords() {
+    return listCommunityWordsStmt.all(500);
+  }
+  function addCommunitySensitiveWord(word, createdBy, now = Date.now()) {
+    insertCommunityWordStmt.run(String(word), String(createdBy || ''), Number(now));
+    return listCommunitySensitiveWords();
+  }
+  function removeCommunitySensitiveWord(word) {
+    return deleteCommunityWordStmt.run(String(word)).changes > 0;
+  }
+  function getCommunityRedPacket(id) {
+    return getCommunityRedPacketStmt.get(String(id)) || null;
+  }
+  function getCommunityRedPacketByClient(sender, clientId) {
+    if (!clientId) return null;
+    return getCommunityRedPacketByClientStmt.get(String(sender).toLowerCase(), String(clientId)) || null;
+  }
+  function insertCommunityRedPacket(packet) {
+    insertCommunityRedPacketStmt.run(String(packet.id), String(packet.sender).toLowerCase(),
+      String(packet.asset), String(packet.algorithm), String(packet.totalUnits), Number(packet.shareCount),
+      String(packet.greeting || ''), String(packet.clientId || ''), Number(packet.createdAt), Number(packet.expiresAt));
+    return getCommunityRedPacket(packet.id);
+  }
+  function insertCommunityRedPacketShare(packetId, shareIndex, amountUnits) {
+    insertCommunityRedPacketShareStmt.run(String(packetId), Number(shareIndex), String(amountUnits));
+  }
+  function listCommunityRedPacketShares(packetId) {
+    return listCommunityRedPacketSharesStmt.all(String(packetId));
+  }
+  function getCommunityRedPacketShareByClaimant(packetId, wallet) {
+    return getCommunityRedPacketShareByClaimantStmt.get(String(packetId), String(wallet).toLowerCase()) || null;
+  }
+  function getCommunityRedPacketShareByClient(packetId, clientId) {
+    if (!clientId) return null;
+    return getCommunityRedPacketShareByClientStmt.get(String(packetId), String(clientId)) || null;
+  }
+  function getCommunityRedPacketOpenShare(packetId) {
+    return getCommunityRedPacketOpenShareStmt.get(String(packetId)) || null;
+  }
+  function claimCommunityRedPacketShare(shareId, claimant, clientId, now = Date.now()) {
+    return claimCommunityRedPacketShareStmt.run(String(claimant).toLowerCase(), Number(now), String(clientId || ''),
+      Number(shareId)).changes > 0;
+  }
+  function updateCommunityRedPacketClaimed(id, { claimedCount, claimedUnits, status, closedAt = null }) {
+    return updateCommunityRedPacketStmt.run(Number(claimedCount), String(claimedUnits), String(status),
+      closedAt == null ? null : Number(closedAt), String(id)).changes > 0;
+  }
+  function refundCommunityRedPacket(id, refundedUnits, now = Date.now()) {
+    return refundCommunityRedPacketStmt.run(Number(now), String(refundedUnits), String(id)).changes > 0;
+  }
+  function expireCommunityRedPacketShares(packetId) {
+    return expireCommunityRedPacketSharesStmt.run(String(packetId)).changes;
+  }
+  function listExpiredCommunityRedPackets(now, limit = 50) {
+    return listExpiredCommunityRedPacketsStmt.all(Number(now), Math.min(Math.max(Number(limit) || 50, 1), 200))
+      .map(row => String(row.id));
+  }
+  function listCommunityRedPacketsByIds(ids) {
+    const list = [...new Set((ids || []).map(String).filter(Boolean))];
+    if (!list.length) return [];
+    const placeholders = list.map(() => '?').join(',');
+    return db.prepare(`SELECT * FROM community_red_packets WHERE id IN (${placeholders})`).all(...list);
+  }
+  function listCommunitySenderPackets(sender, asset, since) {
+    return listCommunitySenderPacketsStmt.all(String(sender).toLowerCase(), String(asset), Number(since))
+      .map(row => String(row.total_units));
+  }
+
   // P2P 撮合部分成交：扣减订单剩余冻结额度
   function updateATokenOrderInputs(id, { inputUsdtUnits, inputAUnits, updatedAt }) {
     return updateATokenOrderInputsStmt.run(String(inputUsdtUnits ?? '0'), String(inputAUnits ?? '0'),
@@ -2797,15 +4443,25 @@ export function openDatabase(dataRoot) {
   function updateATokenOrderMarketPrice(id, { priceUsdtUnits, updatedAt }) {
     return updateATokenOrderMarketPriceStmt.run(String(priceUsdtUnits), Number(updatedAt), String(id));
   }
+  // 部分成交后更新订单扩展字段（买单手续费托管余额等）
+  function updateATokenOrderPayload(id, payload, updatedAt) {
+    return updateATokenOrderPayloadStmt.run(json(payload || {}), Number(updatedAt), String(id));
+  }
   // 当前钱包 OPEN 委托冻结合计：行级取出 + BigInt 聚合（units 为 18/6 位小数，禁用 SQL SUM CAST）
   const listATokenOpenByWalletUnitsStmt = db.prepare(`SELECT side,
-    COALESCE(input_usdt_units,'0') AS u, COALESCE(input_a_units,'0') AS a
+    COALESCE(input_usdt_units,'0') AS u, COALESCE(input_a_units,'0') AS a,
+    COALESCE(payload_json,'{}') AS p
     FROM a_token_orders WHERE wallet=? COLLATE NOCASE AND status='OPEN'`);
   function sumATokenLockedByWallet(wallet) {
     let usdt = 0n;
     let a = 0n;
     for (const r of listATokenOpenByWalletUnitsStmt.all(String(wallet))) {
       usdt += BigInt(r.u || '0');
+      // 仅存量 5% 买单的手续费托管（2026-11-11 起买入 0 手续费，新单恒为 0）
+      try {
+        const p = JSON.parse(r.p || '{}') || {};
+        if (p.buyFeeRemainingUnits) usdt += BigInt(p.buyFeeRemainingUnits);
+      } catch {}
       a += BigInt(r.a || '0');
     }
     return { usdtUnits: usdt.toString(), aUnits: a.toString() };
@@ -2821,56 +4477,6 @@ export function openDatabase(dataRoot) {
   function countATokenOrdersByStatus(status) {
     const r = countATokenOrdersByStatusStmt.get(String(status));
     return Number(r?.c || 0);
-  }
-
-  // ── 积分抽奖 ──────────────────────────────────────────────────
-  const upsertLotteryAccountStmt = db.prepare(`INSERT INTO lottery_accounts(wallet, points, updated_at, payload_json)
-    VALUES(?,?,?,?) ON CONFLICT(wallet) DO UPDATE SET points=excluded.points, updated_at=excluded.updated_at, payload_json=excluded.payload_json`);
-  const getLotteryAccountStmt = db.prepare(`SELECT * FROM lottery_accounts WHERE wallet=? COLLATE NOCASE`);
-  const insertLotteryFlowStmt = db.prepare(`INSERT INTO lottery_flows(id,wallet,change,balance,type,ref_id,note,created_at)
-    VALUES(?,?,?,?,?,?,?,?)`);
-  const listLotteryFlowsStmt = db.prepare(`SELECT * FROM lottery_flows WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
-
-  const insertLotteryWinStmt = db.prepare(`INSERT INTO lottery_wins
-    (id,wallet,prize_id,prize_name,prize_type,symbol,amount,value_usdt,status,address_payload,tracking_no,assigned_id,created_at,claimed_at,shipped_at,payload_json)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const getLotteryWinStmt = db.prepare(`SELECT * FROM lottery_wins WHERE id=?`);
-  const updateLotteryWinStmt = db.prepare(`UPDATE lottery_wins SET status=?, address_payload=?, tracking_no=?, shipped_at=?, claimed_at=?, payload_json=? WHERE id=?`);
-  const listLotteryWinsStmt = db.prepare(`SELECT * FROM lottery_wins WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
-  const listRecentLotteryWinsStmt = db.prepare(`SELECT * FROM lottery_wins ORDER BY created_at DESC LIMIT ?`);
-  const listLotteryWinsSinceStmt = db.prepare(`SELECT * FROM lottery_wins WHERE created_at>=? ORDER BY created_at DESC`);
-  const listLotteryWinsByTypeStmt = db.prepare(`SELECT * FROM lottery_wins WHERE prize_type=? AND (?='' OR status=?) ORDER BY created_at DESC LIMIT ?`);
-
-  const insertSocialSubmissionStmt = db.prepare(`INSERT INTO social_submissions
-    (id,wallet,platform,screenshot_url,status,reviewer,reviewed_at,points_awarded,created_at,payload_json)
-    VALUES(?,?,?,?,?,?,?,?,?,?)`);
-  const getSocialSubmissionStmt = db.prepare(`SELECT * FROM social_submissions WHERE id=?`);
-  const updateSocialSubmissionStmt = db.prepare(`UPDATE social_submissions SET status=?, reviewer=?, reviewed_at=?, points_awarded=?, payload_json=? WHERE id=?`);
-  const listSocialSubmissionsStmt = db.prepare(`SELECT * FROM social_submissions WHERE (?='' OR status=?) ORDER BY created_at DESC LIMIT ?`);
-  const listSocialSubmissionsSinceStmt = db.prepare(`SELECT * FROM social_submissions WHERE wallet=? COLLATE NOCASE AND created_at>=? ORDER BY created_at DESC`);
-
-  const insertAssignedWinStmt = db.prepare(`INSERT INTO assigned_wins
-    (id,wallet,prize_id,prize_name,prize_type,amount,note,status,used_at,created_at,created_by,payload_json)
-    VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`);
-  const getPendingAssignedWinStmt = db.prepare(`SELECT * FROM assigned_wins WHERE wallet=? COLLATE NOCASE AND status='pending' LIMIT 1`);
-  const getAssignedWinStmt = db.prepare(`SELECT * FROM assigned_wins WHERE id=?`);
-  const markAssignedWinUsedStmt = db.prepare(`UPDATE assigned_wins SET status='used', used_at=? WHERE id=?`);
-  const deleteAssignedWinStmt = db.prepare(`DELETE FROM assigned_wins WHERE id=? AND status='pending'`);
-  const listAssignedWinsStmt = db.prepare(`SELECT * FROM assigned_wins WHERE (?='' OR status=?) ORDER BY created_at DESC LIMIT ?`);
-
-  function upsertLotteryAccount(acc) {
-    upsertLotteryAccountStmt.run(String(acc.wallet).toLowerCase(), Number(acc.points) || 0, Number(acc.updatedAt) || Date.now(), json(acc.payload || {}));
-  }
-  function getLotteryAccount(wallet) {
-    const r = getLotteryAccountStmt.get(String(wallet));
-    if (!r) return null;
-    return { wallet: r.wallet, points: Number(r.points), updatedAt: Number(r.updated_at), payload: parse(r.payload_json, {}) };
-  }
-  function insertLotteryFlow(flow) {
-    insertLotteryFlowStmt.run(flow.id, String(flow.wallet).toLowerCase(), Number(flow.change), Number(flow.balance), flow.type, flow.refId || '', flow.note || '', Number(flow.createdAt));
-  }
-  function listLotteryFlows(wallet, limit = 50) {
-    return listLotteryFlowsStmt.all(String(wallet), Math.min(Math.max(Number(limit) || 50, 1), 500));
   }
 
   // ── 空投积分（独立账本） ─────────────────────────────────────────
@@ -2906,109 +4512,6 @@ export function openDatabase(dataRoot) {
     return Number(sumAirdropFlowsWeekStmt.get(String(wallet), String(week))?.total) || 0;
   }
 
-  function insertLotteryWin(win) {
-    insertLotteryWinStmt.run(win.id, String(win.wallet).toLowerCase(), win.prizeId, win.prizeName, win.prizeType,
-      win.symbol || '', Number(win.amount) || 0, Number(win.valueUsdt) || 0, win.status,
-      win.addressPayload, win.trackingNo || '', win.assignedId || '', Number(win.createdAt),
-      win.claimedAt ?? null, win.shippedAt ?? null, json(win.payload || {}));
-  }
-  function getLotteryWin(id) {
-    const r = getLotteryWinStmt.get(id);
-    if (!r) return null;
-    return { id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-      symbol:r.symbol, amount:Number(r.amount), valueUsdt:Number(r.value_usdt), status:r.status,
-      addressPayload:r.address_payload, trackingNo:r.tracking_no, assignedId:r.assigned_id,
-      createdAt:Number(r.created_at), claimedAt:r.claimed_at ? Number(r.claimed_at) : null,
-      shippedAt:r.shipped_at ? Number(r.shipped_at) : null, payload:parse(r.payload_json, {}) };
-  }
-  function updateLotteryWin(win) {
-    updateLotteryWinStmt.run(win.status, win.addressPayload, win.trackingNo || '', win.shippedAt ?? null, win.claimedAt ?? null, json(win.payload || {}), win.id);
-  }
-  function listLotteryWins(wallet, limit = 50) {
-    return listLotteryWinsStmt.all(String(wallet), Math.min(Math.max(Number(limit) || 50, 1), 500))
-      .map(r => ({ id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-        symbol:r.symbol, amount:Number(r.amount), valueUsdt:Number(r.value_usdt), status:r.status,
-        addressPayload:r.address_payload, trackingNo:r.tracking_no, assignedId:r.assigned_id,
-        createdAt:Number(r.created_at), claimedAt:r.claimed_at ? Number(r.claimed_at) : null,
-        shippedAt:r.shipped_at ? Number(r.shipped_at) : null, payload:parse(r.payload_json, {}) }));
-  }
-  function listRecentLotteryWins(limit = 50) {
-    return listRecentLotteryWinsStmt.all(Math.min(Math.max(Number(limit) || 50, 1), 200))
-      .map(r => ({ id:r.id, wallet:r.wallet, prizeName:r.prize_name, prizeType:r.prize_type,
-        symbol:r.symbol, amount:Number(r.amount), valueUsdt:Number(r.value_usdt), status:r.status,
-        createdAt:Number(r.created_at) }));
-  }
-  function listLotteryWinsSince(wallet, since) {
-    const rows = wallet ? listLotteryWinsSinceStmt.all(Number(since)).filter(r => String(r.wallet).toLowerCase() === String(wallet).toLowerCase())
-                        : listLotteryWinsSinceStmt.all(Number(since));
-    return rows.map(r => ({ id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-      symbol:r.symbol, amount:Number(r.amount), valueUsdt:Number(r.value_usdt), status:r.status,
-      createdAt:Number(r.created_at) }));
-  }
-  function listLotteryWinsByType(type, status, limit = 100) {
-    return listLotteryWinsByTypeStmt.all(type, status || '', status || '', Math.min(Math.max(Number(limit) || 100, 1), 500))
-      .map(r => ({ id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-        symbol:r.symbol, amount:Number(r.amount), valueUsdt:Number(r.value_usdt), status:r.status,
-        addressPayload:r.address_payload, trackingNo:r.tracking_no,
-        createdAt:Number(r.created_at), claimedAt:r.claimed_at ? Number(r.claimed_at) : null,
-        shippedAt:r.shipped_at ? Number(r.shipped_at) : null }));
-  }
-
-  function insertSocialSubmission(sub) {
-    insertSocialSubmissionStmt.run(sub.id, String(sub.wallet).toLowerCase(), sub.platform, sub.screenshotUrl,
-      sub.status, sub.reviewer || '', sub.reviewedAt ?? null, Number(sub.pointsAwarded) || 0, Number(sub.createdAt), json(sub.payload || {}));
-  }
-  function getSocialSubmission(id) {
-    const r = getSocialSubmissionStmt.get(id);
-    if (!r) return null;
-    return { id:r.id, wallet:r.wallet, platform:r.platform, screenshotUrl:r.screenshot_url,
-      status:r.status, reviewer:r.reviewer, reviewedAt:r.reviewed_at ? Number(r.reviewed_at) : null,
-      pointsAwarded:Number(r.points_awarded), createdAt:Number(r.created_at), payload:parse(r.payload_json, {}) };
-  }
-  function updateSocialSubmission(sub) {
-    updateSocialSubmissionStmt.run(sub.status, sub.reviewer || '', sub.reviewedAt ?? null, Number(sub.pointsAwarded) || 0, json(sub.payload || {}), sub.id);
-  }
-  function listSocialSubmissions(status, limit = 100) {
-    return listSocialSubmissionsStmt.all(status || '', status || '', Math.min(Math.max(Number(limit) || 100, 1), 500))
-      .map(r => ({ id:r.id, wallet:r.wallet, platform:r.platform, screenshotUrl:r.screenshot_url,
-        status:r.status, reviewer:r.reviewer, reviewedAt:r.reviewed_at ? Number(r.reviewed_at) : null,
-        pointsAwarded:Number(r.points_awarded), createdAt:Number(r.created_at), payload:parse(r.payload_json, {}) }));
-  }
-  function listSocialSubmissionsSince(wallet, since) {
-    return listSocialSubmissionsSinceStmt.all(String(wallet), Number(since))
-      .map(r => ({ id:r.id, wallet:r.wallet, platform:r.platform, status:r.status, createdAt:Number(r.created_at) }));
-  }
-
-  function insertAssignedWin(aw) {
-    insertAssignedWinStmt.run(aw.id, String(aw.wallet).toLowerCase(), aw.prizeId, aw.prizeName, aw.prizeType,
-      Number(aw.amount) || 0, aw.note || '', aw.status, aw.usedAt ?? null, Number(aw.createdAt), aw.createdBy || '', json(aw.payload || {}));
-  }
-  function getPendingAssignedWin(wallet) {
-    const r = getPendingAssignedWinStmt.get(String(wallet));
-    if (!r) return null;
-    return { id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-      amount:Number(r.amount), note:r.note, status:r.status, usedAt:r.used_at ? Number(r.used_at) : null,
-      createdAt:Number(r.created_at), createdBy:r.created_by, payload:parse(r.payload_json, {}) };
-  }
-  function getAssignedWin(id) {
-    const r = getAssignedWinStmt.get(id);
-    if (!r) return null;
-    return { id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-      amount:Number(r.amount), note:r.note, status:r.status, usedAt:r.used_at ? Number(r.used_at) : null,
-      createdAt:Number(r.created_at), createdBy:r.created_by };
-  }
-  function markAssignedWinUsed(id, usedAt) {
-    markAssignedWinUsedStmt.run(Number(usedAt), id);
-  }
-  function deleteAssignedWin(id) {
-    return deleteAssignedWinStmt.run(id).changes;
-  }
-  function listAssignedWins(status, limit = 100) {
-    return listAssignedWinsStmt.all(status || '', status || '', Math.min(Math.max(Number(limit) || 100, 1), 500))
-      .map(r => ({ id:r.id, wallet:r.wallet, prizeId:r.prize_id, prizeName:r.prize_name, prizeType:r.prize_type,
-        amount:Number(r.amount), note:r.note, status:r.status, usedAt:r.used_at ? Number(r.used_at) : null,
-        createdAt:Number(r.created_at), createdBy:r.created_by }));
-  }
   function getSetting(key) {
     return db.prepare('SELECT payload_json FROM service_settings WHERE setting_key=?').get(String(key || ''))?.payload_json || null;
   }
@@ -3064,9 +4567,10 @@ export function openDatabase(dataRoot) {
   }
 
   const api = { adjustmentById, listBalanceAdjustmentsByWallet, aiRewardById, updateAiReward, applyBalanceAdjustment, db, updateAiRewardKind, updateReferralReward, deleteAuthRecord, file, findExecution, getLatestAuthForWallet, hasPlatformData, hasSchemaMigration, hasWalletData, insertAiReward, insertPermitSignature, insertReferralReward, listAiBatches, listAiManagedActiveWallets, listAiRewards, listAiRewardRowsForAggregation, listBalanceAdjustments, listAuthRecords, listReferralLinks, listReferralRewards, loadPlatformAccount, loadPlatformState, loadWalletState, markPermitSignatureUsed, platformRecords, recordSchemaMigration, referralRewardById, replaceLedgerStates, replacePlatformState, replaceWalletState, replaceWalletStateInside, transaction, upsertAiBatch, upsertReferralLink, walletRecords,
-    // A 币生态
+    // SVX生态
     upsertATokenMinerRow, listATokenMiners, listActiveATokenMiners, listDueATokenMiners, listExpiringATokenMiners, adminListATokenMiners, adminMinerSummary, adminMinerTodaySummary, minerStats, insertATokenMinerReleaseRow, listATokenMinerReleases, listATokenMinerWallets, listATokenMinerWalletsByPlan, countATokenMinersByWallet,
-    upsertATokenStakeRow, listATokenStakes, listActiveATokenStakes, listExpiringATokenStakes, insertATokenStakeRewardRow, listATokenStakeRewards,
+    upsertATokenNodeRow, getATokenNode, listATokenNodes, listActiveATokenNodes, listDueATokenNodes,
+    upsertATokenStakeRow, getATokenStake, listATokenStakes, listActiveATokenStakes, listExpiringATokenStakes, insertATokenStakeRewardRow, listATokenStakeRewards,
     insertATokenTradeRow, listATokenTrades, listATokenTradesByWallet,
     insertATokenTransferRow, listATokenTransfers, getATokenTransferByRequestId,
     upsertATokenUserIdRow, getATokenUserId, getATokenUserIdByWallet,
@@ -3074,17 +4578,48 @@ export function openDatabase(dataRoot) {
     listConfirmedATokenActivationsByCollection,
     countATokenActivationsByWalletPlan,
     insertATokenBurnRow, totalATokenBurned,
+    insertATokenFeeBurnRow, getATokenFeeBurnByRef, listATokenFeeBurns, sumATokenFeeBurns,
     upsertATokenWithdrawalRow, getATokenWithdrawalById, getATokenWithdrawalByRequestId, listATokenWithdrawalsByWallet, listPendingATokenWithdrawals, listATokenWithdrawalsByStatus, sumATokenWithdrawalsByWalletToday,
     upsertATokenClaimRow, getATokenClaimById, listATokenClaimsByWallet, listPendingATokenClaims, sumATokenClaimsByWalletToday,
     upsertATokenTeamLevelRow, getATokenTeamLevel,
     getATokenSellQuota, addATokenSellQuota, reduceATokenSellQuota, consumeATokenSellQuota, refundATokenSellQuota,
-    getATokenUsableQuota, addATokenUsableQuota, consumeATokenUsableQuota, refundATokenUsableQuota,
+    getATokenUsableQuota, addATokenUsableQuota, consumeATokenUsableQuota, refundATokenUsableQuota, expireATokenUsableQuota,
     getATokenTurboQuota, addATokenTurboQuota, consumeATokenTurboQuota,
+    insertATokenTurboLock, getATokenTurboLockByRef, listATokenTurboLocks,
+    listDueATokenTurboLocks, listExpiringATokenTurboLocks, markATokenTurboLockReleased,
+    consumeATokenTurboLockUnits, refundATokenTurboLockUnits, expireATokenTurboLock,
+    insertATokenZoneOrder, getATokenZoneOrder, listATokenZoneOrders,
     getATokenMatchPoolState, touchATokenMatchPoolState,
-    insertATokenMatchPoolEntry, listATokenMatchPoolEntries, listDueATokenMatchPoolEntries, markATokenMatchPoolEntryReleased,
+    insertATokenMatchPoolEntry, getATokenMatchPoolEntry, listATokenMatchPoolEntries, listDueATokenMatchPoolEntries, markATokenMatchPoolEntryReleased,
     insertATokenTurboPurchase, getATokenTurboPurchase, listATokenTurboPurchases,
-    insertRunAixRun, getRunAixRun, getPendingRunAixRun, settleRunAixRun, updateRunAixPayload, listRunAixRuns, getRunAixStats,
-    getHashAixSeed, upsertHashAixSeed, insertHashAixBet, listHashAixBets, getHashAixStats,
+    insertATokenPendingRewardRow, getATokenPendingReward, getATokenPendingRewardByKey,
+    listATokenPendingRewards, listDueATokenPendingRewards, markATokenPendingRewardClaimed,
+    expireATokenPendingReward, expireDueATokenPendingRewards, reverseATokenPendingReward,
+    insertATokenLpPoolEntryRow, listATokenLpPoolEntries, getATokenLpPoolEntryByRef, getATokenLpPoolBalance,
+    listAllATokenLpPoolEntries,
+    insertATokenLpJobRow, getATokenLpJobById, getATokenLpJobByWithdrawalId, getATokenLpJobByPoolDate,
+    listATokenLpJobs,
+    listDueATokenLpJobs, claimATokenLpJob, updateATokenLpJobRow, updateATokenLpJobUnits, reopenATokenLpJob,
+    cancelATokenLpJob, getATokenLpJobStats,
+    insertATokenLpFeeAccrual, getATokenLpFeeAccrualByWithdrawalId, listATokenLpFeeAccruals,
+    markATokenLpFeeAccrualReversed,
+    getATokenLpDailyPool, listATokenLpDailyPools, ensureATokenLpDailyPool, updateATokenLpDailyPool,
+    insertATokenBlindBox, getATokenBlindBoxById, getATokenBlindBoxByWallet, getATokenBlindBoxByRef,
+    listActiveATokenBlindBoxes, updateATokenBlindBox, listRecentATokenBlindBoxes,
+    insertATokenTeamPerfEventRow, getATokenTeamPerfEvent, listATokenTeamPerfEvents,
+    sumATokenTeamPerfUnits, reverseATokenTeamPerfEvent,
+    listATokenTeamPerfEventsByBiz, sumAllATokenTeamPerfUnits,
+    insertATokenUpgradePosition, getATokenUpgradePosition, getATokenUpgradePositionByRef,
+    listATokenUpgradePositions, listActiveATokenUpgradePositions, listActiveATokenUpgradeBatch,
+    sumATokenUpgradeUnits, sumAllATokenUpgradeUnits,
+    markATokenUpgradeRedeeming, markATokenUpgradeReturned, listDueATokenUpgradeReturns,
+    getATokenZoneBalance, listATokenZoneBalances, creditATokenZone, debitATokenZone,
+    insertATokenShareholderPool, getATokenShareholderPool, getFillingATokenShareholderPool,
+    listATokenShareholderPools, listATokenShareholderPoolsByTier, sumATokenShareholderFundedUnits, updateATokenShareholderPool,
+    insertATokenShareholderEntryRow, getATokenShareholderEntryByRef, getATokenShareholderPoolBalance,
+    insertATokenShareholderMember, getATokenShareholderMember, getATokenShareholderMemberByRef,
+    getActiveATokenShareholderMember, listActiveATokenShareholderMembers, listATokenShareholderMembers,
+    updateATokenShareholderMemberDividend, updateATokenShareholderMemberMeta, upgradeATokenShareholderMember, withdrawATokenShareholderMember,
     getMallMerchant, upsertMallMerchant, listMallMerchants, setMallMerchantStatus, insertMallProduct, updateMallProduct, getMallProduct,
     listMallProducts, listMallProductsByMerchant, consumeMallStock, restoreMallStock,
     insertMallAddress, listMallAddresses, getMallAddress, deleteMallAddress, setMallDefaultAddress,
@@ -3099,17 +4634,26 @@ export function openDatabase(dataRoot) {
     getA10Pool, upsertA10Pool, listA10PoolHistory,
     upsertATokenKlineRow, listATokenKlines, clearATokenKlines, countATokenKlines,
     insertATokenOrderRow, markATokenOrderFilled, markATokenOrderCancelled,
-    updateATokenOrderInputs, updateATokenOrderMarketPrice, sumATokenOpenBuyUsdt, sumATokenLockedByWallet,
+    updateATokenOrderInputs, updateATokenOrderMarketPrice, updateATokenOrderPayload, sumATokenOpenBuyUsdt, sumATokenLockedByWallet,
     getATokenOrder, listATokenOpenOrders, listATokenOrdersByWallet, countATokenOrdersByStatus,
     insertSupportTicketRow, getSupportTicketByWallet, getSupportTicketById, listSupportTickets,
     addSupportMessage, listSupportMessages, markSupportReadByUser, markSupportReadByAdmin,
     setSupportTicketStatus, countSupportAdminUnread,
-    // 积分抽奖
-    upsertLotteryAccount, getLotteryAccount, insertLotteryFlow, listLotteryFlows,
-    insertLotteryWin, getLotteryWin, updateLotteryWin, listLotteryWins, listRecentLotteryWins,
-    listLotteryWinsSince, listLotteryWinsByType,
-    insertSocialSubmission, getSocialSubmission, updateSocialSubmission, listSocialSubmissions, listSocialSubmissionsSince,
-    insertAssignedWin, getPendingAssignedWin, getAssignedWin, markAssignedWinUsed, deleteAssignedWin, listAssignedWins,
+    // 群聊
+    getCommunityMember, ensureCommunityMember, updateCommunityNickname, updateCommunityProfile, touchCommunityMember,
+    listCommunityMembers, countCommunityMembers, insertCommunityMessage, getCommunityMessage,
+    getCommunityMessageByClient, listCommunityMessages, latestCommunityMessageId,
+    countCommunityUnread, countCommunityWalletRecent, getCommunityRead, setCommunityRead,
+    getCommunityMessageByRef, listCommunityMembersAll, setCommunityMemberStatus, setCommunityMemberMute,
+    softDeleteCommunityMessage, listCommunityMessagesAdmin,
+    getCommunityAdmin, listCommunityAdmins, listActiveCommunityAdminAddresses,
+    appointCommunityAdmin, revokeCommunityAdmin, insertCommunityAdminLog, listCommunityAdminLogs,
+    listCommunitySensitiveWords, addCommunitySensitiveWord, removeCommunitySensitiveWord,
+    getCommunityRedPacket, getCommunityRedPacketByClient, insertCommunityRedPacket,
+    insertCommunityRedPacketShare, listCommunityRedPacketShares, getCommunityRedPacketShareByClaimant,
+    getCommunityRedPacketShareByClient, getCommunityRedPacketOpenShare, claimCommunityRedPacketShare,
+    updateCommunityRedPacketClaimed, refundCommunityRedPacket, expireCommunityRedPacketShares,
+    listExpiredCommunityRedPackets, listCommunityRedPacketsByIds, listCommunitySenderPackets,
     getSetting, saveSetting, listSettingsByPrefix, deleteSetting,
     upsertAirdropAccount, getAirdropAccount, insertAirdropFlow, listAirdropFlows, findAirdropFlowByRef, sumAirdropFlowsWeek,
     // 代理账号

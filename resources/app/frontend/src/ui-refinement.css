@@ -1,0 +1,532 @@
+/* Shared daylight surfaces, readable type, and a cinematic mine viewport. */
+body.solvex-react { background:var(--bg); color:var(--body); font-size:14px; }
+.rx-topbar { background:#ffffffed; border-bottom-color:#cbd4e5; }
+.rx-sidebar { background:#fff; border-right-color:#cbd4e5; }
+.rx-page { padding-top:30px; }
+.rx-stack { gap:24px; }
+.ui-card { background:#fff; border-color:#b9c4d8; border-radius:16px; box-shadow:var(--shadow-1); }
+.ui-button { min-height:42px; font-size:14px; border-radius:10px; }
+.ui-button.bg-primary { background:linear-gradient(110deg,#7a42f5,#5f2bd9); box-shadow:0 5px 16px #7034ef33; }
+.ui-button.bg-primary:hover { background:#5f2bd9; }
+.ui-button.border { background:#fff; border-color:#cbd4e5; }
+.rx-heading h1 { font-size:30px; letter-spacing:-.5px; }
+.rx-heading p { font-size:14px; line-height:1.8; color:#5b6478; }
+.rx-kicker { font-size:10px; letter-spacing:1.8px; color:#5f2bd9; }
+.rx-heading-actions .ui-button { height:42px; font-size:13px; padding-inline:15px; }
+.rx-heading-actions .ui-button.size-10 { width:42px; padding:0; }
+.rx-nav button { font-size:14px; min-height:48px; }
+.rx-nav button.is-active { background:linear-gradient(110deg,#7a42f5,#5f2bd9); color:#fff; box-shadow:0 6px 16px #5f2bd940; }
+.rx-nav button.is-active svg { color:#fff; }
+.rx-nav-dot { background:#7034ef; box-shadow:none; }
+.rx-nav-label,.rx-session-state,.rx-breadcrumb { font-size:12px; }
+.rx-sidebar-help strong,.rx-sidebar-help p,.rx-sidebar-help button { font-size:12px; }
+.rx-sidebar-help { background:#f5f8fd; border-color:#dbe2ef; }
+.rx-sidebar-help strong { color:#2a3245; }.rx-sidebar-help p { color:#5b6478; }
+.rx-sidebar-help>svg,.rx-sidebar-help button { color:#5f2bd9; }
+.rx-wallet #wallet-connect-btn,.rx-wallet #wallet-connect-btn.connected { min-height:42px; font-size:13px; background:#1f2547; color:#f1ecff; }
+.ui-tabs { max-width:100%; padding:0; gap:6px; background:transparent; border:0; border-radius:0; }
+.ui-tab { flex-shrink:0; font-size:14px; line-height:1.5; padding:10px 19px; min-height:42px; color:#4b5468; background:#fff; border:1px solid #cbd4e5; border-radius:10px; }
+.ui-tab:hover { border-color:#a78bf5; color:#5f2bd9; }
+.ui-tab[data-state=active] { background:linear-gradient(110deg,#7a42f5,#5f2bd9); color:#fff; border-color:transparent; border-radius:10px; box-shadow:0 4px 12px #5f2bd93d; }
+.rx-tab-body { margin-top:24px; }
+.rx-metrics { padding:0; background:linear-gradient(110deg,#2b2079,#3223a5 52%,#1c2660); border-radius:14px; box-shadow:0 8px 24px rgba(16,23,40,.18); overflow:hidden; }
+.rx-metric { padding:22px; border-color:#ffffff1f; }
+.rx-metrics .rx-metric>div>span,.rx-metrics .rx-metric>span { font-size:13px; color:#c3cbe2; }
+.rx-metrics .rx-metric>strong { font-size:30px; line-height:1.3; font-weight:600; color:#fff; margin:13px 0 9px; letter-spacing:-.8px; }
+.rx-metrics .rx-metric strong small { font-size:12px; color:#b9c3dc; }
+.rx-metrics .rx-metric>p,.rx-metrics .rx-metric>small { font-size:12px; color:#b3bfd6; line-height:1.7; }
+.rx-metrics .rx-metric-link button { min-height:44px; font-size:16px; color:#d8cdfb; }
+.rx-metrics .rx-metric>div>svg { color:#a3aed8; flex-shrink:0; }
+.rx-pool-overview { display:grid; grid-template-columns:minmax(340px,.95fr) minmax(0,1.3fr); gap:24px; align-items:stretch; }
+.rx-pool-holdings { min-width:0; }
+.rx-pool-overview .rx-positions { grid-template-columns:1fr; max-height:320px; overflow-y:auto; scrollbar-width:thin; }
+.rx-pool-overview .rx-position { background:#f5f8fd; border-color:#dbe2ef; padding:18px; }
+.rx-position-head h3 { font-size:15px; }
+.rx-position-head small,.rx-position-principal>span,.rx-position-stats span,.rx-position-foot,.rx-position-principal small { font-size:12px; color:#5b6478; }
+.rx-position-head>.rx-badge,.rx-badge,.rx-muted { font-size:12px; }
+.rx-position-principal>strong { font-size:26px; font-variant-numeric:tabular-nums; }
+.rx-position-stats strong { font-size:13px; color:#2a3245; line-height:1.7; }
+.rx-position-stats>div { min-width:0; overflow-wrap:anywhere; }
+.rx-progress { height:5px; background:#dbe2ef; }
+.rx-progress>i { background:#7034ef; }
+.rx-pool-empty { display:flex; flex-direction:column; justify-content:center; align-items:center; min-height:250px; padding:20px 0; text-align:center; }
+.rx-pool-empty>.rx-icon { width:52px; height:52px; margin-bottom:18px; border-radius:16px; background:#f1ecff; color:#5f2bd9; }
+.rx-pool-empty h3 { font-size:16px; line-height:1.6; }
+.rx-pool-empty p { font-size:13px; color:#5b6478; line-height:1.8; margin-top:8px; }
+.rx-pool-empty>div { display:flex; gap:10px; margin-top:22px; }
+.rx-tunnel-hero { min-height:430px; background:#151a2e; border:1px solid #2a3050; border-radius:18px; box-shadow:0 8px 25px #17243610; color:#e7ebf6; position:relative; overflow:hidden; }
+.rx-tunnel-hero .rx-scene { inset:0 0 0 auto; width:73%; height:100%; filter:none; }
+.rx-scene[data-scene-state=fallback] canvas { display:none; }
+.rx-tunnel-hero::before { inset:0; z-index:1; opacity:1; mask:none; background:linear-gradient(90deg,#151a2e 6%,#151a2ef5 26%,#151a2e99 43%,transparent 63%); }
+.rx-tunnel-hero::after { display:none; }
+.rx-tunnel-hero .rx-mine-copy { width:48%; padding:38px 0 80px 36px; }
+.rx-tunnel-hero .rx-eyebrow { font-size:10px; color:#bfb7dc; letter-spacing:1.7px; }
+.rx-tunnel-hero .rx-mine-copy h2 { font-size:40px; line-height:1.3; margin:25px 0 18px; color:#f5f8fd; letter-spacing:-1px; }
+.rx-tunnel-hero .rx-mine-copy h2 em { font-size:40px; background:linear-gradient(100deg,#c7b9ff,#9dc8ef); background-clip:text; -webkit-background-clip:text; -webkit-text-fill-color:transparent; }
+.rx-tunnel-hero .rx-mine-copy p { font-size:14px; line-height:1.85; color:#b0bbca; }
+.rx-tunnel-hero .rx-hero-actions { gap:12px; margin-top:25px; }
+.rx-tunnel-hero .rx-hero-actions .ui-button { font-size:14px; height:44px; padding-inline:18px; }
+.rx-tunnel-hero .rx-hero-actions .ui-button:not(.bg-primary) { color:#cbd4e5; }
+.rx-tunnel-hero .rx-mine-status { position:static; margin-top:23px; font-size:12px; color:#bec8d5; line-height:1.7; }
+.rx-tunnel-hero .rx-mine-status .is-live { background:#62c9ae; box-shadow:0 0 0 3px #62c9ae14; }
+.rx-tunnel-hero .rx-mine-footer { min-height:48px; background:#161c33e8; border-top:1px solid #ffffff12; padding:12px 26px; gap:22px; color:#c2cbd7; font-size:12px; }
+.rx-tunnel-hero .rx-mine-footer small { display:block; font-size:12px; color:#b0bdcf; line-height:1.6; }
+.rx-tunnel-hero .rx-scene-tag { font-size:10px; color:#c9d4df; letter-spacing:1.6px; right:22px; top:22px; }
+/* The scene fallback used to inherit a dark legacy ink and vanished on the dark hero. */
+.rx-tunnel-hero .svx-scene-fallback,.rx-mine-hero .svx-scene-fallback { color:#d8cdfb; }
+.rx-tunnel-hero .rx-pause { bottom:65px; right:20px; font-size:12px; min-height:36px; padding:8px 12px; background:#1a2140c9; border-color:#b6cee83b; color:#d0d9e5; }
+.rx-tunnel-hero.is-member { min-height:362px; }
+.rx-tunnel-hero.is-member .rx-scene { width:100%; }
+.rx-tunnel-hero.is-member::before { background:linear-gradient(180deg,#151a2edf,transparent 43%,transparent 73%,#151a2e40); }
+.rx-tunnel-hero.is-member .rx-mine-copy { padding:24px; width:100%; }
+.rx-tunnel-hero.is-member .rx-mine-copy h2 { font-size:23px; margin:14px 0 8px; letter-spacing:0; }
+.rx-tunnel-hero.is-member .rx-eyebrow { font-size:10px; }
+.rx-tunnel-hero.is-member .rx-mine-status { margin-top:9px; }
+.rx-tunnel-hero.is-member .rx-scene-tag { display:none; }
+.rx-tunnel-hero.is-member .rx-mine-footer { padding-inline:20px; }
+.rx-tunnel-hero.is-member .rx-mine-footer small { margin-left:0; }
+.rx-getting-started { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); padding:24px 8px; }
+.rx-getting-started>div { display:flex; gap:16px; align-items:center; padding:0 24px; border-right:1px solid #dbe2ef; }
+.rx-getting-started>div:last-child { border:0; }
+.rx-getting-started>div>span { font-size:24px; font-weight:400; color:#6b52c2; font-variant-numeric:tabular-nums; }
+.rx-getting-started h3 { font-size:14px; font-weight:600; }
+.rx-getting-started p { font-size:12px; line-height:1.8; color:#5b6478; margin-top:4px; }
+.rx-pool-workspace { grid-template-columns:minmax(0,1fr); gap:24px; margin-top:6px; }
+.rx-section-heading h2 { font-size:22px; font-weight:600; color:#101728; }
+.rx-section-heading>span { font-size:12px; }
+.rx-tiers { gap:14px; }
+/* 铜 / 银 / 金：金属色只做身份强调，卡面仍是白卡。
+   文字色 --metal-deep 全部按白底 ≥4.5:1 选值；三档明度已拉平（L 0.133 / 0.144 / 0.145）。 */
+.rx-tier[data-tone=copper] {
+  --metal:#b87333; --metal-deep:#8f5a2c; --metal-soft:#fdf5ec;
+  --metal-line:#e9d2ba; --metal-chip:linear-gradient(140deg,#fef8f1,#f5e5d3);
+  --metal-grad:linear-gradient(90deg,#e2a76d,#c07c3c 46%,#955f30);
+  --metal-btn:linear-gradient(135deg,#9a5f2b,#7c4a1e);
+  --metal-btn-hover:linear-gradient(135deg,#8f5626,#6e421a);
+  --metal-ring:#b8733326;
+}
+.rx-tier[data-tone=silver] {
+  --metal:#8a97a8; --metal-deep:#5e6b7c; --metal-soft:#f3f6fb;
+  --metal-line:#d6dfea; --metal-chip:linear-gradient(140deg,#fff,#e6edf6 58%,#d8e2ee);
+  --metal-grad:linear-gradient(90deg,#dee7f2,#96a5b8 42%,#5e6b7c);
+  --metal-btn:linear-gradient(135deg,#68758a,#4c5768);
+  --metal-btn-hover:linear-gradient(135deg,#5d6a7c,#434e5e);
+  --metal-ring:#5e6b7c26;
+}
+.rx-tier[data-tone=gold] {
+  --metal:#b8860b; --metal-deep:#8a6408; --metal-soft:#fbf6e9;
+  --metal-line:#e9daaf; --metal-chip:linear-gradient(140deg,#fef9ec,#f5e6bd);
+  --metal-grad:linear-gradient(90deg,#e0c061,#b8860b 46%,#8a6408);
+  --metal-btn:linear-gradient(135deg,#8f6a08,#705206);
+  --metal-btn-hover:linear-gradient(135deg,#805f07,#634804);
+  --metal-ring:#b8860b26;
+}
+.rx-tier { position:relative; padding:24px 20px 20px; border-color:var(--metal-line,#cbd4e5); border-radius:14px; background:linear-gradient(180deg,var(--metal-soft,#fff) 0%,#fff 34%); }
+.rx-tier::before { content:""; position:absolute; inset:0 0 auto; height:3px; background:var(--metal-grad,transparent); border-radius:14px 14px 0 0; }
+.rx-tier:hover { transform:translateY(-2px); border-color:var(--metal,#a78bf5); box-shadow:0 8px 20px #26355409; }
+.rx-tier[data-tone] .rx-tier-top { margin-bottom:18px; }
+.rx-tier[data-tone] .rx-tier-icon { width:38px; height:38px; background:var(--metal-chip); color:var(--metal-deep); border:1px solid var(--metal-line); box-shadow:inset 0 1px 0 #fff; }
+.rx-tier[data-tone] .rx-tier-top>span:last-child { font-size:12px; color:#5b6478; }
+.rx-tier[data-tone] h3 { display:inline-block; width:max-content; max-width:100%; margin:0; padding:3px 10px; font-size:13px; line-height:1.35; font-weight:600; color:var(--metal-deep); background:var(--metal-soft); border:1px solid var(--metal-line); border-radius:999px; }
+.rx-tier[data-tone] .rx-tier-rate { font-size:46px; color:var(--metal-deep); letter-spacing:-1.8px; }
+.rx-tier[data-tone] .rx-tier-rate>span { font-size:20px; color:#5b6478; }
+.rx-tier[data-tone]>p { font-size:12px; color:#5b6478; }
+.rx-tier[data-tone] .rx-tier-min { font-size:12px; color:#5b6478; border-color:#dbe2ef; margin-top:23px; padding-top:18px; }
+.rx-tier[data-tone] .rx-tier-min>strong { font-size:18px; color:#2a3245; }
+.rx-tier[data-tone]>small { font-size:12px; color:#5b6478; line-height:1.8; }
+.rx-pool-note { font-size:12px; color:#5b6478; line-height:1.9; }
+.rx-tier[data-tone] .rx-tier-invest { width:100%; margin-top:18px; min-height:42px; color:#fff; background:var(--metal-btn); border:0; box-shadow:inset 0 1px 0 #ffffff33; }
+.rx-tier[data-tone] .rx-tier-invest:hover { background:var(--metal-btn-hover); }
+.rx-tier[data-tone] .rx-tier-invest svg { color:#fff; }
+.rx-form-balance { background:#f5f8fd; border:1px solid #cbd4e5; padding:18px; }
+.rx-form-balance>span,.rx-form-balance>strong>small { font-size:12px; }
+.rx-form-balance>strong { font-size:27px; }
+.rx-amount-form label { font-size:14px; color:#2a3245; }
+.rx-input-group { height:50px; border-color:#b9c4d8; background:#fff; box-shadow:inset 0 1px 2px rgba(16,23,40,.04); }
+.rx-input-group input { font-size:16px; }
+.rx-input-group input::placeholder { font-size:14px; color:#5b6478; }
+.rx-input-group button { font-size:12px; min-height:40px; }
+.rx-quote,.rx-form-trust,.rx-amount-entry>p { font-size:12px; line-height:1.8; color:#5b6478; }
+.rx-amount-entry>p { margin-bottom:16px; }
+.rx-note,.rx-empty,.rx-error,.rx-loading,.rx-gate p,.rx-energy-story p,.rx-team-hero p { font-size:14px; }
+.rx-note { line-height:1.9; }
+.rx-error { align-items:flex-start; color:#a31f36; }
+.rx-error>span { flex:1; overflow-wrap:anywhere; }
+.rx-error>.ui-button { flex-shrink:0; }
+.rx-table th { font-size:12px; }.rx-table td { font-size:13px; }
+.rx-energy-story .rx-kicker { color:#bcb2d6; }.rx-energy-story p { color:#b8c3d4; }
+.rx-energy-rate>span { color:#b8c3d4; }
+.rx-mobile-dock button { font-size:12px; }
+.ui-input { font:inherit; }
+.ui-skeleton { display:block; background:linear-gradient(100deg,#e4e9f2 30%,#f5f8fd 50%,#e4e9f2 70%); background-size:220% 100%; border-radius:7px; animation:rx-skeleton 1.8s ease-in-out infinite; }
+.rx-value-skeleton { display:inline-block; vertical-align:middle; width:90px; height:32px; }
+.rx-position-skeleton { display:flex; flex-direction:column; gap:20px; padding:20px 0; min-height:240px; }
+.rx-position-skeleton>span { width:100%; height:38px; }.rx-position-skeleton>span:last-child { width:65%; }
+.ui-sheet-bottom { width:100%; max-width:100%; border-radius:24px 24px 0 0; max-height:calc(100dvh - 24px); padding:28px 24px max(26px,env(safe-area-inset-bottom)); overscroll-behavior:contain; }
+.ui-sheet-bottom[data-state=open] { animation:rx-sheet-enter .22s ease-out; }
+.rx-sheet-handle { display:block; position:absolute; width:36px; height:4px; border-radius:4px; background:#cbd4e5; left:calc(50% - 18px); top:10px; }
+.rx-amount-sheet .rx-dialog-title { margin:8px 0 10px; font-size:21px; }
+.rx-amount-sheet .rx-note { margin-bottom:22px; font-size:13px; }
+.rx-amount-sheet .rx-full { min-height:48px; }
+/* 投入矿池弹窗：桌面居中，内容超高时只做纵向滚动，禁止横向溢出 */
+.rx-invest-dialog { max-height:calc(100dvh - 48px); overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; }
+.rx-invest-title { font-size:21px; line-height:1.3; color:#101728; }
+.rx-invest-sub { font-size:13px; line-height:1.7; color:#5b6478; margin:6px 0 18px; padding-right:24px; }
+.rx-invest-facts { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:14px; }
+.rx-invest-facts>div { min-width:0; padding:11px 12px; background:#f5f8fd; border:1px solid #dbe2ef; border-radius:10px; }
+.rx-invest-facts span { display:block; font-size:11px; line-height:1.5; color:#5b6478; }
+.rx-invest-facts strong { display:block; margin-top:3px; font-size:15px; line-height:1.4; color:#1f2439; overflow-wrap:anywhere; }
+.rx-invest-balance { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:11px 12px; margin-bottom:16px; background:#f5f8fd; border:1px solid #dbe2ef; border-radius:10px; }
+.rx-invest-balance>span { flex-shrink:0; font-size:12px; color:#5b6478; }
+.rx-invest-balance>strong { font-size:18px; color:#1f2439; text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.rx-invest-balance small { margin-left:4px; font-size:11px; font-weight:400; color:#5b6478; }
+.rx-invest-label { display:block; margin-bottom:8px; font-size:13px; color:#2a3245; }
+.rx-invest-range { margin-top:8px; font-size:12px; line-height:1.6; color:#2a3245; overflow-wrap:anywhere; }
+.rx-invest-range-note { margin-top:2px; font-size:11px; line-height:1.6; color:#5b6478; }
+.rx-invest-estimate { margin-top:14px; padding:6px 0; border-top:1px solid #dbe2ef; border-bottom:1px solid #dbe2ef; }
+.rx-invest-estimate>div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:6px 0; }
+.rx-invest-estimate span { font-size:12px; color:#5b6478; }
+.rx-invest-estimate strong { font-size:14px; color:#2a3245; text-align:right; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.rx-invest-estimate .is-total strong { font-size:17px; color:#5f2bd9; }
+.rx-invest-feedback { min-height:38px; padding:10px 0 6px; }
+.rx-invest-hint { font-size:12px; line-height:1.6; color:#a4552d; overflow-wrap:anywhere; }
+.rx-invest-hint.is-ok { display:flex; align-items:center; gap:5px; color:#2f7d63; }
+.rx-invest-hint.is-ok svg { flex-shrink:0; }
+.rx-invest-error { font-size:12px; line-height:1.6; color:#a31f36; overflow-wrap:anywhere; }
+.rx-invest-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:6px; }
+.rx-invest-actions .ui-button { min-height:44px; }
+/* 弹窗强调色跟随所点卡片：顶部细条、档位/收益率数字、总额、确认按钮。 */
+.rx-invest-dialog.rx-tone-copper { --tone-deep:#8f5a2c; --tone-soft:#fdf5ec; --tone-line:#e9d2ba; --tone-grad:linear-gradient(90deg,#e2a76d,#c07c3c 46%,#955f30); --tone-btn:linear-gradient(135deg,#9a5f2b,#7c4a1e); --tone-btn-hover:linear-gradient(135deg,#8f5626,#6e421a); --tone-ring:#b8733326; }
+.rx-invest-dialog.rx-tone-silver { --tone-deep:#5e6b7c; --tone-soft:#f3f6fb; --tone-line:#d6dfea; --tone-grad:linear-gradient(90deg,#dee7f2,#96a5b8 42%,#5e6b7c); --tone-btn:linear-gradient(135deg,#68758a,#4c5768); --tone-btn-hover:linear-gradient(135deg,#5d6a7c,#434e5e); --tone-ring:#5e6b7c26; }
+.rx-invest-dialog.rx-tone-gold { --tone-deep:#8a6408; --tone-soft:#fbf6e9; --tone-line:#e9daaf; --tone-grad:linear-gradient(90deg,#e0c061,#b8860b 46%,#8a6408); --tone-btn:linear-gradient(135deg,#8f6a08,#705206); --tone-btn-hover:linear-gradient(135deg,#805f07,#634804); --tone-ring:#b8860b26; }
+.rx-invest-dialog[class*=rx-tone-]::before { content:""; position:absolute; inset:0 0 auto; height:3px; background:var(--tone-grad); border-radius:16px 16px 0 0; pointer-events:none; }
+.rx-invest-dialog[class*=rx-tone-] .rx-invest-facts>div:first-child strong,
+.rx-invest-dialog[class*=rx-tone-] .rx-invest-facts>div:last-child strong { color:var(--tone-deep); }
+.rx-invest-dialog[class*=rx-tone-] .rx-invest-estimate .is-total strong { color:var(--tone-deep); }
+.rx-invest-dialog[class*=rx-tone-] .rx-input-group:focus-within { border-color:var(--tone-deep); box-shadow:0 0 0 3px var(--tone-ring); }
+.rx-invest-dialog[class*=rx-tone-] .rx-invest-actions .ui-button:last-child { color:#fff; background:var(--tone-btn); border-color:transparent; }
+.rx-invest-dialog[class*=rx-tone-] .rx-invest-actions .ui-button:last-child:hover { background:var(--tone-btn-hover); }
+.solvex-react :is(.portal-heading p,.aim-heading p,.portal-metric small,.portal-section-head>span,.aim-panel-head p,.portal-empty,.ev2-empty) { font-size:12px; line-height:1.8; }
+.solvex-react :is(.portal-button,.assets-secondary-action,.aim-secondary,.cc-ghost,.cc-primary) { min-height:40px; }
+.solvex-react .cc-composer textarea { font-size:14px; }
+.solvex-react :is(.team-hero p,.rx-legacy-earn .portal-metric>span) { font-size:13px; }
+@keyframes rx-skeleton { to { background-position:-220% 0; } }
+@keyframes rx-sheet-enter { from { transform:translateY(25px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+@media(min-width:1600px) { .rx-tunnel-hero.is-guest { min-height:460px; } }
+@media(max-width:1200px) {
+  .rx-pool-workspace { grid-template-columns:1fr; }
+  .rx-pool-overview { grid-template-columns:minmax(300px,1fr) minmax(0,1.1fr); }
+  .rx-metric { padding-inline:18px; }.rx-metric>strong { font-size:27px; }
+  .rx-tunnel-hero .rx-mine-copy h2,.rx-tunnel-hero .rx-mine-copy h2 em { font-size:35px; }
+  .rx-tunnel-hero.is-member .rx-mine-copy h2 { font-size:23px; }
+}
+@media(max-width:1050px) {
+  .rx-pool-overview { grid-template-columns:1fr; }
+  .rx-tunnel-hero.is-member { min-height:330px; }
+  .rx-pool-overview .rx-positions { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rx-getting-started>div { padding-inline:18px; gap:12px; }
+}
+@media(max-width:600px) {
+  .rx-page { padding:10px 16px 100px; }
+  .rx-heading { position:relative; display:block; margin-bottom:8px; }
+  .rx-heading h1 { font-size:20px; line-height:1.2; padding-right:96px; }.rx-heading p { font-size:11.5px; line-height:1.4; margin-top:3px; max-width:none; }
+  .rx-heading-actions { position:absolute; top:8px; right:0; gap:6px; padding:0; }
+  .rx-heading-actions .ui-button { height:36px; min-height:36px; font-size:12px; padding-inline:9px; }
+  .rx-heading-actions .ui-button.size-10 { width:36px; }.rx-heading-actions .ui-button:not(.size-10) svg { display:none; }
+  .rx-kicker { font-size:9px; letter-spacing:1.5px; }
+  /* 手机层级重排：页头与英雄区的装饰性全大写标签让位给标题，首屏留给矿池卡片 */
+  .rx-heading .rx-kicker { display:none; }
+  .rx-wallet #wallet-connect-btn,.rx-wallet #wallet-connect-btn.connected { min-height:40px; padding-inline:12px; font-size:12px; }
+  .ui-tabs { width:100%; padding:2px; justify-content:flex-start; overflow-x:auto; overscroll-behavior-x:contain; }
+  .ui-tab { font-size:12.5px; min-height:36px; padding:6px 14px; }
+  .rx-tab-body { margin-top:8px; }.rx-stack { gap:12px; }
+  .rx-metrics { padding:0; grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rx-metric { padding:18px 16px; border-right:1px solid #dbe2ef; }
+  .rx-metric:nth-child(2n) { border-right:0; }.rx-metric:nth-child(-n+2) { border-bottom:1px solid #dbe2ef; }
+  .rx-metric>div>span,.rx-metric>span { font-size:12px; }.rx-metric>strong { font-size:27px; margin:12px 0 7px; }
+  .rx-metric>p,.rx-metric>small,.rx-metric strong small { font-size:12px; line-height:1.65; }
+  .rx-metric-link button { font-size:15px; }.rx-metric-link>span { font-size:12px; }
+  .rx-pool-overview { gap:20px; }.rx-pool-overview .rx-positions { grid-template-columns:1fr; max-height:none; }
+  .rx-pool-overview .rx-position { padding:16px; }
+  .rx-position-head h3 { font-size:14px; }.rx-position-head small { font-size:12px; }
+  .rx-position-head .rx-icon { display:none; }
+  .rx-position-principal>strong { font-size:24px; }.rx-position-stats strong { font-size:12px; }
+  .rx-pool-empty { min-height:245px; }.rx-pool-empty p { font-size:13px; }
+  /* 手机：英雄区高度交给内容 + 视口决定（不再写死高度）；场景改为铺满的绝对定位背景，
+     高度随视口 clamp(150px,28dvh,196px)；底部 meta 条与卡片信息重复，移动端隐藏 */
+  .rx-tunnel-hero.is-guest,.rx-tunnel-hero.is-member { min-height:0; height:auto; max-height:none; padding:11px 13px 8px; border-radius:14px; overflow:hidden; }
+  .rx-tunnel-hero .svx-mining-scene { position:absolute; inset:0; width:100%; height:100%; max-height:clamp(150px,28dvh,196px); opacity:.42; pointer-events:none; z-index:0; }
+  .rx-tunnel-hero .svx-scene-fallback { display:none; }
+  .rx-tunnel-hero::before,.rx-tunnel-hero.is-guest::before,.rx-tunnel-hero.is-member::before { inset:0; z-index:1; background:linear-gradient(90deg,#151a2e 0%,#151a2ee8 58%,#151a2e8c 100%); }
+  .rx-tunnel-hero .rx-mine-copy { position:relative; z-index:2; width:100%; padding:0; }
+  .rx-tunnel-hero .rx-eyebrow { display:none; }
+  .rx-tunnel-hero .rx-mine-copy h2,.rx-tunnel-hero .rx-mine-copy h2 em { font-size:clamp(17px,4.8vw,20px); line-height:1.2; letter-spacing:-.3px; }
+  .rx-tunnel-hero .rx-mine-copy h2 { margin:4px 0 2px; }
+  .rx-tunnel-hero .rx-mine-copy h2 em { margin:0; }
+  /* 副标题按整句自然换行，不再靠 <br> 固定成两行 */
+  .rx-tunnel-hero .rx-mine-copy p { font-size:11px; line-height:1.45; color:#c3cbd7; }
+  .rx-tunnel-hero .rx-mine-copy p br { display:none; }
+  .rx-tunnel-hero .rx-hero-actions { flex-direction:column; align-items:stretch; margin-top:8px; gap:6px; }
+  .rx-tunnel-hero .rx-hero-actions .ui-button { width:100%; height:42px; min-height:42px; font-size:13.5px; padding-inline:12px; }
+  .rx-tunnel-hero .rx-mine-status { position:static; margin-top:4px; font-size:11px; line-height:1.4; }
+  .rx-tunnel-hero .rx-scene-tag { display:none; }
+  .rx-tunnel-hero .rx-pause { bottom:10px; right:12px; min-height:34px; font-size:12px; }
+  .rx-tunnel-hero .rx-mine-footer { display:none; }
+  .rx-getting-started { order:5; padding:2px 12px; grid-template-columns:1fr; }
+  .rx-getting-started>div { padding:9px 2px; border:0; border-bottom:1px solid #e7edf7; gap:9px; }
+  .rx-getting-started>div:last-child { border-right:0; border-bottom:0; }
+  .rx-getting-started>div>span { font-size:15px; }
+  .rx-getting-started h3 { font-size:12px; line-height:1.4; }
+  .rx-getting-started p { display:none; }
+  .rx-section-heading { flex-direction:column; align-items:flex-start; gap:1px; margin:0 0 5px; }
+  .rx-pool-workspace { margin-top:0; }
+  .rx-section-heading h2 { font-size:17px; line-height:1.3; }.rx-section-heading>span { font-size:10.5px; max-width:none; line-height:1.45; padding-top:0; white-space:normal; }
+  .rx-section-heading .rx-kicker { display:none; }
+  /* 卡片竖向排列，不做横向滚动/横滑 */
+  .rx-tiers { display:flex; flex-direction:column; gap:10px; padding:0; overflow:visible; scroll-snap-type:none; }
+  .rx-tier { width:100%; flex:none; display:grid; grid-template-columns:auto minmax(0,1fr) auto; grid-template-areas:"icon title period" "rate rate label" "min min min" "action action action"; column-gap:9px; align-items:center; padding:9px 13px 10px; border-radius:13px; scroll-snap-align:none; }
+  .rx-tier:hover { transform:none; }
+  .rx-tier[data-tone] .rx-tier-top { display:contents; margin:0; }
+  .rx-tier[data-tone] .rx-tier-icon { grid-area:icon; display:flex; align-items:center; justify-content:center; line-height:0; width:26px; height:26px; border-radius:8px; }
+  .rx-tier[data-tone] h3 { grid-area:title; margin:0; padding:2px 8px; font-size:12px; line-height:1.25; }
+  .rx-tier[data-tone] .rx-tier-top>span:last-child { grid-area:period; font-size:11px; line-height:1.4; align-self:center; }
+  .rx-tier[data-tone] .rx-tier-rate { grid-area:rate; font-size:28px; line-height:1.05; letter-spacing:-1px; margin:0; }
+  .rx-tier[data-tone] .rx-tier-rate>span { font-size:13px; margin-left:2px; }
+  .rx-tier[data-tone]>p { grid-area:label; align-self:center; margin:0; font-size:11px; line-height:1.45; text-align:right; }
+  .rx-tier[data-tone] .rx-tier-min { grid-area:min; margin-top:3px; padding-top:5px; font-size:11px; line-height:1.5; }
+  .rx-tier[data-tone] .rx-tier-min>strong { font-size:15px; line-height:1.2; }
+  .rx-tier[data-tone]>small { grid-area:min; justify-self:end; align-self:center; margin-top:3px; font-size:11px; line-height:1.45; }
+  .rx-tier[data-tone] .rx-tier-invest { grid-area:action; width:100%; min-height:42px; margin-top:7px; font-size:13px; }
+  .rx-pool-note { font-size:12px; line-height:1.85; }
+  /* 手机弹窗：留 12px 边距，内容超高只纵向滚动，操作按钮保持 46px 点击高度 */
+  .rx-invest-dialog { width:calc(100% - 24px); max-height:calc(100dvh - 24px); padding:20px 16px max(18px,env(safe-area-inset-bottom)); border-radius:20px; }
+  .rx-invest-title { font-size:19px; }
+  .rx-invest-sub { margin-bottom:14px; font-size:12px; line-height:1.6; }
+  .rx-invest-facts { grid-template-columns:1fr; gap:0; padding:3px 12px; background:#f5f8fd; border:1px solid #dbe2ef; border-radius:10px; }
+  .rx-invest-facts>div { display:flex; align-items:baseline; justify-content:space-between; gap:12px; padding:8px 0; background:transparent; border:0; border-bottom:1px solid #e3e9f4; border-radius:0; }
+  .rx-invest-facts>div:last-child { border-bottom:0; }
+  .rx-invest-facts strong { margin-top:0; font-size:13px; text-align:right; }
+  .rx-invest-balance { margin-bottom:14px; }
+  .rx-invest-balance>strong { font-size:17px; }
+  .rx-invest-estimate .is-total strong { font-size:16px; }
+  .rx-invest-feedback { min-height:34px; padding:8px 0 4px; }
+  .rx-invest-actions .ui-button { min-height:46px; }
+  .rx-form-trust,.rx-muted,.rx-position-foot { font-size:12px; }
+  .rx-table th { font-size:12px; }.rx-table td { font-size:13px; }
+  .rx-energy-story p,.rx-team-hero p,.rx-note { font-size:14px; }
+  .rx-team-hero .rx-kicker { font-size:10px; }
+  .solvex-react .aim-heading p,.solvex-react .team-hero p,.solvex-react .rx-legacy-earn .portal-metric>span { font-size:13px; }
+}
+/* 矿池顶部待领取条：浅紫底 + 品牌色描边，先被看见，但不抢三张矿卡的主角位置。 */
+.rx-claim-strip { display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px 18px; padding:16px 20px; background:linear-gradient(108deg,#f7f3ff,#fff 58%); border:1px solid #d9cdf7; border-radius:14px; box-shadow:0 5px 16px #5f2bd912; }
+.rx-claim-main { display:flex; align-items:center; gap:14px; min-width:0; }
+.rx-claim-icon { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:42px; height:42px; border-radius:12px; background:#efe8ff; color:#5f2bd9; }
+.rx-claim-copy { min-width:0; }
+.rx-claim-label { display:flex; align-items:center; gap:6px; font-size:12px; color:#5b6478; }
+.rx-claim-copy>strong { display:block; margin-top:2px; font-size:27px; line-height:1.2; font-weight:600; letter-spacing:-.6px; color:#1f2439; font-variant-numeric:tabular-nums; }
+.rx-claim-copy>strong small { margin-left:5px; font-size:12px; font-weight:400; color:#5b6478; }
+.rx-claim-usdt { display:inline-block; margin-top:3px; font-size:12px; font-weight:600; color:#5f2bd9; }
+.rx-claim-copy>p { margin-top:3px; font-size:11.5px; line-height:1.5; color:#5b6478; }
+.rx-claim-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
+.rx-claim-actions .ui-button { min-height:42px; }
+/* 玩法页：页内锚点分区，避免三个玩法挤成一锅粥。 */
+.rx-play-page { display:flex; flex-direction:column; gap:26px; }
+.rx-play-nav { display:flex; flex-wrap:wrap; gap:8px; }
+.rx-play-nav button { display:inline-flex; align-items:center; gap:6px; min-height:38px; padding:8px 15px; font-size:13px; color:#4b5468; background:#fff; border:1px solid #cbd4e5; border-radius:999px; }
+.rx-play-nav button:hover { color:#5f2bd9; border-color:#a78bf5; }
+.rx-play-nav button svg { color:#5f2bd9; }
+.rx-play-section { display:flex; flex-direction:column; gap:14px; scroll-margin-top:96px; }
+.rx-play-section+.rx-play-section { padding-top:26px; border-top:1px solid #e7edf7; }
+.rx-play-section>.rx-stack { gap:18px; }
+@media(max-width:600px) {
+  /* 3 个页签等分排布，彻底不依赖横向滑动。 */
+  .rx-earn-tabs { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:4px; overflow:visible; }
+  .rx-earn-tabs .ui-tab { width:100%; padding-inline:6px; }
+  .rx-claim-strip { padding:14px 15px; gap:12px; }
+  .rx-claim-icon { width:36px; height:36px; border-radius:10px; }
+  .rx-claim-copy>strong { font-size:23px; }
+  .rx-claim-copy>p { font-size:11px; }
+  .rx-claim-actions { width:100%; }
+  .rx-claim-actions .ui-button:first-child { flex:1; }
+  .rx-play-page { gap:18px; }
+  .rx-play-nav { gap:6px; }
+  .rx-play-nav button { min-height:36px; padding:6px 12px; font-size:12.5px; }
+  .rx-play-section { gap:10px; scroll-margin-top:80px; }
+  .rx-play-section+.rx-play-section { padding-top:18px; }
+  .rx-play-section>.rx-stack { gap:12px; }
+}
+@media(prefers-reduced-motion:reduce) {
+  .ui-skeleton,.ui-sheet-bottom[data-state=open],.rx-level-orbit>div { animation:none; }
+  .rx-tier,.rx-nav button { transition:none; }
+}
+/* ==========================================================================
+   矿池模块统一规范（矿池 / 领取 / 玩法）
+   间距只用 4 / 8 / 16 / 24 / 32 五级阶梯；卡片圆角 16、描边 #cbd4e5、
+   投影同源；字号四层：页面 30 / 区块 22 / 卡标题 16 / 标签 12 / 正文 14。
+   ========================================================================== */
+.rx-earn {
+  --rx-gap:24px; --rx-gap-sm:16px; --rx-gap-xs:8px; --rx-micro:4px;
+  --rx-card-r:16px; --rx-line:#cbd4e5;
+  --rx-shadow:0 1px 2px #1017280a,0 8px 24px #1017280f;
+  --rx-label:#5b6478; --rx-ink:#101728; --rx-body:#4b5468;
+}
+.rx-earn .ui-card { border-radius:var(--rx-card-r); border-color:var(--rx-line); box-shadow:var(--rx-shadow); }
+.rx-earn .rx-stack { gap:var(--rx-gap); }
+.rx-earn .rx-tab-body { margin-top:var(--rx-gap); }
+.rx-earn .rx-metrics { border-radius:var(--rx-card-r); }
+.rx-earn .rx-metrics-3 { grid-template-columns:repeat(3,minmax(0,1fr)); }
+.rx-earn .rx-metric { padding:var(--rx-gap); }
+.rx-earn .rx-claim-strip { border-radius:var(--rx-card-r); }
+.rx-earn .rx-energy-grid { gap:var(--rx-gap); }
+.rx-earn .rx-tiers { gap:var(--rx-gap-sm); }
+.rx-earn .rx-tier { padding:var(--rx-gap); border-radius:var(--rx-card-r); }
+.rx-earn .rx-tier[data-tone] .rx-tier-top { margin-bottom:var(--rx-gap-sm); }
+.rx-earn .rx-tier[data-tone] .rx-tier-min { margin-top:var(--rx-gap); padding-top:var(--rx-gap-sm); }
+.rx-earn .rx-tier[data-tone] .rx-tier-invest { margin-top:var(--rx-gap-sm); }
+.rx-earn .rx-positions { gap:var(--rx-gap-sm); }
+.rx-earn .rx-position { padding:var(--rx-gap-sm); border-radius:12px; }
+.rx-earn .rx-positions-scroll { grid-template-columns:1fr; max-height:420px; overflow-y:auto; scrollbar-width:thin; }
+/* 分节标题固定为「kicker / h2 / 辅助说明」一种格式 */
+.rx-earn .rx-section-heading { align-items:flex-end; gap:var(--rx-gap-sm); margin:0 0 var(--rx-gap-sm); }
+.rx-earn .rx-section-heading h2 { margin-top:var(--rx-gap-xs); font-size:22px; line-height:1.3; font-weight:600; letter-spacing:-.2px; color:var(--rx-ink); }
+.rx-earn .rx-section-heading>span { max-width:52ch; font-size:12px; line-height:1.6; color:var(--rx-label); }
+.rx-earn .rx-kicker { font-size:10px; letter-spacing:1.6px; }
+.rx-earn .ui-card .text-base { font-size:16px; }
+.rx-earn .rx-note { margin:0 0 var(--rx-gap-sm)!important; font-size:13px; line-height:1.8; color:var(--rx-label); }
+/* 玩法页：三块之间 32px 分隔，块内 16px */
+.rx-earn .rx-play-page { gap:32px; }
+.rx-earn .rx-play-section { gap:var(--rx-gap-sm); }
+.rx-earn .rx-play-section+.rx-play-section { padding-top:32px; }
+.rx-earn .rx-play-section>.rx-stack { gap:var(--rx-gap-sm); }
+/* 盲盒：一块讲清份数、区间、去处与卖出前提 */
+.rx-blindbox-hero { display:grid; grid-template-columns:minmax(0,1.35fr) minmax(0,.65fr); gap:var(--rx-gap,24px); padding:24px; background:linear-gradient(118deg,#f7f4ff,#fff 64%); border:1px solid #ddd3f7; border-radius:16px; box-shadow:0 1px 2px #1017280a,0 8px 24px #5f2bd90f; }
+.rx-blindbox-hero h3 { margin:8px 0 0; font-size:22px; line-height:1.35; font-weight:600; letter-spacing:-.2px; color:#101728; }
+.rx-blindbox-range { margin-top:8px; font-size:44px; line-height:1.1; font-weight:600; letter-spacing:-1.5px; color:#4b2aa8; font-variant-numeric:tabular-nums; }
+.rx-blindbox-range>span { margin-left:4px; font-size:16px; font-weight:500; letter-spacing:0; color:#5b6478; }
+.rx-blindbox-hero p { max-width:46ch; margin-top:8px; font-size:13px; line-height:1.7; color:#4b5468; }
+.rx-blindbox-side { display:flex; flex-direction:column; align-items:flex-start; justify-content:center; gap:16px; padding:16px; background:#fff; border:1px solid #e3daf8; border-radius:12px; }
+.rx-blindbox-state { font-size:12px; font-weight:600; color:#5f2bd9; }
+.rx-blindbox-side>strong { font-size:26px; line-height:1.2; font-weight:600; letter-spacing:-.5px; color:#1f2439; font-variant-numeric:tabular-nums; }
+.rx-blindbox-side>strong small { margin-left:4px; font-size:12px; font-weight:400; letter-spacing:0; color:#5b6478; }
+.rx-blindbox-side>p { margin:0; font-size:12px; color:#5b6478; }
+.rx-blindbox-side .ui-button { width:100%; }
+/* ── 盲盒立体盒体 + 开盒动画（只动 transform / opacity，不触发布局与重绘） ── */
+.rx-blindbox-side { align-items:stretch; }
+.rx-blindbox-stage { position:relative; display:flex; align-items:flex-end; justify-content:center; width:100%; min-height:236px; padding-bottom:4px; -webkit-tap-highlight-color:transparent; }
+.rx-blindbox-stage.is-opening { cursor:pointer; }
+.rx-blindbox-stage:focus-visible { outline:2px solid #5f2bd9; outline-offset:2px; border-radius:12px; }
+.rx-box-aura { position:absolute; left:50%; top:54%; width:80%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle,#c9aaff4d,#a14bfa12 48%,transparent 72%); transform:translate(-50%,-50%); pointer-events:none; }
+.rx-box-svg { position:relative; z-index:1; display:block; width:min(100%,236px); height:auto; overflow:visible; }
+.rx-box-rig,.rx-box-lid { transform-box:fill-box; transform-origin:50% 92%; }
+.rx-box-lid { transition:transform .16s ease-out; }
+.rx-box-glow { position:absolute; z-index:2; left:50%; top:40%; width:70%; aspect-ratio:1; border-radius:50%; background:radial-gradient(circle,#f0e4ff 0%,#c39bff8c 32%,#a14bfa00 70%); opacity:0; transform:translate(-50%,-50%) scale(.7); pointer-events:none; }
+.rx-box-spark { position:absolute; z-index:2; left:50%; top:40%; width:6px; height:6px; margin:-3px 0 0 -3px; border-radius:50%; background:radial-gradient(circle,#fff 0%,#e8d9ff 45%,#b98bff00 72%); opacity:0; pointer-events:none; }
+.rx-box-spark.s1 { --sx:-46px; --sy:-52px; }
+.rx-box-spark.s2 { --sx:34px; --sy:-62px; width:5px; height:5px; }
+.rx-box-spark.s3 { --sx:-16px; --sy:-78px; width:7px; height:7px; }
+.rx-box-spark.s4 { --sx:52px; --sy:-34px; width:4px; height:4px; }
+.rx-box-spark.s5 { --sx:-60px; --sy:-24px; width:5px; height:5px; }
+.rx-box-skip { position:absolute; z-index:4; left:50%; bottom:0; transform:translateX(-50%); font-size:11px; color:#5f2bd9; opacity:.8; white-space:nowrap; pointer-events:none; }
+/* 结果卡：默认藏在盒内，开盒时升起 */
+.rx-box-result { position:absolute; z-index:3; left:50%; top:42%; width:min(86%,214px); padding:12px 14px 13px; text-align:center; background:linear-gradient(158deg,#fff,#f5efff); border:1px solid #d9c8ff; border-radius:14px; box-shadow:0 12px 28px #4a1bab2b; opacity:0; transform:translate(-50%,26px) scale(.9); transition:opacity .18s ease,transform .18s ease; }
+.rx-box-result-kicker { display:block; font-size:11px; font-weight:600; letter-spacing:1.2px; color:#7b5cc4; }
+.rx-box-result strong { display:block; margin-top:2px; font-size:28px; line-height:1.15; font-weight:600; letter-spacing:-.8px; color:#3f1b9e; font-variant-numeric:tabular-nums; }
+.rx-box-result strong small { margin-left:2px; font-size:12px; font-weight:500; letter-spacing:0; color:#6b5a8f; }
+.rx-box-result p { margin:6px 0 0; font-size:11px; line-height:1.5; color:#5b6478; }
+.rx-box-result-close { position:absolute; top:4px; right:6px; width:22px; height:22px; padding:0; font-size:15px; line-height:1; color:#7b6a9e; background:transparent; border:0; border-radius:6px; cursor:pointer; }
+.rx-box-result-close:hover { background:#efe7ff; color:#4b2aa8; }
+/* 等待态：先发请求，再轻微呼吸 */
+.is-waiting .rx-box-rig { animation:rx-box-breathe 1.15s ease-in-out infinite; }
+/* 开盒：颤动 → 顶盖弹开 → 光溢出 → 结果卡升起 */
+.is-opening .rx-box-rig { animation:rx-box-shake .5s cubic-bezier(.36,.07,.19,.97) both; }
+.is-opening .rx-box-lid { animation:rx-lid-pop .54s cubic-bezier(.22,.9,.28,1.08) .38s both; }
+.is-opening .rx-box-glow { animation:rx-glow-burst .72s ease-out .34s both; }
+.is-opening .rx-box-spark { animation:rx-spark .8s ease-out .44s both; }
+.is-opening .rx-box-spark.s2 { animation-delay:.5s; }
+.is-opening .rx-box-spark.s3 { animation-delay:.56s; }
+.is-opening .rx-box-spark.s4 { animation-delay:.62s; }
+.is-opening .rx-box-spark.s5 { animation-delay:.68s; }
+.is-opening .rx-box-result { animation:rx-result-rise .68s cubic-bezier(.2,.9,.3,1.04) .86s both; pointer-events:none; }
+/* 结束态：盒子保持打开，光点淡出，结果卡稳定 */
+.is-opened .rx-box-lid { transform:translate3d(-5px,-29px,0) rotate(-12deg); }
+.is-opened .rx-box-glow { opacity:.5; transform:translate(-50%,-50%) scale(1.14); }
+.is-opened .rx-box-result { opacity:1; transform:translate(-50%,0) scale(1); }
+@keyframes rx-box-breathe { 0%,100% { transform:scale(1) rotate(0); } 50% { transform:scale(.985) rotate(-1.2deg); } }
+@keyframes rx-box-shake { 0%,100% { transform:translate3d(0,0,0) rotate(0); } 12% { transform:translate3d(-4px,0,0) rotate(-1.6deg); } 26% { transform:translate3d(4px,0,0) rotate(1.6deg); } 40% { transform:translate3d(-3px,0,0) rotate(-1.2deg); } 54% { transform:translate3d(3px,0,0) rotate(1.2deg); } 68% { transform:translate3d(-2px,0,0) rotate(-.7deg); } 84% { transform:translate3d(0,0,0) rotate(0); } }
+@keyframes rx-lid-pop { 0% { transform:translate3d(0,0,0) rotate(0); } 18% { transform:translate3d(0,-7px,0) rotate(-2deg); } 58% { transform:translate3d(-4px,-27px,0) rotate(-10deg); } 80% { transform:translate3d(-6px,-32px,0) rotate(-13deg); } 100% { transform:translate3d(-5px,-29px,0) rotate(-12deg); } }
+@keyframes rx-glow-burst { 0% { opacity:0; transform:translate(-50%,-50%) scale(.34); } 38% { opacity:.95; transform:translate(-50%,-50%) scale(1.04); } 100% { opacity:.5; transform:translate(-50%,-50%) scale(1.14); } }
+@keyframes rx-spark { 0% { opacity:0; transform:translate3d(0,6px,0) scale(.4); } 22% { opacity:1; } 100% { opacity:0; transform:translate3d(var(--sx,0),var(--sy,-40px),0) scale(.85); } }
+@keyframes rx-result-rise { 0% { opacity:0; transform:translate(-50%,30px) scale(.86); } 62% { opacity:1; transform:translate(-50%,-6px) scale(1.02); } 100% { opacity:1; transform:translate(-50%,0) scale(1); } }
+@media (prefers-reduced-motion: reduce) {
+  .rx-box-rig,.rx-box-lid,.rx-box-glow,.rx-box-spark,.rx-box-result { animation:none!important; transition:none!important; }
+  .is-opening .rx-box-lid { transform:translate3d(-5px,-29px,0) rotate(-12deg); }
+  .is-opening .rx-box-glow { opacity:.5; transform:translate(-50%,-50%) scale(1.14); }
+  .is-opening .rx-box-result { opacity:1; transform:translate(-50%,0) scale(1); }
+}
+/* 矿池页的盲盒轻入口：未参与时才显示，一行高，不占版面 */
+.rx-blindbox-entry { display:flex; align-items:center; gap:16px; width:100%; padding:8px 16px; text-align:left; cursor:pointer; background:#fff; border:1px dashed #cfc2f2; border-radius:12px; transition:border-color .16s,background .16s; }
+.rx-blindbox-entry:hover { border-color:#a78bf5; background:#faf8ff; }
+.rx-blindbox-entry:focus-visible { outline:2px solid #5f2bd9; outline-offset:2px; }
+.rx-blindbox-entry-icon { display:flex; align-items:center; justify-content:center; flex-shrink:0; width:32px; height:32px; border-radius:8px; background:#f1ecff; color:#5f2bd9; }
+.rx-blindbox-entry-copy { flex:1; min-width:0; font-size:12px; line-height:1.5; color:#4b5468; }
+.rx-blindbox-entry-copy strong { display:inline-block; margin-right:8px; font-size:13px; color:#1f2439; }
+.rx-blindbox-entry-go { display:inline-flex; align-items:center; gap:4px; flex-shrink:0; font-size:12px; font-weight:600; color:#5f2bd9; }
+/* 记录合并后的分区与三列数据 */
+.rx-earn .rx-record-group { display:flex; flex-direction:column; gap:var(--rx-gap-sm); margin-top:var(--rx-gap-sm); }
+.rx-earn .rx-record-group h4 { margin:0; font-size:13px; font-weight:600; color:#2a3245; }
+.rx-earn .rx-stat-row { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--rx-gap-sm); margin-top:var(--rx-gap-sm); }
+.rx-earn .rx-stat-row>div { padding:var(--rx-gap-sm); background:#f5f8fd; border:1px solid #dbe2ef; border-radius:12px; }
+.rx-earn .rx-stat-row span { display:block; font-size:12px; color:var(--rx-label); }
+.rx-earn .rx-stat-row strong { display:block; margin-top:4px; font-size:18px; line-height:1.3; font-weight:600; color:#1f2439; font-variant-numeric:tabular-nums; }
+.rx-earn .rx-stat-row small { margin-left:4px; font-size:12px; font-weight:400; color:var(--rx-label); }
+/* 矿池页内边距一并归到同一阶梯 */
+.rx-earn .rx-claim-strip { padding:16px 24px; gap:16px; }
+.rx-earn .rx-claim-main { gap:16px; }
+.rx-earn .rx-pool-workspace { margin-top:0; gap:24px; }
+.rx-earn .rx-pool-overview { gap:24px; }
+.rx-earn .rx-pool-empty { padding:24px 0; }
+.rx-earn .rx-pool-empty>.rx-icon { margin-bottom:16px; }
+.rx-earn .rx-pool-empty p { margin-top:8px; }
+.rx-earn .rx-pool-empty>div { margin-top:24px; }
+.rx-earn .rx-getting-started { padding:24px 8px; }
+.rx-earn .rx-getting-started>div { padding-inline:16px; }
+.rx-earn .rx-position-skeleton { gap:16px; padding:16px 0; }
+.rx-earn .rx-pool-empty>div { gap:8px; }
+.rx-earn .rx-form-balance { padding:16px; }
+@media(max-width:600px) {
+  /* 手机：块间 16、块内 16、分节之间 24，呼吸感一致 */
+  .rx-earn .rx-stack,.rx-earn .rx-tab-body,
+  .rx-earn .rx-play-section>.rx-stack,.rx-earn .rx-energy-grid,
+  .rx-earn .rx-tiers,.rx-earn .rx-positions,.rx-earn .rx-record-group { gap:16px; }
+  .rx-earn .rx-play-page { gap:24px; }
+  .rx-earn .rx-play-section { gap:8px; }
+  .rx-earn .rx-play-section+.rx-play-section { padding-top:24px; }
+  .rx-earn .rx-section-heading { gap:4px; margin-bottom:8px; }
+  .rx-earn .rx-section-heading h2 { margin-top:4px; font-size:18px; }
+  .rx-earn .rx-section-heading>span { font-size:12px; }
+  .rx-earn .rx-metric { padding:16px; }
+  .rx-earn .rx-metrics-3 { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .rx-earn .rx-metrics-3 .rx-metric:last-child { border-right:0; border-bottom:0; }
+  .rx-earn .ui-card>div.p-6 { padding:16px; }
+  .rx-earn .ui-card>div.pb-4 { padding-bottom:8px; }
+  .rx-earn .ui-card>div.pt-0 { padding-top:0; }
+  .rx-earn .ui-card .text-base { font-size:15px; }
+  .rx-earn .rx-tier { padding:8px 16px 16px; }
+  .rx-earn .rx-tier[data-tone] .rx-tier-min { margin-top:8px; padding-top:8px; }
+  .rx-earn .rx-tier[data-tone] .rx-tier-invest { margin-top:8px; }
+  .rx-blindbox-hero { grid-template-columns:1fr; gap:16px; padding:16px; }
+  .rx-blindbox-hero h3 { font-size:19px; }
+  .rx-blindbox-range { font-size:36px; }
+  .rx-blindbox-side { order:-1; padding:16px; gap:12px; }
+  .rx-blindbox-stage { min-height:208px; }
+  .rx-box-svg { width:min(100%,202px); }
+  .rx-box-result { width:min(88%,206px); }
+  .rx-box-result strong { font-size:26px; }
+  .rx-blindbox-entry { gap:8px; padding:8px 12px; }
+  .rx-blindbox-entry-copy strong { display:block; margin:0; }
+  .rx-earn .rx-stat-row { grid-template-columns:1fr; gap:8px; }
+  .rx-earn .rx-claim-strip { padding:16px; gap:16px; }
+  .rx-earn .rx-claim-main { gap:16px; }
+  .rx-earn .rx-pool-overview { gap:16px; }
+  .rx-earn .rx-getting-started { padding:8px 16px; }
+}

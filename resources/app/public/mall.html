@@ -1,4 +1,5 @@
-﻿<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#090e0c"><meta name="description" content="AIX 商城，商户上架好物，AIX 余额直接购买。"><title>AIX 商城</title><link rel="icon" href="/assets/brand/favicon-32.png"><link rel="stylesheet" href="/games/mall/mall.css?v=20261101a">
+<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><meta name="theme-color" content="#ffffff"><meta name="description" content="Solvex 商城，商户上架好物，SVX 余额直接购买。"><title>Solvex 商城</title><link rel="icon" href="/assets/brand/logo.svg?v=20261111-domain-brand-1"><link rel="stylesheet" href="/games/mall/mall.css?v=20261111-domain-solvex-1">
+<link rel="stylesheet" href="/styles/solvex-mall.css?v=20261111-domain-brand-1">
 <script>
 // 嵌入主站标签页模式（/mall.html?embed=1）：隐藏自带页头页脚（由主站框架提供），并向父页面同步内容高度
 if (new URLSearchParams(location.search).has('embed')) {
@@ -16,7 +17,7 @@ if (new URLSearchParams(location.search).has('embed')) {
 <!-- ══ 顶部导航 ══ -->
 <header class="shop-header">
   <div class="shop-header-inner">
-    <a class="shop-logo" href="/mall.html"><img class="logo-img" src="/assets/brand/logo.png" alt="AIX"><span class="word">AIX<b>商城</b></span></a>
+    <a class="shop-logo" href="/mall.html"><img class="logo-img" src="/assets/brand/logo.png?v=20261111-domain-solvex-logo-3" alt="Solvex"><span class="word">Solvex<b>商城</b></span></a>
     <div class="shop-search">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><use href="#icon-search"/></svg>
       <input id="search-input" type="search" placeholder="搜索商品或店铺…" autocomplete="off" maxlength="40">
@@ -28,7 +29,7 @@ if (new URLSearchParams(location.search).has('embed')) {
     </nav>
     <div class="topbar-actions">
       <button id="wallet-login" class="login-button" hidden>登录钱包</button>
-      <div class="balance-pill"><span>✦</span><div><small>AIX 余额</small><b id="balance">—</b></div></div>
+      <div class="balance-pill"><span>✦</span><div><small>SVX 余额</small><b id="balance">—</b></div></div>
     </div>
   </div>
 </header>
@@ -38,10 +39,10 @@ if (new URLSearchParams(location.search).has('embed')) {
   <!-- ══ 逛商城 ══ -->
   <section class="view" id="view-shop">
     <div class="shop-hero">
-      <img class="hero-banner" src="/assets/mall/hero-banner-dark.jpg?v=20261031g" alt="AIX 商城" loading="eager">
+      <img class="hero-banner" src="/assets/brand/mall-sculpture.svg" alt="" loading="eager">
       <div class="hero-text">
-        <span class="eyebrow">AIX MALL · 官方商城</span>
-        <h1>链上好物<br>AIX 一站购齐</h1>
+        <span class="eyebrow">SVX MALL · 官方商城</span>
+        <h1>链上好物<br>SVX 一站购齐</h1>
         <p>商户缴纳保证金开店，平台担保交易：确认收货后货款才结算给商户，购物更安心。</p>
         <div class="hero-actions">
           <a class="hero-cta" href="#shop" id="hero-cta">立即选购 ↓</a>
@@ -102,7 +103,7 @@ if (new URLSearchParams(location.search).has('embed')) {
 
   <!-- ══ 商户入驻 ══ -->
   <section class="view" id="view-merchant" hidden>
-    <div class="page-heading"><span class="eyebrow">MERCHANT</span><h1>商户入驻</h1><p>缴纳保证金并提交审核，通过后即可开店上架商品；买家付款由平台担保，确认收货后货款结算到你的 AIX 余额。</p></div>
+    <div class="page-heading"><span class="eyebrow">MERCHANT</span><h1>商户入驻</h1><p>缴纳保证金并提交审核，通过后即可开店上架商品；买家付款由平台担保，确认收货后货款结算到你的 SVX 余额。</p></div>
     <div id="merchant-existing" hidden>
       <div class="shop-banner"><div class="shop-avatar" id="my-shop-avatar">店</div><div><h2 id="my-shop-name"></h2><p id="my-shop-intro"></p></div><div style="margin-left:auto"><a class="primary-button" href="/mall-merchant.html">进入商户后台 ↗</a></div></div>
     </div>
@@ -121,7 +122,7 @@ if (new URLSearchParams(location.search).has('embed')) {
           <div class="full"><label class="field-label">开店保证金 <span>二选一，缴纳后立即开店</span></label>
             <div class="deposit-options">
               <label class="deposit-option"><input type="radio" name="deposit-currency" value="USDT" checked><span class="deposit-card"><b id="deposit-usdt-amount">100 USDT</b><small>从平台 USDT 余额扣除</small></span></label>
-              <label class="deposit-option"><input type="radio" name="deposit-currency" value="AIX"><span class="deposit-card"><b id="deposit-aix-amount">5000 AIX</b><small>从平台 AIX 余额扣除</small></span></label>
+              <label class="deposit-option"><input type="radio" name="deposit-currency" value="SVX"><span class="deposit-card"><b id="deposit-svx-amount">5000 SVX</b><small>从平台 SVX 余额扣除</small></span></label>
             </div>
           </div>
         </div>
@@ -135,12 +136,11 @@ if (new URLSearchParams(location.search).has('embed')) {
 
 <footer class="shop-footer">
   <div class="shop-footer-inner">
-    <span><b>AIX MALL</b> · AIX 支付 · 平台账户</span>
-    <a href="/index.html">返回 AxiX 首页 ↗</a>
-    <a href="/games.html">游戏大厅 ↗</a>
+    <span><b>SVX MALL</b> · SVX 支付 · 平台账户</span>
+    <a href="/index.html">返回 Solvex 首页 ↗</a>
   </div>
 </footer>
 <div class="toast" id="toast" role="status"></div>
 <script src="/vendor/wallet/connector.js"></script>
-<script type="module" src="/games/mall/main.js?v=20261031k"></script>
+<script type="module" src="/games/mall/main.js?v=20261111-domain-solvex-1"></script>
 </body></html>

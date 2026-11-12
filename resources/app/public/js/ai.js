@@ -84,28 +84,6 @@ async function aiRefreshStatus() {
       badge.innerHTML = '';
       $('ai-sentinel-box').textContent = '巡检出错：' + s.sentinelError;
     }
-    // ── 总览页：BTC 市况报告 + 各所哨兵报告 ──
-    if ($('ov-ai-market')) {
-      if (s.market) {
-        $('ov-ai-mkt-time').textContent = `分析时间 ${aiFmtTime(s.market.t)} · 数据源 ${s.market.source || ''} · 每 ${s.marketMin} 分钟自动更新`;
-        $('ov-ai-market').className = 'ai-box';
-        $('ov-ai-market').textContent = aiRegimeText(s.market);
-      } else if (s.marketError) {
-        $('ov-ai-market').textContent = '上次分析失败：' + s.marketError;
-      }
-      if (document.activeElement !== $('ov-ai-mkt-min')) $('ov-ai-mkt-min').placeholder = s.marketMin;
-      if (document.activeElement !== $('ov-ai-sent-min')) $('ov-ai-sent-min').placeholder = s.sentinelMin;
-      for (const p of ['de', 'ex', 'rs']) {
-        const el = $(`ov-${p}-ai`);
-        const per = s.sentinel && s.sentinel.per ? s.sentinel.per[p] : null;
-        if (el && per) {
-          el.style.display = '';
-          el.classList.remove('muted');
-          const icon = per.level === 'ok' ? '🟢' : per.level === 'warn' ? '🟡' : '🔴';
-          el.textContent = `${icon} 规则风控 · 巡检时间 ${aiFmtTime(s.sentinel.t)}\n${per.summary || ''}${per.advice ? `\n建议：${per.advice}` : ''}`;
-        }
-      }
-    }
     // 出区间建议
     const oorKeys = Object.keys(s.oorAdvice || {});
     if (oorKeys.length) {
@@ -196,46 +174,5 @@ async function aiChatSend() {
   } catch (e) { waiting.remove(); aiChatAppend('sys', '❌ 请求失败：' + e.message); }
 }
 
-// 市况报告文本（总览页/复用）
-function aiRegimeText(j) {
-  return `【${j.market} · 现价 ${j.price}】\n` +
-    `市况：${j.regime} · ${j.suitable ? '✅ 适合跑网格' : '⛔ 当前不适合跑网格'} · 置信度 ${Math.round((j.confidence || 0) * 100)}%\n` +
-    `建议模式：${j.recommendMode === 'long' ? '做多网格' : j.recommendMode === 'short' ? '做空网格' : '中性网格'}` +
-    (j.suggestedRange ? ` · 区间 ${j.suggestedRange.lower} ~ ${j.suggestedRange.upper}` : '') +
-    (j.suggestedGridCount ? ` · ${j.suggestedGridCount} 格` : '') +
-    (j.suggestedSpacingPct ? ` · 间距约 ${j.suggestedSpacingPct}%` : '') +
-    `\n分析：${j.reasoning || ''}` + (j.caution ? `\n⚠️ ${j.caution}` : '');
-}
-
-async function aiMarketRun(btn) {
-  if (btn) { btn.disabled = true; btn.textContent = '分析中…'; }
-  try {
-    const r = await fetch('/api/ai/market-run', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' });
-    const j = await r.json();
-    if (j.error) alert('市况分析失败：' + j.error); else aiRefreshStatus();
-  } catch (e) { alert('市况分析失败：' + e.message); }
-  if (btn) { btn.disabled = false; btn.textContent = '立即分析'; }
-}
-
-async function aiSaveIntervals(btn) {
-  if (btn) btn.disabled = true;
-  const st = $('ov-ai-int-status');
-  try {
-    const pairs = [];
-    if ($('ov-ai-mkt-min').value.trim() !== '') pairs.push(['AI_MARKET_MINUTES', $('ov-ai-mkt-min').value.trim()]);
-    if ($('ov-ai-sent-min').value.trim() !== '') pairs.push(['AI_SENTINEL_MINUTES', $('ov-ai-sent-min').value.trim()]);
-    if (!pairs.length) { st.textContent = '未填写，无变更'; if (btn) btn.disabled = false; return; }
-    for (const [key, value] of pairs) {
-      const r = await fetch('/api/env', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key, value }) });
-      const j = await r.json();
-      if (j.error) { st.textContent = '❌ ' + j.error; if (btn) btn.disabled = false; return; }
-    }
-    st.textContent = '✅ 已保存，立即生效';
-    $('ov-ai-mkt-min').value = ''; $('ov-ai-sent-min').value = '';
-    aiRefreshStatus();
-  } catch (e) { st.textContent = '❌ ' + e.message; }
-  if (btn) btn.disabled = false;
-}
-
-// AI 状态全局轮询（总览页板块 + AI 助手页共用）
+// AI 状态全局轮询（AI 助手页共用）
 setInterval(() => aiRefreshStatus(), 30000);

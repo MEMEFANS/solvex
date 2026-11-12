@@ -1,13 +1,14 @@
 import crypto from 'node:crypto';
 import { formatUnits } from 'ethers';
 import { A_TOKEN_DECIMALS, USDT_DECIMALS } from './a-token-service.js';
+import { BUY_FEE_BPS, SELL_FEE_BPS } from './a-token-shareholder-service.js';
 
-// 卖出最低门槛：1 AIX（买入不限制）
+// 卖出最低门槛：1 SVX（买入不限制）
 // 2026-11-03 用户要求：涡轮产出的币不再 100 个起卖，1 个即可挂卖
 const MIN_SELL_A = 10n ** BigInt(A_TOKEN_DECIMALS);
 
 // ─────────────────────────────────────────────────────────────
-// A 币委托撮合服务（P2P 模式 v2）
+// SVX委托撮合服务（P2P 模式 v2）
 //
 // 核心规则：**买必须有人卖，卖必须有人买** —— 平台资金池不再兜底承接。
 //   - 下单（市价/限价）→ 立即冻结资金 → 尝试吃对手方 OPEN 挂单
@@ -24,19 +25,19 @@ const MIN_SELL_A = 10n ** BigInt(A_TOKEN_DECIMALS);
 // 成交条件：B.限价 >= S.限价，且至少一侧已被市场价格越过
 //           （S.price <= 现价 或 B.price >= 现价）—— 保证平台调控价格能驱动旧挂单成交。
 //
-// 手续费口径（均由卖方承担，按投入量收取）：
-//   卖家想卖出 n 个 A，冻结 n；手续费 = 消耗投入 × feeRate，净额 = 消耗投入 − 手续费：
-//   例：3% 费率卖 1000 个 A → 手续费 30、净额 970 进入成交，卖家实收 净额 × 成交价。
-//   手续费 50% 销毁、50% 进 A10 分红池。
-//   买单零手续费，USDT 全额支付给卖家。
+// 手续费口径（2026-11-09 P2 用户确认）：
+//   买方：成交金额的 5%，以 USDT 另收（不从币数里扣）；下单时连同手续费一起冻结，按实际成交金额逐笔划扣，
+//        未成交部分撤单/尾差连同手续费原路退回。
+//   卖方：成交 USDT 金额的 5%，从卖方应收 USDT 中扣除，全部进股东池（不分 LP、不销毁）。
+//   买卖均按成交 USDT 金额计算，价格取成交价（一键购买/市价单锚定大盘价）。
 //
 // 挂单即冻结（debit）；撤单原路退回；部分成交按比例核销；铸币/储备金在 P2P 结算中不动。
 // ─────────────────────────────────────────────────────────────
 
 const BPS = 10000n;
 // 灰尘阈值：剩余量小于该值即视为「不可再成交的尾差」（挂单列表里会显示为 0）。
-// 注意 decimals：USDT 6 位（0.001 USDT = 1e3）、AIX 18 位（0.001 AIX = 1e15）
-const DUST_A = 10n ** 15n;     // 0.001 AIX
+// 注意 decimals：USDT 6 位（0.001 USDT = 1e3）、SVX 18 位（0.001 SVX = 1e15）
+const DUST_A = 10n ** 15n;     // 0.001 SVX
 const DUST_USDT = 10n ** 3n;   // 0.001 USDT
 const makeId = prefix => `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 
@@ -50,7 +51,7 @@ export function smallFirstAt(seq, window = 10, count = 3) {
   return Math.floor((phase + 1) * k / w) !== Math.floor(phase * k / w);
 }
 
-export function createATokenOrderService({ aTokenService, database, teamService, referralService, clock = () => Date.now(), matchSmallFirstWindow = 10, matchSmallFirstCount = 3 }) {
+export function createATokenOrderService({ aTokenService, database, teamService, referralService, shareholderService, clock = () => Date.now(), matchSmallFirstWindow = 10, matchSmallFirstCount = 3 }) {
   const at = aTokenService;
   const db = database;
 
@@ -62,28 +63,19 @@ export function createATokenOrderService({ aTokenService, database, teamService,
   const SMALL_FIRST_COUNT = Math.min(SMALL_FIRST_WINDOW, Math.max(0, Math.floor(Number(matchSmallFirstCount) || 0)));
   let matchAttemptSeq = 0;
 
-  // 手续费分配规则（2026-11-01 用户规则调整）：
-  //   卖方手续费 = 成交量 × 3%（所有用户统一费率，取消原直推人数阶梯 50%/40%/30%/20%/10%/3%）
-  //   手续费去向：50% 销毁 + 50% 进 A10 团队分红池（A10 用户日结均分）
-  //   分红池（divRateBps）= 0：团队分润由 A10 池统一承担，不再单设分红池
-  const BURN_RATE_BPS_DEFAULT = 5000n;   // 销毁：手续费的 50%
-  const DIV_RATE_BPS_DEFAULT  = 0n;      // 分红池：0%（A10 池承担团队分润）
-  const FEE_RATE_BPS_DEFAULT  = 300n;    // 卖方统一手续费率 3%
+  // 手续费规则（2026-11-11 调整）：
+  //   买方 0（按标的价实付）；卖方 5%（按成交 USDT 金额扣除，全部进股东池）。
+  function feeRates() {
+    return { fee: SELL_FEE_BPS, buyFee: BUY_FEE_BPS };
+  }
 
   function minerDirectCountOf(wallet) {
     try { return referralService?.minerDirectCount?.(String(wallet || '').toLowerCase()) ?? 0; }
     catch { return 0; }
   }
 
-  function feeRates() {
-    // 手续费率全站统一 3%，不再按直推人数或地址白名单区分
-    return {
-      fee: FEE_RATE_BPS_DEFAULT,
-      // 销毁 = 手续费的 50%；A10 池 = 手续费的 50%（不再单设分红池）
-      burn: BURN_RATE_BPS_DEFAULT,
-      div:  DIV_RATE_BPS_DEFAULT,
-      a10:  BURN_RATE_BPS_DEFAULT,   // A10 池比例 = 手续费的 50%
-    };
+  function payloadOf(row) {
+    try { return JSON.parse(row?.payload_json || '{}') || {}; } catch { return {}; }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -95,9 +87,14 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     if (BigInt(order.input_usdt_units || '0') > 0n) {
       at.creditUsdt(wallet, BigInt(order.input_usdt_units));
     }
+    // 存量 5% 买单的手续费托管余额（新单恒为 0，仅历史单兼容退款）
+    try {
+      const p = JSON.parse(order.payload_json || '{}') || {};
+      if (BigInt(p.buyFeeRemainingUnits || '0') > 0n) at.creditUsdt(wallet, BigInt(p.buyFeeRemainingUnits));
+    } catch {}
     if (BigInt(order.input_a_units || '0') > 0n) {
       at.creditA(wallet, BigInt(order.input_a_units));
-      // 撤单返还已占用的可用额度（旧单未占用过额度时 used 归零，不会凭空发放额度）
+      // 撤单返还已占用的流通额度（旧单未占用过额度时 used 归零，不会凭空发放额度）
       try { db.refundATokenUsableQuota?.(wallet, BigInt(order.input_a_units)); } catch {}
     }
   }
@@ -108,12 +105,29 @@ export function createATokenOrderService({ aTokenService, database, teamService,
   // 避免每次重启都把正常挂着的委托撤掉
   function _migrateLegacyOpenOrders() {
     let cancelled = 0;
+    let refunded = 0;
+    let refundedUnits = 0n;
     try {
       for (const o of db.listATokenOpenOrders()) {
         try {
           let payload = {};
           try { payload = JSON.parse(o.payload_json || '{}') || {}; } catch {}
-          if (payload.feeRateBps !== undefined) continue;   // 新撮合时代的订单，跳过
+          if (payload.feeRateBps !== undefined) {
+            // 新撮合时代订单：2026-11-11 起买入 0 手续费，存量买单另收冻结的
+            // 5% 托管原路退回并归零（幂等：退完即为 0，重启不会重复退款）
+            if (String(o.side) === 'buy') {
+              const escrow = BigInt(payload.buyFeeRemainingUnits || '0');
+              if (escrow > 0n) {
+                at.creditUsdt(String(o.wallet || '').toLowerCase(), escrow);
+                db.updateATokenOrderPayload(o.id, {
+                  ...payload, buyFeeRateBps: 0, buyFeeUnits: '0', buyFeeRemainingUnits: '0',
+                }, clock());
+                refunded += 1;
+                refundedUnits += escrow;
+              }
+            }
+            continue;
+          }
           _refundLocked(o);
           const t = clock();
           db.markATokenOrderCancelled(o.id, { cancelledAt: t, updatedAt: t, reason: 'system_upgrade:p2p_match' });
@@ -121,7 +135,8 @@ export function createATokenOrderService({ aTokenService, database, teamService,
         } catch {}
       }
     } catch {}
-    if (cancelled > 0) console.log(`[A币撮合] 系统升级：${cancelled} 笔旧版挂单已自动撤单退款`);
+    if (cancelled > 0) console.log(`[SVX撮合] 系统升级：${cancelled} 笔旧版挂单已自动撤单退款`);
+    if (refunded > 0) console.log(`[SVX撮合] 买入免手续费：${refunded} 笔挂单的手续费托管 ${formatUnits(refundedUnits, USDT_DECIMALS)} USDT 已退回`);
   }
   _migrateLegacyOpenOrders();
 
@@ -134,46 +149,44 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     const priceStr = formatUnits(price, USDT_DECIMALS);
 
     if (side === 'buy') {
-      // 买单零手续费：USDT 全额参与撮合，按限价折算可获得 A
+      // 买入 0 手续费：冻结金额即成交金额（按标的价实付）
       const usdt = at.parseUsdt(amount, '支付 USDT 数量');
       if (usdt <= 0n) throw new Error('支付 USDT 数量必须大于 0');
       const aReceive = at.usdtToA(usdt, price);
       if (aReceive <= 0n) throw new Error('购买数量过小，请增加 USDT 数量');
+      const feeUsdt = 0n;
+      const totalUsdt = usdt;
       return {
         side:'buy', orderType:'limit', priceUsdt:priceStr,
         usdtIn:formatUnits(usdt, USDT_DECIMALS),
         aOut:formatUnits(aReceive, A_TOKEN_DECIMALS),
         amountUsdt:formatUnits(usdt, USDT_DECIMALS),
+        feeUsdt:formatUnits(feeUsdt, USDT_DECIMALS),
+        totalUsdt:formatUnits(totalUsdt, USDT_DECIMALS),
         feeRateBps:0, feePct:'0%',
-        hint:`冻结 ${formatUnits(usdt, USDT_DECIMALS)} USDT · 限价 ${priceStr} 可买入约 ${formatUnits(aReceive, A_TOKEN_DECIMALS)} AIX · 买方 0 手续费`,
+        hint:`冻结 ${formatUnits(totalUsdt, USDT_DECIMALS)} USDT（买入 0 手续费）· 限价 ${priceStr} 可买入约 ${formatUnits(aReceive, A_TOKEN_DECIMALS)} SVX`,
       };
     }
 
-    const rates = feeRates();   // 卖方统一 3% 手续费
+    const rates = feeRates();   // 卖方 5%（按成交 USDT 金额）
     const directCnt = minerDirectCountOf(wallet);
 
-    // sell：冻结 = 卖出数量本身；手续费按投入量的费率比例划扣
-    // 预估：费 = n × fee，净额 = n − 费（费率快照与成交时一致）
-    const a = at.parseA(amount, '卖出 A 数量');
-    const feeA = a * rates.fee / BPS;           // 手续费 = 投入量 × 费率
-    const netA = a - feeA;                       // 净额 = 投入量 − 手续费
-    const burnA = feeA / 2n;                    // 销毁 = 手续费 50%
-    const a10A  = feeA - burnA;                  // A10 池 = 手续费 50%
-    const divA = 0n;                             // 不再单设分红池
-    const usdtOut = at.aToUsdt(netA, price);
+    // sell：冻结 = 卖出数量本身（手续费不再从币里扣），成交后按 USDT 金额扣 5%
+    const a = at.parseA(amount, '卖出 SVX 数量');
+    const grossUsdt = at.aToUsdt(a, price);
+    const feeUsdt = grossUsdt * rates.fee / BPS;
+    const usdtOut = grossUsdt - feeUsdt;
     return {
       side: 'sell', orderType: 'limit', priceUsdt: priceStr,
       aIn: formatUnits(a, A_TOKEN_DECIMALS),
       lockedA: formatUnits(a, A_TOKEN_DECIMALS),
       usdtOut: formatUnits(usdtOut, USDT_DECIMALS),
-      netA: formatUnits(netA, A_TOKEN_DECIMALS),
-      feeA: formatUnits(feeA, A_TOKEN_DECIMALS),
-      burnA: formatUnits(burnA, A_TOKEN_DECIMALS),
-      dividendA: formatUnits(a10A, A_TOKEN_DECIMALS),
+      grossUsdt: formatUnits(grossUsdt, USDT_DECIMALS),
+      feeUsdt: formatUnits(feeUsdt, USDT_DECIMALS),
       feeRateBps: Number(rates.fee),
       directCount: directCnt,
       feePct: (Number(rates.fee) / 100).toFixed(0) + '%',
-      hint: `只冻结卖出数量 ${formatUnits(a, A_TOKEN_DECIMALS)} A；卖出手续费统一 ${(Number(rates.fee) / 100).toFixed(0)}%（按投入量收取，50%销毁 + 50%进A10分红池），预计实收约 ${formatUnits(usdtOut, USDT_DECIMALS)} USDT`,
+      hint: `冻结卖出数量 ${formatUnits(a, A_TOKEN_DECIMALS)} A；卖出手续费 ${(Number(rates.fee) / 100).toFixed(0)}%（按成交 USDT 金额扣除，全部进股东池），预计实收约 ${formatUnits(usdtOut, USDT_DECIMALS)} USDT`,
     };
   }
 
@@ -181,6 +194,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
   //  下单：市价 / 限价 → 冻结资金 → 尝试撮合 → 未成交部分转委托
   // ─────────────────────────────────────────────────────────────
   function placeOrder({ wallet, side, orderType = 'market', priceUsdt, amount }) {
+    at.assertFreeTrading();
     if (side !== 'buy' && side !== 'sell') throw new Error('side 必须是 buy 或 sell');
     wallet = String(wallet || '').toLowerCase();
     if (!wallet) throw new Error('钱包地址必填');
@@ -196,7 +210,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       ? at.parseUsdt(priceUsdt, '限价')
       : currentPrice;
     if (limitPriceRaw <= 0n) throw new Error('限价必须大于 0');
-    const rates = feeRates();   // 卖方统一 3% 手续费（下单时快照进 payload，撮合按快照结算）
+    const rates = feeRates();   // 买入 0 / 卖出 5%（下单时快照进 payload，撮合按快照结算）
 
     let inputUsdtUnits = 0n;
     let inputAUnits = 0n;
@@ -204,25 +218,28 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     if (side === 'buy') {
       const usdt = at.parseUsdt(amount, '支付 USDT 数量');
       if (usdt <= 0n) throw new Error('支付 USDT 数量必须大于 0');
-      if (at.balanceUsdt(wallet) < usdt) throw new Error('USDT 可用余额不足');
+      // 买入 0 手续费：只冻结成交金额（按标的价实付）
+      const totalUsdt = usdt;
+      if (at.balanceUsdt(wallet) < totalUsdt) {
+        throw new Error(`USDT 可用余额不足：需 ${formatUnits(totalUsdt, USDT_DECIMALS)} USDT`);
+      }
       const aReceive = at.usdtToA(usdt, limitPriceRaw);
       if (aReceive <= 0n) throw new Error('购买数量过小，请增加 USDT 数量');
-      at.debitUsdt(wallet, usdt);                    // 冻结（全额 USDT，买方免手续费）
+      at.debitUsdt(wallet, totalUsdt);               // 冻结：仅成交金额
       inputUsdtUnits = usdt;
     } else {
-      // sell：只冻结卖出数量本身；手续费在成交时按投入量比例划扣
-      // （净额归卖家、费用部分走销毁/A10 池）——100% 可用余额可直接挂满
-      const a = at.parseA(amount, '卖出 A 数量');
+      // sell：只冻结卖出数量本身；5% 手续费在成交时按 USDT 金额从卖方应收里扣
+      const a = at.parseA(amount, '卖出 SVX 数量');
       if (at.balanceA(wallet) < a) {
-        throw new Error(`A 币可用余额不足：需 ${formatUnits(a, A_TOKEN_DECIMALS)} A`);
+        throw new Error(`SVX可用余额不足：需 ${formatUnits(a, A_TOKEN_DECIMALS)} A`);
       }
-      if (a < MIN_SELL_A) throw new Error('AIX 卖出最低 1 个起，买入不限制');
-      // 2026-10-31 匹配池规则：只有经匹配池转换的「可用额度」才可以卖，质押产出（匹配额度）不能直接挂卖
+      if (a < MIN_SELL_A) throw new Error('SVX 卖出最低 1 个起，买入不限制');
+      // 2026-10-31 匹配池规则：只有经匹配池转换的「流通额度」才可以卖，质押产出（蓄能额度）不能直接挂卖
       const quotaSnapshot = db.getATokenUsableQuota(wallet);
       const quotaAvailable = BigInt(quotaSnapshot.releasedUnits) - BigInt(quotaSnapshot.usedUnits);
       if (quotaAvailable < a) {
         const avail = quotaAvailable > 0n ? quotaAvailable : 0n;
-        throw new Error(`可用额度不足：可用额度需通过匹配池转换获得，当前可用 ${formatUnits(avail, A_TOKEN_DECIMALS)} AIX`);
+        throw new Error(`流通额度不足：流通额度需通过匹配池转换获得，当前可用 ${formatUnits(avail, A_TOKEN_DECIMALS)} SVX`);
       }
       at.debitA(wallet, a);
       db.consumeATokenUsableQuota(wallet, a);
@@ -240,8 +257,10 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       payload: {
         orderType,
         feeRateBps: Number(rates.fee),
-        burnRateBps: Number(rates.burn),
-        divRateBps: Number(rates.div),
+        // 买入 0 手续费：字段保留固定 0，供历史撮合逻辑读取时保持结构一致
+        buyFeeRateBps: 0,
+        buyFeeUnits: '0',
+        buyFeeRemainingUnits: '0',
       },
     });
 
@@ -259,7 +278,8 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       ok: true, orderId, orderType, side,
       orderStatus: isFilled ? 'FILLED' : 'OPEN',
       priceUsdt: formatUnits(BigInt(latest?.order_price_usdt_units || limitPriceRaw), USDT_DECIMALS),
-      lockedUsdt: formatUnits(remainUsdt, USDT_DECIMALS),
+      // 委托冻结展示：新单仅成交金额；存量单兼容历史手续费托管余额
+      lockedUsdt: formatUnits(remainUsdt + BigInt(payloadOf(latest).buyFeeRemainingUnits || '0'), USDT_DECIMALS),
       lockedA: formatUnits(remainA, A_TOKEN_DECIMALS),
       createdAt: now0,
     };
@@ -270,6 +290,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       return {
         ...base,
         usdtPaid: myFill.usdtPaid,
+        feeUsdt: myFill.feeUsdt,
         aReceived: myFill.aReceived,
         avgPrice: myFill.avgPrice || null,
         partialFilled: !isFilled && myFill.count > 0,
@@ -279,7 +300,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       ...base,
       aSold: myFill.aSold,
       usdtReceived: myFill.usdtReceived,
-      feeA: myFill.feeA,
+      feeUsdt: myFill.feeUsdt,
       avgPrice: myFill.avgPrice || null,
       partialFilled: !isFilled && myFill.count > 0,
     };
@@ -290,6 +311,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
   //  fills: Map<orderId, fillDetail> 用于把本次撮合明细回传给下单者
   // ─────────────────────────────────────────────────────────────
   function _matchPass(fills = new Map()) {
+    if (!at.liquidityStatus().enabled) return { matched:0, skipped:0, errors:[], trades:0 };
     const currentPrice = at.getPriceUsdtUnits();
     if (currentPrice <= 0n) return { matched: 0, skipped: 0, errors: [] };
 
@@ -335,7 +357,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       const cmpAmt = (x, y) => (x < y ? -1 : x > y ? 1 : 0);
       const byTime = (a, b) => Number(a.created_at) - Number(b.created_at);
 
-      // 买单：同价档内始终「小额优先」（金额小者先成交，2026-10-23 用户确认：AIX 优先卖给小额订单），
+      // 买单：同价档内始终「小额优先」（金额小者先成交，2026-10-23 用户确认：SVX 优先卖给小额订单），
       //       同金额再按挂单时间
       const buys = openRows.filter(r => String(r.side) === 'buy' && BigInt(r.input_usdt_units || '0') > 0n)
         .sort((a, b) => {
@@ -407,16 +429,14 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       : BigInt(sellRaw.order_price_usdt_units);
     if (execPrice <= 0n) return false;
 
-    // 卖方手续费费率（挂单时快照）：手续费 = 消耗投入 × 费率，净额 = 消耗投入 − 手续费
-    let payload = {};
-    try { payload = JSON.parse(sellRaw.payload_json || '{}') || {}; } catch {}
-    const feeBps = BigInt(payload.feeRateBps || Number(FEE_RATE_BPS_DEFAULT));
-    const netDiv = BPS - feeBps;                 // 净额占消耗投入的比例 = 1 − 费率
+    // 费率快照：买入 0（2026-11-11 起）、卖出 5%（按成交 USDT 扣，进股东池）
+    const bPayload = payloadOf(buyRaw);
+    const sPayload = payloadOf(sellRaw);
+    const sellFeeBps = BigInt(sPayload.feeRateBps ?? Number(SELL_FEE_BPS));
 
-    // 本次成交数量：受买方剩余 USDT 与卖方剩余投入（冻结额 × 净额占比）双重约束
+    // 本次成交数量：受买方剩余 USDT 与卖方剩余 A 双重约束
     let aFill = at.usdtToA(bRemainUsdt, execPrice);
-    const aFillCap = sRemainA * netDiv / BPS;
-    if (aFill > aFillCap) aFill = aFillCap;
+    if (aFill > sRemainA) aFill = sRemainA;
     if (aFill <= 0n) return false;
 
     let usdtFill = at.aToUsdt(aFill, execPrice);
@@ -428,79 +448,76 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       if (usdtFill <= 0n || usdtFill > bRemainUsdt) return false;
     }
 
-    // 卖单投入扣减 = 净额折算回含费口径：消耗 = 净额 ÷ (1 − 费率)
-    let sellConsume = aFill * BPS / netDiv;
-    let sellRemainAfter = sRemainA - sellConsume;
-    // 保守兜底：若因舍入导致卖方剩余透支，则缩减本次成交
-    if (sellRemainAfter < 0n) {
-      aFill = aFill + sellRemainAfter;              // 回退透支量（净额层面近似修正）
-      if (aFill <= 0n) return false;
-      usdtFill = at.aToUsdt(aFill, execPrice);
-      if (usdtFill <= 0n || usdtFill > bRemainUsdt) return false;
-      sellConsume = aFill * BPS / netDiv;
-    }
-    const feeFinal = sellConsume - aFill;           // 手续费 = 消耗投入 × 费率
-    // 手续费去向（固定规则，不受销毁开关影响）：50% 销毁 + 50% 进 A10 团队分红池
-    // 销毁开关（burnEnabled）只控制「每日固定补足销毁」
-    const burnFinal = feeFinal / 2n;                // 销毁 = 手续费 50%
-    const a10Final  = feeFinal - burnFinal;          // A10 池 = 手续费 50%
-    const sellAfterFinal = sRemainA - sellConsume;
-
-    // 买方剩余扣减
+    const sellRemainAfter = sRemainA - aFill;
     const buyRemainAfter = bRemainUsdt - usdtFill;
+
+    // 双方手续费均按成交 USDT 金额计算
+    const sellFee = usdtFill * sellFeeBps / BPS;      // 卖方手续费：从应收 USDT 中扣，全部进股东池
+    const sellerNet = usdtFill - sellFee;
+    // 兼容历史单：启动迁移后正常为 0；万一仍有存量 5% 托管，直接退回买家
+    const legacyEscrow = BigInt(bPayload.buyFeeRemainingUnits || '0');
+    if (legacyEscrow > 0n) at.creditUsdt(bWallet, legacyEscrow);
+    const buyFee = 0n;                                // 买入 0 手续费
 
     const groupId = makeId('amt');
 
     // 1) 买家收 A（冻结的 USDT 直接核销给卖家）
     at.creditA(bWallet, aFill);
-    // 2026-11-02 交易大厅买到的 AIX 同步计入涡轮额度（1:1 数量），矿机匹配池可直接使用
+    // 2026-11-02 交易大厅买到的 SVX 同步计入驱动额度（1:1 数量），矿机匹配池可直接使用
     try { db.addATokenTurboQuota(bWallet, aFill); }
-    catch (e) { console.error(`[交易] ${bWallet} 涡轮额度累加失败:`, e?.message || e); }
-    // 2) 卖家收 USDT（其冻结的 A 中净额部分转移给买家）
-    at.creditUsdt(sWallet, usdtFill);
-    // 3) 手续费划扣：50% 销毁
-    if (burnFinal > 0n) at.burn(burnFinal, 'p2p_match', 'P2P 卖方手续费销毁');
-    // 4) A10 池：手续费 50% 进池（日结均分 A10 用户）
-    if (a10Final > 0n) {
-      try { teamService?.distributeToA10Pool(a10Final, groupId, Date.now()); } catch {}
+    catch (e) { console.error(`[交易] ${bWallet} 驱动额度累加失败:`, e?.message || e); }
+    // 2) 卖家收 USDT（成交金额扣除 5% 手续费）
+    at.creditUsdt(sWallet, sellerNet);
+    // 3) 卖出手续费全部进股东池（买入 0，不再产生 buy_fee 记账）
+    try {
+      if (sellFee > 0n) shareholderService?.recordFee({ source: 'sell_fee', refId: `${groupId}:sell`, wallet: sWallet, usdtUnits: sellFee.toString(), payload: { orderId: sellRaw.id } });
+      if (!shareholderService && sellFee > 0n) {
+        console.error(`[交易] 股东池服务缺失，本次卖出手续费未入账 groupId=${groupId} sell=${sellFee}`);
+      }
+    } catch (e) {
+      console.error(`[交易] 手续费入股东池失败 groupId=${groupId}:`, e?.message || e);
     }
-    // 5) 成交量统计
+    // 4) 成交量统计
     at.addVolume(aFill, usdtFill);
 
-    // 写双方成交记录（各自视角）
+    // 写双方成交记录（各自视角；手续费口径为 USDT）
     const priceStr = formatUnits(execPrice, USDT_DECIMALS);
     db.insertATokenTradeRow({
       id: makeId('att'), wallet: bWallet, side: 'buy',
       priceUsdtUnits: execPrice.toString(),
       sizeUnits: aFill.toString(),
       amountUsdtUnits: usdtFill.toString(),
-      feeUnits: '0', burnUnits: '0', dividendUnits: '0',
+      feeUnits: buyFee.toString(), burnUnits: '0', dividendUnits: '0',
       createdAt: now,
-      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: buyRaw.id, counterOrderId: sellRaw.id, priceUsdt: priceStr },
+      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: buyRaw.id, counterOrderId: sellRaw.id, priceUsdt: priceStr, feeAsset: 'USDT' },
     });
     db.insertATokenTradeRow({
       id: makeId('att'), wallet: sWallet, side: 'sell',
       priceUsdtUnits: execPrice.toString(),
       sizeUnits: aFill.toString(),
       amountUsdtUnits: usdtFill.toString(),
-      feeUnits: feeFinal.toString(),
-      burnUnits: burnFinal.toString(),
-      dividendUnits: a10Final.toString(),
+      feeUnits: sellFee.toString(),
+      burnUnits: '0',
+      dividendUnits: '0',
       createdAt: now,
-      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: sellRaw.id, counterOrderId: buyRaw.id, priceUsdt: priceStr },
+      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: sellRaw.id, counterOrderId: buyRaw.id, priceUsdt: priceStr, feeAsset: 'USDT', netUsdtUnits: sellerNet.toString() },
     });
 
     // 更新两张订单的剩余冻结额度；剩余量低于灰尘阈值即视为该单已完成（尾差原路退回），
     // 否则最后一点点尾差会留成"挂单中"，下一轮被灰尘清理误标记为「已撤单」
     const buyDone = buyRemainAfter < DUST_USDT;
-    const sellDone = sellAfterFinal < DUST_A;
+    const sellDone = sellRemainAfter < DUST_A;
     db.updateATokenOrderInputs(buyRaw.id, {
       inputUsdtUnits: buyDone ? '0' : buyRemainAfter.toString(),
       inputAUnits: '0', updatedAt: now,
     });
+    db.updateATokenOrderPayload(buyRaw.id, {
+      ...bPayload,
+      buyFeeRateBps: 0, buyFeeUnits: '0', buyFeeRemainingUnits: '0',
+    }, now);
     db.updateATokenOrderInputs(sellRaw.id, {
       inputUsdtUnits: '0',
-      inputAUnits: sellDone ? '0' : sellAfterFinal.toString(),
+      inputAUnits: sellDone ? '0' : sellRemainAfter.toString(),
       updatedAt: now,
     });
     if (buyDone) {
@@ -510,7 +527,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       });
     }
     if (sellDone) {
-      if (sellAfterFinal > 0n) at.creditA(sWallet, sellAfterFinal);       // 尾差（灰尘）原路退回
+      if (sellRemainAfter > 0n) at.creditA(sWallet, sellRemainAfter);     // 尾差（灰尘）原路退回
       db.markATokenOrderFilled(sellRaw.id, {
         fillPriceUsdtUnits: execPrice.toString(), fillTradeId: groupId, filledAt: now, updatedAt: now,
       });
@@ -520,7 +537,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     buyRaw.status = buyDone ? 'FILLED' : 'OPEN';
     buyRaw.input_usdt_units = buyDone ? '0' : buyRemainAfter.toString();
     sellRaw.status = sellDone ? 'FILLED' : 'OPEN';
-    sellRaw.input_a_units = sellDone ? '0' : sellAfterFinal.toString();
+    sellRaw.input_a_units = sellDone ? '0' : sellRemainAfter.toString();
 
     // 下单响应明细累计
     const fmtU = u => formatUnits(u, USDT_DECIMALS);
@@ -528,21 +545,22 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     // 累计用 BigInt 求和后再格式化：展示字段是带小数的字符串，若回读 BigInt('12.5') 会抛错
     // 并导致整轮撮合被 break 中断，故一律只对 sumUnits / sumUsdt / sumFee 等 BigInt 累加。
     const accBuy = fills.get(buyRaw.id) || {
-      aReceived: '0', usdtPaid: '0', count: 0, sumUnits: 0n, sumUsdt: 0n,
+      aReceived: '0', usdtPaid: '0', feeUsdt: '0', count: 0, sumUnits: 0n, sumUsdt: 0n, sumFee: 0n,
     };
-    accBuy.sumUnits += aFill; accBuy.sumUsdt += usdtFill; accBuy.count += 1;
+    accBuy.sumUnits += aFill; accBuy.sumUsdt += usdtFill; accBuy.sumFee += buyFee; accBuy.count += 1;
     accBuy.aReceived = fmtA2(accBuy.sumUnits);
     accBuy.usdtPaid = fmtU(accBuy.sumUsdt);
+    accBuy.feeUsdt = fmtU(accBuy.sumFee || 0n);
     accBuy.avgPrice = accBuy.sumUnits > 0n ? fmtU(accBuy.sumUsdt * 1_000000000000000000n / accBuy.sumUnits, USDT_DECIMALS) : null;
     fills.set(buyRaw.id, accBuy);
 
     const accSell = fills.get(sellRaw.id) || {
-      aSold: '0', usdtReceived: '0', feeA: '0', count: 0, sumUnits: 0n, sumUsdt: 0n, sumFee: 0n,
+      aSold: '0', usdtReceived: '0', feeUsdt: '0', count: 0, sumUnits: 0n, sumUsdt: 0n, sumFee: 0n,
     };
-    accSell.sumUnits += aFill; accSell.sumUsdt += usdtFill; accSell.sumFee += feeFinal; accSell.count += 1;
+    accSell.sumUnits += aFill; accSell.sumUsdt += sellerNet; accSell.sumFee += sellFee; accSell.count += 1;
     accSell.aSold = fmtA2(accSell.sumUnits);
     accSell.usdtReceived = fmtU(accSell.sumUsdt);
-    accSell.feeA = fmtA2(accSell.sumFee || 0n);
+    accSell.feeUsdt = fmtU(accSell.sumFee || 0n);
     accSell.avgPrice = accSell.sumUnits > 0n ? fmtU(accSell.sumUsdt * 1_000000000000000000n / accSell.sumUnits, USDT_DECIMALS) : null;
     fills.set(sellRaw.id, accSell);
 
@@ -594,16 +612,9 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     };
   }
 
-  // 卖单可成交给买家的净 A（冻结额按该单手续费率折算：净额 = 冻结 × (1 − 费率)）
+  // 卖单可成交 A = 冻结量本身（2026-11-09 起卖出手续费改按 USDT 金额扣除，不再从币里扣）
   function _sellNetA(row) {
-    const frozen = BigInt(row.input_a_units || '0');
-    if (frozen <= 0n) return 0n;
-    let feeBps = FEE_RATE_BPS_DEFAULT;
-    try {
-      const p = JSON.parse(row.payload_json || '{}') || {};
-      if (p.feeRateBps != null) feeBps = BigInt(p.feeRateBps);
-    } catch {}
-    return frozen * (BPS - feeBps) / BPS;
+    return BigInt(row.input_a_units || '0');
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -670,8 +681,8 @@ export function createATokenOrderService({ aTokenService, database, teamService,
 
   // ─────────────────────────────────────────────────────────────
   //  挂单明细：逐笔列出当前 OPEN 委托（不包含钱包地址，公开可看）
-  //  买单展示：挂单价 / 委托 USDT 金额 / 按挂单价可买 AIX 数量
-  //  卖单展示：挂单价 / 委托卖出 AIX 数量（含费冻结额）/ 可成交净 A / 折合 USDT
+  //  买单展示：挂单价 / 委托 USDT 金额 / 按挂单价可买 SVX 数量
+  //  卖单展示：挂单价 / 委托卖出 SVX 数量（含费冻结额）/ 可成交净 A / 折合 USDT
   // ─────────────────────────────────────────────────────────────
   function openOrders({ limit = 50 } = {}) {
     const rows = [];
@@ -814,14 +825,17 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     };
   }
 
-  // 卖出手续费档案：全站统一 3%（供报价/前端展示）
+  // 手续费档案：买入 0、卖出 5%（按成交 USDT 金额；卖方从应收中扣）
   function sellFeeProfile(wallet) {
     const directCount = minerDirectCountOf(wallet);
-    const fee = FEE_RATE_BPS_DEFAULT;
-    return { feeRateBps: Number(fee), feePct: (Number(fee) / 100).toFixed(0) + '%', directCount };
+    return {
+      feeRateBps: Number(SELL_FEE_BPS), feePct: '5%',
+      buyFeeRateBps: 0, buyFeePct: '0%',
+      directCount,
+    };
   }
 
-  // 可用额度（2026-10-31 匹配池规则）：只有经匹配池转换的可用额度可以卖；挂单占用、撤单返还
+  // 流通额度（2026-10-31 匹配池规则）：只有经匹配池转换的流通额度可以卖；挂单占用、撤单返还
   function sellQuota(wallet) {
     const q = db.getATokenUsableQuota(String(wallet || '').toLowerCase());
     const released = BigInt(q.releasedUnits);

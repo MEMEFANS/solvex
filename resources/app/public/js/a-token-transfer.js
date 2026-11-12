@@ -1,4 +1,4 @@
-// AIX 互转 · 资产页 AIX 行内嵌 modal · 前端统一以 AIX 为显示单位
+// SVX 互转 · 资产页 SVX 行内嵌 modal · 前端统一以 SVX 为显示单位
 // 依赖：window.loadWalletProfile / window.currentWalletProfile（portal 全局）
 // 全部原生 JS 自渲染 modal，复用 a-token-withdrawal 的 .awd-* 样式
 (function () {
@@ -33,7 +33,7 @@
       <div class="awd-backdrop" data-at-close="1"></div>
       <div class="awd-dialog">
         <div class="awd-header">
-          <h3>AIX 互转</h3>
+          <h3>SVX 互转</h3>
           <button class="awd-close" data-at-close="1" aria-label="关闭">×</button>
         </div>
         <div class="awd-body">
@@ -44,30 +44,30 @@
             <div class="awd-hint">请向对方确认用户 ID · 转账不可撤销</div>
           </div>
           <div class="awd-field">
-            <label>转让数量（AIX）</label>
-            <input id="at-amount" type="number" min="0" step="any" placeholder="请输入 AIX 数量">
+            <label>转让数量（SVX）</label>
+            <input id="at-amount" type="number" min="0" step="any" placeholder="请输入 SVX 数量">
             <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:6px">
-              <button type="button" class="at-pct" data-pct="25" style="background:#101a1c;border:1px solid #29413e;color:#9fb0ad;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">25%</button>
-              <button type="button" class="at-pct" data-pct="50" style="background:#101a1c;border:1px solid #29413e;color:#9fb0ad;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">50%</button>
-              <button type="button" class="at-pct" data-pct="75" style="background:#101a1c;border:1px solid #29413e;color:#9fb0ad;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">75%</button>
-              <button type="button" class="at-pct" data-pct="100" style="background:#101a1c;border:1px solid #29413e;color:#9fb0ad;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">全部</button>
+              <button type="button" class="at-pct" data-pct="25" style="background:#ffffff;border:1px solid #d9e4e0;color:#4b6c66;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">25%</button>
+              <button type="button" class="at-pct" data-pct="50" style="background:#ffffff;border:1px solid #d9e4e0;color:#4b6c66;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">50%</button>
+              <button type="button" class="at-pct" data-pct="75" style="background:#ffffff;border:1px solid #d9e4e0;color:#4b6c66;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">75%</button>
+              <button type="button" class="at-pct" data-pct="100" style="background:#ffffff;border:1px solid #d9e4e0;color:#4b6c66;border-radius:6px;padding:6px 0;cursor:pointer;font-size:11px">全部</button>
             </div>
-            <div class="awd-hint">最少互转 <b style="color:#50d2c2">20 AIX</b> 起</div>
-            <div class="awd-hint">我的 AIX 余额：<b id="at-balance" style="color:#50d2c2">0 AIX</b></div>
-            <div class="awd-hint" id="at-fee-hint" style="color:#f6c454">手续费率加载中…</div>
+            <div class="awd-hint">最少互转 <b style="color:#0e9c88">20 SVX</b> 起</div>
+            <div class="awd-hint">我的 SVX 余额：<b id="at-balance" style="color:#0e9c88">0 SVX</b></div>
+            <div class="awd-hint" id="at-fee-hint" style="color:#a8700a">手续费率加载中…</div>
           </div>
           <div class="awd-quote">
-            <div class="awd-quote-row"><span>转让总量</span><b id="at-q-amt">0 AIX</b></div>
-            <div class="awd-quote-row"><span id="at-q-fee-lbl">💥 手续费（3%）</span><b id="at-q-fee" style="color:#f26c78">- 0 AIX</b></div>
-            <div class="awd-quote-row"><span>　└ 销毁（手续费 50%）</span><b id="at-q-burn" style="color:#f26c78">- 0 AIX</b></div>
-            <div class="awd-quote-row"><span>　└ 分红池（手续费 50%）</span><b id="at-q-div" style="color:#f6c454">- 0 AIX</b></div>
-            <div class="awd-quote-row"><span>✅ 对方实收</span><b id="at-q-net" style="color:#50d2c2">0 AIX</b></div>
+            <div class="awd-quote-row"><span>转让总量</span><b id="at-q-amt">0 SVX</b></div>
+            <div class="awd-quote-row"><span id="at-q-fee-lbl">💥 手续费（3%）</span><b id="at-q-fee" style="color:#c62a37">- 0 SVX</b></div>
+            <div class="awd-quote-row"><span>　└ 销毁（手续费 50%）</span><b id="at-q-burn" style="color:#c62a37">- 0 SVX</b></div>
+            <div class="awd-quote-row"><span>　└ 分红池（手续费 50%）</span><b id="at-q-div" style="color:#a8700a">- 0 SVX</b></div>
+            <div class="awd-quote-row"><span>✅ 对方实收</span><b id="at-q-net" style="color:#0e9c88">0 SVX</b></div>
           </div>
           <button id="at-submit" class="awd-submit" style="background:linear-gradient(135deg,#f26c78,#c8324a)">⚠️ 确认互转（手续费由您承担）</button>
-          <div style="margin-top:14px;border-top:1px solid #1c2a28;padding-top:10px">
+          <div style="margin-top:14px;border-top:1px solid #d9e4e0;padding-top:10px">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px">
-              <span style="font-size:12px;color:#9fb0ad;font-weight:600">最近互转记录</span>
-              <a href="javascript:void(0)" id="at-history-all" style="font-size:11px;color:#50d2c2;text-decoration:none">全部记录 →</a>
+              <span style="font-size:12px;color:#4b6c66;font-weight:600">最近互转记录</span>
+              <a href="javascript:void(0)" id="at-history-all" style="font-size:11px;color:#0e9c88;text-decoration:none">全部记录 →</a>
             </div>
             <div id="at-history"></div>
           </div>
@@ -87,7 +87,7 @@
   }
 
   // 当前钱包手续费率（bps），打开弹窗时从 /api/a-token/transfer-quote 拉取；
-  // 全站统一 3%（与 AIX 交易卖盘一致，不再按直推人数分档）
+  // 全站统一 3%（与 SVX 交易卖盘一致，不再按直推人数分档）
   let feeRateBps = 300;
   let directCount = 0;
 
@@ -99,16 +99,16 @@
     const net = n - fee;
     const pct = (feeRateBps / 100).toFixed(0);
     if ($('at-q-fee-lbl')) $('at-q-fee-lbl').textContent = `💥 手续费（${pct}%）`;
-    if ($('at-q-amt')) $('at-q-amt').textContent = fmtA(n) + ' AIX';
-    if ($('at-q-fee')) $('at-q-fee').textContent = '- ' + fmtA(fee) + ' AIX';
-    if ($('at-q-burn')) $('at-q-burn').textContent = '- ' + fmtA(burn) + ' AIX';
-    if ($('at-q-div')) $('at-q-div').textContent = '- ' + fmtA(div) + ' AIX';
-    if ($('at-q-net')) $('at-q-net').textContent = fmtA(net) + ' AIX';
+    if ($('at-q-amt')) $('at-q-amt').textContent = fmtA(n) + ' SVX';
+    if ($('at-q-fee')) $('at-q-fee').textContent = '- ' + fmtA(fee) + ' SVX';
+    if ($('at-q-burn')) $('at-q-burn').textContent = '- ' + fmtA(burn) + ' SVX';
+    if ($('at-q-div')) $('at-q-div').textContent = '- ' + fmtA(div) + ' SVX';
+    if ($('at-q-net')) $('at-q-net').textContent = fmtA(net) + ' SVX';
   }
 
   function amountUnits(value) {
     const match = /^(\d+)(?:\.(\d{0,18}))?$/.exec(String(value || '').trim());
-    if (!match) throw new Error('请输入有效的 AIX 数量（最多 18 位小数）');
+    if (!match) throw new Error('请输入有效的 SVX 数量（最多 18 位小数）');
     return BigInt(match[1]) * 10n ** 18n + BigInt((match[2] || '').padEnd(18, '0'));
   }
 
@@ -127,11 +127,11 @@
       const prof = await api('/api/a-token/profile');
       window.__atTransferMyUid = prof?.userId || '';
       window.__atTransferBalanceA = String(prof?.balances?.A || '0');
-      if ($('at-balance')) $('at-balance').textContent = fmtA(window.__atTransferBalanceA) + ' AIX';
+      if ($('at-balance')) $('at-balance').textContent = fmtA(window.__atTransferBalanceA) + ' SVX';
     } catch {
       window.__atTransferMyUid = '';
       window.__atTransferBalanceA = 0;
-      if ($('at-balance')) $('at-balance').textContent = '0 AIX';
+      if ($('at-balance')) $('at-balance').textContent = '0 SVX';
     }
     // 拉取当前钱包的手续费率（全站统一 3%）
     try {
@@ -141,7 +141,7 @@
       const pct = (feeRateBps / 100).toFixed(0);
       const hint = $('at-fee-hint');
       if (hint) {
-        hint.innerHTML = `手续费率 <b style="color:#f6c454">${pct}%</b>（全站统一）· 手续费由转让方承担，50% 销毁 + 50% 进分红池`;
+        hint.innerHTML = `手续费率 <b style="color:#a8700a">${pct}%</b>（全站统一）· 手续费由转让方承担，50% 销毁 + 50% 进分红池`;
       }
     } catch {
       const hint = $('at-fee-hint');
@@ -158,17 +158,17 @@
       const amt = $('at-amount')?.value?.trim();
       if (!uid || !amt) { setStatus('请填写接收方用户 ID 和转让数量', 'error'); return; }
       const n = Number(amt);
-      if (!Number.isFinite(n) || n <= 0) { setStatus('请输入有效的 AIX 数量', 'error'); return; }
-      if (n < 20) { setStatus('AIX 互转最低 20 个起', 'error'); return; }
+      if (!Number.isFinite(n) || n <= 0) { setStatus('请输入有效的 SVX 数量', 'error'); return; }
+      if (n < 20) { setStatus('SVX 互转最低 20 个起', 'error'); return; }
       const bal = window.__atTransferBalanceA || '0';
-      if (amountUnits(amt) > amountUnits(bal)) { setStatus(`AIX 余额不足 · 当前可用 ${fmtA(bal)} AIX`, 'error'); return; }
+      if (amountUnits(amt) > amountUnits(bal)) { setStatus(`SVX 余额不足 · 当前可用 ${fmtA(bal)} SVX`, 'error'); return; }
       setStatus('正在提交...', 'info');
       // 钱包签名确认互转（签名绑定幂等编号，后端按编号幂等防重放/双转）
       if (!connectedProvider || !connectedWalletAddress) { setStatus('请先连接钱包', 'error'); return; }
       setStatus('请在钱包中签名确认互转...', 'info');
       const timestamp = String(Date.now());
       const idempotencyKey = `at_${Date.now()}_${Math.random().toString(16).slice(2, 10)}`;
-      const message = `AxiX 互转确认：数量 ${amt} AIX，收款方 ${uid}，编号 ${idempotencyKey}，时间：${timestamp}`;
+      const message = `Solvex 互转确认：数量 ${amt} SVX，收款方 ${uid}，编号 ${idempotencyKey}，时间：${timestamp}`;
       let signature;
       try {
         signature = await connectedProvider.request({ method:'personal_sign', params:[message, connectedWalletAddress] });
@@ -181,7 +181,7 @@
         body: JSON.stringify({ toUserId: uid, amount: amt, signature, timestamp }),
         idempotencyKey,
       });
-      setStatus(`互转成功 · 对方实收 ${fmtA(r?.net)} AIX，手续费 ${fmtA(r?.fee)} AIX（${r?.feePct || (feeRateBps / 100).toFixed(0) + '%'}）`, 'ok');
+      setStatus(`互转成功 · 对方实收 ${fmtA(r?.net)} SVX，手续费 ${fmtA(r?.fee)} SVX（${r?.feePct || (feeRateBps / 100).toFixed(0) + '%'}）`, 'ok');
       if ($('at-uid')) $('at-uid').value = '';
       if ($('at-amount')) $('at-amount').value = '';
       refreshFee();
@@ -198,20 +198,20 @@
 
   // ── 最近互转记录（/api/a-token/my-transfers 最近 5 条）：互转弹窗内直接看 ──
   function shortAddr(a) { return a ? `${String(a).slice(0, 6)}…${String(a).slice(-4)}` : '—'; }
-  function historyEmpty(text) { return `<div style="font-size:11px;color:#6b7f7c;padding:8px 0">${text}</div>`; }
+  function historyEmpty(text) { return `<div style="font-size:11px;color:#5b6b66;padding:8px 0">${text}</div>`; }
   function historyRow(t) {
     const out = t.direction === 'out';
     const when = new Date(Number(t.createdAt) || 0).toLocaleString('zh-CN', { hour12: false, timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
     // 转出展示总额（自担手续费），转入按净额到账
     const amt = fmtA(out ? t.amount : (t.payload?.net ?? t.amount));
     const who = out ? ('ID ' + escapeHtml(t.toUserId || '')) : shortAddr(t.counterparty);
-    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed #1c2a28;font-size:12px">
+    return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-top:1px dashed #d9e4e0;font-size:12px">
       <span style="display:flex;align-items:center;gap:6px;min-width:0;overflow:hidden">
         <span class="aix-tf-badge ${out ? 'out' : 'in'}">${out ? '转出' : '转入'}</span>
-        <span style="color:#c6d4d1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${who}</span>
-        <span style="color:#6b7f7c;white-space:nowrap">${when}</span>
+        <span style="color:#4b6c65;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${who}</span>
+        <span style="color:#5b6b66;white-space:nowrap">${when}</span>
       </span>
-      <b style="color:${out ? '#f26c78' : '#50d2c2'};white-space:nowrap">${out ? '−' : '+'}${amt} AIX</b>
+      <b style="color:${out ? '#f26c78' : '#50d2c2'};white-space:nowrap">${out ? '−' : '+'}${amt} SVX</b>
     </div>`;
   }
   async function loadHistory() {
@@ -237,7 +237,7 @@
     if ($('at-amount')) $('at-amount').value = '';
     refreshFee();
     if (!window.currentWalletProfile?.authenticated) {
-      setStatus('请先连接钱包再进行 AIX 互转', 'error');
+      setStatus('请先连接钱包再进行 SVX 互转', 'error');
       return;
     }
     await loadProfileIntoModal();

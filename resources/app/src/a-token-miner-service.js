@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { A_TOKEN_DECIMALS } from './a-token-service.js';
 import { minerIncomeSummary } from './a-token-income.js';
 
-// A 币矿机：激活赠送矿机，60s 定时巡检，**北京时间每天 00:00 日结一次**（一天一条流水）。
+// SVX矿机：激活赠送矿机，60s 定时巡检，**北京时间每天 00:00 日结一次**（一天一条流水）。
 // 套餐 mini120(100A/30天,日约3.33A) 与 pro1500(1500A/90天,日16.67A)。
 // plan key 'mini120' 为历史兼容名，Mini 产出 100 枚；Pro 可同时持有多台。
 // 产出按 dailyTargetUnits 比例折算：每天 00:00（北京）结算「上次结算点 → 今日 00:00」的实际时长，
@@ -133,12 +133,12 @@ export function createATokenMinerService({ aTokenService, database, teamService,
             aTokenService.transaction(() => releaseOne(structuredClone(miner), now));
           } catch (error) {
             failed += 1;
-            console.error('[A币矿机] 单台结算失败，跳过待下轮重试', miner?.id, error?.message || error);
+            console.error('[SVX矿机] 单台结算失败，跳过待下轮重试', miner?.id, error?.message || error);
           }
         }
       }
     }
-    if (failed > 0) console.warn(`[A币矿机] 本轮 ${miners.length} 台中 ${failed} 台失败，将于 1 分钟后自动重试`);
+    if (failed > 0) console.warn(`[SVX矿机] 本轮 ${miners.length} 台中 ${failed} 台失败，将于 1 分钟后自动重试`);
     return miners.length;
   }
 

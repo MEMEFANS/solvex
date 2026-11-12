@@ -1,4 +1,4 @@
-// Legacy AIXPool authorizations do not expire on-chain. Never refund issued claims by timeout.
+// Legacy SolvexPool authorizations do not expire on-chain. Never refund issued claims by timeout.
 import crypto from 'node:crypto';
 import {
   Wallet,
@@ -26,23 +26,23 @@ export function createATokenClaimService({
   rpcUrl,
   confirmations = 15,
   database,                 // 读写 a_token_claims 表
-  contractAddress = '',     // AIXPool 合约地址
-  signerPrivateKey = '',    // 平台签名私钥（AIX_POOL_SIGNER_PRIVATE_KEY）
+  contractAddress = '',     // SolvexPool 合约地址
+  signerPrivateKey = '',    // 平台签名私钥（SVX_POOL_SIGNER_PRIVATE_KEY，兼容旧键 AIX_POOL_SIGNER_PRIVATE_KEY）
   chainId = BSC_CHAIN_ID,
-  // 限额（单位：AIX 数量，小数=1）
-  minClaimA = 100,          // 单笔最小 100 AIX
-  maxClaimA = 500_000,      // 单笔最大 50 万 AIX
-  dailyCapA = 2_000_000,    // 单日累计上限 200 万 AIX
+  // 限额（单位：SVX 数量，小数=1）
+  minClaimA = 100,          // 单笔最小 100 SVX
+  maxClaimA = 500_000,      // 单笔最大 50 万 SVX
+  dailyCapA = 2_000_000,    // 单日累计上限 200 万 SVX
   staleTimeoutMs = 24 * 60 * 60_000, // 24 小时未确认视为失效
 } = {}) {
-  if (!aTokenService) throw new Error('AIX 提现签名服务缺少 aTokenService');
-  if (!database) throw new Error('AIX 提现签名服务缺少 database');
+  if (!aTokenService) throw new Error('SVX 提现签名服务缺少 aTokenService');
+  if (!database) throw new Error('SVX 提现签名服务缺少 database');
 
   const contract = isAddress(String(contractAddress || '')) ? getAddress(contractAddress) : '';
   let signerWallet = null;
   if (signerPrivateKey) {
     try { signerWallet = new Wallet(String(signerPrivateKey).trim()); }
-    catch { throw new Error('AIX_POOL_SIGNER_PRIVATE_KEY 格式无效'); }
+    catch { throw new Error('SVX_POOL_SIGNER_PRIVATE_KEY 格式无效'); }
   }
   const configured = Boolean(contract && signerWallet);
 
@@ -74,6 +74,7 @@ export function createATokenClaimService({
       minClaimA,
       maxClaimA,
       dailyCapA,
+      feeRateBps: 200,
       staleTimeoutMs,
       automaticRefunds: false,
     };
@@ -117,25 +118,35 @@ export function createATokenClaimService({
     if (!wallet) throw new Error('缺少钱包地址');
     if (!isAddress(String(wallet))) throw new Error('钱包地址格式无效');
     if (!configured) {
-      throw new Error('AIXPool 链上提现未启用（请先部署 AIXPool 合约并配置 AIX_POOL_CONTRACT_ADDRESS / AIX_POOL_SIGNER_PRIVATE_KEY）');
+      throw new Error('SolvexPool 链上提现未启用（请先部署 SolvexPool 合约并配置 SVX_POOL_CONTRACT_ADDRESS / SVX_POOL_SIGNER_PRIVATE_KEY）');
     }
     const recipient = getAddress(wallet);
     const amountUnits = toAUnits(amount);
     if (!amountUnits) throw new Error('提取金额无效');
     if (amountUnits < parseUnits(String(minClaimA), LEDGER_DECIMALS))
-      throw new Error(`最小提取金额为 ${minClaimA} AIX`);
+      throw new Error(`最小提取金额为 ${minClaimA} SVX`);
     if (amountUnits > parseUnits(String(maxClaimA), LEDGER_DECIMALS))
-      throw new Error(`单笔最大提取 ${maxClaimA} AIX`);
+      throw new Error(`单笔最大提取 ${maxClaimA} SVX`);
 
     // 单日限额
     const todayUsed = dailyClaimed(recipient);
     if (todayUsed + amountUnits > parseUnits(String(dailyCapA), LEDGER_DECIMALS))
-      throw new Error(`单日提取上限 ${dailyCapA} AIX，今日已用 ${formatUnits(todayUsed, LEDGER_DECIMALS)} AIX`);
+      throw new Error(`单日提取上限 ${dailyCapA} SVX，今日已用 ${formatUnits(todayUsed, LEDGER_DECIMALS)} SVX`);
 
-    // 检查账面 AIX 余额
+    const feeUnits = amountUnits * 200n / 10000n;
+    const needUnits = amountUnits + feeUnits;
+    // 提取数量为链上到账，另收 2% 进入 LP。
     const balanceA = aTokenService.balanceA(recipient);
-    if (BigInt(balanceA) < amountUnits)
-      throw new Error(`AIX 余额不足，需要 ${formatUnits(amountUnits, LEDGER_DECIMALS)} AIX`);
+    if (BigInt(balanceA) < needUnits)
+      throw new Error(`SVX 余额不足，需要 ${formatUnits(needUnits, LEDGER_DECIMALS)} SVX（含2%手续费）`);
+
+    // 卖单额度闸门（2026-11-09 P2）：链上领取等同离场卖出，仅匹配池转换出的「流通额度」可领。
+    // 签名即扣减流通额度；旧合约授权不可撤销、不做退款回退。
+    const quota = database.getATokenUsableQuota(recipient);
+    const quotaAvailable = BigInt(quota.releasedUnits || '0') - BigInt(quota.usedUnits || '0');
+    if (quotaAvailable < amountUnits) {
+      throw new Error(`流通额度不足：链上领取需先通过超速驱动协议转换，当前可用 ${formatUnits(quotaAvailable > 0n ? quotaAvailable : 0n, LEDGER_DECIMALS)} SVX`);
+    }
 
     // 立即扣减账面余额（防并发请求）
     // Debit and claim persistence commit together below.
@@ -156,6 +167,9 @@ export function createATokenClaimService({
       id: claimId,
       wallet: recipient,
       amountUnits: amountUnits.toString(),
+      feeUnits: feeUnits.toString(),
+      needUnits: needUnits.toString(),
+      quotaConsumedUnits: amountUnits.toString(),   // 已占用流通额度（卖单闸门审计）
       nonce: nonceHex,
       signature,
       contractAddress: contract,
@@ -171,7 +185,10 @@ export function createATokenClaimService({
     const update = walletService.beginAtomicUpdate();
     try {
       database.transaction(() => {
-        aTokenService.debitA(recipient, amountUnits.toString());
+        aTokenService.debitA(recipient, needUnits.toString());
+        database.consumeATokenUsableQuota(recipient, amountUnits);   // 占用可领额度（卖单闸门）
+        database.insertATokenLpPoolEntryRow({id:`alp_claim_${claimId}`,source:'withdraw_fee',refId:`claim:${claimId}`,
+          wallet:recipient,aUnits:feeUnits.toString(),direction:'in',createdAt:now,payload:{claimId,rateBps:200}});
         walletService.validateState();
         database.replaceWalletStateInside(update.exportState());
         database.upsertATokenClaimRow(record);
@@ -183,6 +200,8 @@ export function createATokenClaimService({
       claimId,
       amount: Number(amount),
       amountUnits: amountUnits.toString(),
+      feeUnits: feeUnits.toString(),
+      needUnits: needUnits.toString(),
       nonce: nonceHex,
       signature,
       contractAddress: contract,

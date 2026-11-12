@@ -78,18 +78,6 @@ try {
   assert.equal(await admin.evaluate(() => window.auditInlineExecuted),undefined); assert.equal(await admin.evaluate(() => window.auditEventExecuted),undefined);
   mark('text-safe dialogs and actual CSP prevent injected script tags and inline event handlers');
 
-  await admin.click('[data-admin-page="lottery"]'); await admin.waitForSelector('[data-al-tab="social"]'); await admin.click('[data-al-tab="social"]');
-  await admin.waitForSelector('[data-social-approve="ss_bad"]'); assert.equal(await admin.$eval('[data-social-approve="ss_bad"]',node => node.disabled),true);
-  assert.equal(await admin.$('[data-shot="ss_bad"]'),null); assert.equal(await admin.$eval('[data-social-approve="ss_good"]',node => node.disabled),false);
-  await admin.click('[data-shot="ss_good"]'); await admin.waitForSelector('dialog iframe');
-  assert.equal(await admin.$eval('dialog iframe',node => node.getAttribute('sandbox')),'');
-  const frame = await (await admin.$('dialog iframe')).contentFrame();
-  await frame.waitForSelector('img');
-  await frame.waitForFunction(() => document.querySelector('img')?.naturalWidth > 0);
-  assert.equal(await frame.evaluate(() => { try { return Boolean(parent.document); } catch { return false; } }),false);
-  await admin.click('dialog button');
-  mark('invalid legacy images cannot be approved; valid screenshot opens in a scriptless frame with no parent access');
-
   const user = await browser.newPage(); user.on('pageerror',error => result.runtimeErrors.push(error.message));
   await user.setRequestInterception(true);
   user.on('request',request => {
@@ -178,7 +166,7 @@ try {
   assert.equal(minerMutations.length,2);assert.equal(minerMutations[0].requestId,minerMutations[1].requestId);
   await funds.waitForSelector('#funds-miners-body td.wallet');
   assert.equal(await funds.$('#funds-miners-body img, #funds-miners-body svg, #funds-miners-body script'),null);
-  mark('funds-only asset/miner forms work on mobile, keep full AIX precision and retry with one request ID');
+  mark('funds-only asset/miner forms work on mobile, keep full SVX precision and retry with one request ID');
   await funds.click('#funds-tab-withdrawals'); await funds.waitForFunction(() => document.getElementById('funds-withdrawal-count').textContent.includes('1 条'));
   holdWithdrawal=true; await funds.click('#funds-refresh'); await funds.waitForFunction(() => document.getElementById('funds-app').hidden === false);
   const deadline = Date.now()+3000; while (!heldWithdrawal && Date.now()<deadline) await new Promise(resolve=>setTimeout(resolve,25)); assert(heldWithdrawal);

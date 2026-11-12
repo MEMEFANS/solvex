@@ -70,10 +70,9 @@ async function switchTab(name) {
   window.dispatchEvent(new CustomEvent('pagechange', { detail:{ previous, current:name } }));
   if (name !== 'trade') tradeMarketStream?.close();
   else if (window.__tradeDeferredReady) initTradeMarketStream();
-  const nav = ['de', 'ex', 'rs'].includes(name)
-    ? document.querySelector('[data-strategy-nav]')
-    : document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`);
+  const nav = document.querySelector(`.tab-btn[onclick="switchTab('${name}')"]`);
   nav?.classList.add('active');
+  if (name === 'trade') syncTradeNavigation();
   toggleMobileNav(false);
   const pending = window.isPageModuleReady?.(name) ? null : window.loadPageModule?.(name);
   if (pending) {
@@ -82,7 +81,7 @@ async function switchTab(name) {
     const loading = document.createElement('div');
     loading.setAttribute('role','status');
     loading.textContent = '加载中';
-    loading.style.cssText = 'padding:14px;text-align:center;color:#50d2c2';
+    loading.style.cssText = 'padding:14px;text-align:center;color:#0e9c88';
     panel.prepend(loading);
     try { await pending; }
     catch (error) { showToast(error.message, 'error'); return false; }
@@ -90,19 +89,14 @@ async function switchTab(name) {
     // Rapid page changes must not start an inactive page after its scripts finish downloading.
     if (navigation !== pageNavigationSeq || !panel.classList.contains('active')) return false;
   }
-  if (name === 'ledger') loadLedger(true);
+  if (name === 'ledger') { loadLedger(true); window.BotBar?.activate(); }
   if (name === 'account') {
     window.ExchangeAssets?.activate();
   }
   if (name === 'ai') aiRefreshStatus();
-  if (name === 'overview') window.InternalStrategyOverview?.activate?.();
-  if (name === 'community') window.CommunityLinks?.load();
   if (name === 'ai-managed') window.AiManaged?.activate();
   if (window.Portal?.pages?.[name]) window.Portal.load(name);
   if (name === 'trade') setTimeout(() => { if (typeof snapTradeChartToLatest === 'function') snapTradeChartToLatest(); else tradeChart?.timeScale().fitContent(); }, 50);
-  if (['de', 'ex', 'rs'].includes(name)) {
-    setTimeout(() => window.exchangeCtrls?.[name]?.activate?.(), 50);
-  }
   return true;
 }
 
@@ -114,12 +108,16 @@ async function openTradePage(product, symbol) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   $('tab-trade').classList.add('active');
-  document.querySelector(`[data-trade-nav="${tradeProduct}"]`)?.classList.add('active');
+  syncTradeNavigation();
   toggleMobileNav(false);
   $('trade-mark-price').textContent='加载中';
   $('trade-order-price').value='';
   setTradeProduct(tradeProduct);
   if (symbol) setTradeSymbol(symbol);
+  else if (!TRADE_MARKETS.some(item => item.symbol === tradeSymbol && item.category !== 'stock' && item[tradeProduct])) {
+    const firstCrypto = TRADE_MARKETS.find(item => item.category !== 'stock' && item[tradeProduct]);
+    if (firstCrypto) setTradeSymbol(firstCrypto.symbol);
+  }
   initTradeMarketStream();
   setTimeout(()=>{ if (typeof snapTradeChartToLatest === 'function') snapTradeChartToLatest(); else tradeChart?.timeScale().fitContent(); },50);
 }
@@ -133,7 +131,7 @@ async function openStockPage(product) {
   document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
   $('tab-trade').classList.add('active');
-  document.querySelector('[data-trade-nav="stock"]')?.classList.add('active');
+  syncTradeNavigation();
   toggleMobileNav(false);
   $('trade-mark-price').textContent='加载中';
   $('trade-order-price').value='';
@@ -147,11 +145,22 @@ async function openStockPage(product) {
   setTimeout(()=>{ if (typeof snapTradeChartToLatest === 'function') snapTradeChartToLatest(); else tradeChart?.timeScale().fitContent(); },50);
 }
 
+function syncTradeNavigation() {
+  document.querySelector('[data-trade-nav="trade"]')?.classList.toggle('active', $('tab-trade')?.classList.contains('active'));
+  const section = tradeMarketScope === 'stock' ? 'stock' : tradeProduct;
+  document.querySelectorAll('[data-trade-section]').forEach(button => {
+    const active = button.dataset.tradeSection === section;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', String(active));
+  });
+}
+
 function setTradeMarketScope(scope) {
   tradeMarketScope = scope === 'stock' ? 'stock' : 'crypto';
   window.tradeMarketScope = tradeMarketScope;
   tradeMarketCategory = 'product';
   document.querySelectorAll('[data-market-scope]').forEach(button => button.classList.toggle('active', tradeMarketScope === 'stock'));
+  syncTradeNavigation();
 }
 
 let tradeIntervalSec = 3600;
@@ -431,7 +440,7 @@ function stockLetterLogo(symbol) {
 }
 // 本地主图标：股票与加密币统一走 /assets/tokens/{symbol}.png
 function tradeMarketLogo(item) {
-  return `/assets/tokens/${String(item.symbol || '').toLowerCase()}.png?v=5`;
+  return `/assets/tokens/${String(item.symbol || '').toLowerCase()}.png?v=20261111-domain-solvex-1`;
 }
 // 币安 CDN 图标：加密币走 static/assets/logos；股票走官方徽章 static/stock
 function marketRemoteLogo(item) {
@@ -638,6 +647,7 @@ function updateTradeOrderAsset() {
 function setTradeProduct(product) {
   tradeProduct = product === 'spot' ? 'spot' : 'perp';
   window.tradeProduct = tradeProduct;
+  syncTradeNavigation();
   // trade-chart.js 延迟加载，初始化阶段可能尚未定义
   if (typeof resetTradeHeaderPrices === 'function') resetTradeHeaderPrices();
   document.querySelectorAll('[data-market-product]').forEach(button => button.classList.toggle('active', button.dataset.marketProduct === tradeProduct));

@@ -39,7 +39,6 @@ async function loadPlatformProfile({ preservePositionControls = false } = {}) {
   if ($('trade-margin-used')) $('trade-margin-used').textContent = accountValue(account.marginUsed);
   if ($('trade-margin-usage')) $('trade-margin-usage').textContent = `${(Number(account.marginUsage || 0) * 100).toFixed(2)}%`;
   if (typeof updateTradeOrderPanel === 'function') updateTradeOrderPanel();
-  if ($('strategy-usdc-balance')) $('strategy-usdc-balance').textContent = Number(data.strategy?.balance || 0).toLocaleString('en-US', { maximumFractionDigits:6 });
   window.ExchangeAssets?.renderPlatform(data);
   const positionTableVisible = tradeAccountView === 'positions'
     && Boolean($('trade-account-content')?.querySelector('[data-position-pnl]'));
@@ -97,7 +96,7 @@ function renderTradeAccount() {
   const formatUsdt = value => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
   if (tradeAccountView === 'balances') {
     const usdc = platformProfile?.account?.availableMargin ?? '0';
-    // 交易终端资产仅展示 USDT 交易账户（现货持币在下单面板按交易对上下文显示，AIX 等在资产页/赚币页查看）
+    // 交易终端资产仅展示 USDT 交易账户（现货持币在下单面板按交易对上下文显示，SVX 等在资产页/赚币页查看）
     host.innerHTML = `<table class="terminal-data-table"><thead><tr><th>资产</th><th>可用余额</th><th>账户</th><th>美元价值</th></tr></thead><tbody><tr><td data-label="资产" class="asset-name">USDT</td><td data-label="可用余额">${formatBalance(usdc)}</td><td data-label="账户">交易</td><td data-label="美元价值">$${formatBalance(usdc)}</td></tr></tbody></table>`;
     return;
   }

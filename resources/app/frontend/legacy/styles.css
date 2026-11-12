@@ -1,0 +1,3 @@
+@import "../../public/styles/lazy.css" layer(legacy);
+@import "../../public/styles/solvex-design.css" layer(legacy);
+@import "../../public/styles/solvex-crystal.css" layer(legacy);

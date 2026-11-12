@@ -20,7 +20,7 @@ try {
   const aToken = createATokenService({ database: walletService.database, walletService });
 
   // ── 规则 3：0.002 BNB 激活包产出 90 → 100 枚 ──
-  assert.equal(BigInt(MINER_PLANS.mini120.totalUnits), A(100), 'mini120 矿机总量应为 100 AIX');
+  assert.equal(BigInt(MINER_PLANS.mini120.totalUnits), A(100), 'mini120 矿机总量应为 100 SVX');
   assert.match(ACTIVATION_PLANS['1'].label, /Mini 矿机/, '激活套餐文案应显示 Mini 矿机');
   assert.match(ACTIVATION_PLANS['2'].label, /Pro 矿机/, '激活套餐文案应显示 Pro 矿机');
 
@@ -57,12 +57,29 @@ try {
   assert.equal(aToken.burn(A(10), 'trade', '测试销毁2'), A(10));
   assert.equal(BigInt(aToken.getPoolMeta().todayBurnedUnits), A(10), '今日销毁应累计 10');
 
-  // poolStats 暴露今日销毁字段
+  // 今日成交量 = 蓄能买入 + 驱动买入 + 流通卖出；旧累计值和入池/释放不重复计入。
+  const volumeWallet = Wallet.createRandom().address;
+  walletService.ensureUser(volumeWallet);
+  const volumeNow = Date.now();
+  const zoneOrder = (id, side, zone, a, usdt, createdAt = volumeNow, status = 'filled') => walletService.database.insertATokenZoneOrder({
+    id, wallet:volumeWallet, side, zone, requestId:id, aUnits:A(a).toString(), usdtUnits:U(usdt).toString(), status, createdAt,
+  });
+  zoneOrder('volume_energy', 'buy', 'alpha', 100, 10);
+  zoneOrder('volume_drive', 'buy', 'beta', 200, 20);
+  zoneOrder('volume_circulating', 'sell', 'beta', 30, 3);
+  zoneOrder('volume_cancelled', 'buy', 'alpha', 999, 99, volumeNow, 'cancelled');
+  zoneOrder('volume_yesterday', 'buy', 'alpha', 999, 99, volumeNow - dayMs);
+  walletService.database.insertATokenTurboPurchase({ id:'volume_turbo', wallet:volumeWallet, requestId:'volume_turbo', turboUnits:A(50).toString(), usdtUnits:U(5).toString(), priceUnits:'100000', createdAt:volumeNow });
+  aToken.setPoolMeta({ todayVolumeAUnits:A(999999).toString(), todayVolumeUsdtUnits:U(999999).toString() });
+
+  // poolStats 暴露今日销毁与真实成交量字段
   const stats = aToken.poolStats();
   assert.equal(stats.dailyBurnTarget, '1000000.0');
   assert.ok(Number(stats.todayBurnLeft) > 0 && Number(stats.todayBurnLeft) < 1_000_000, '今日剩余销毁目标应在 0~100 万之间');
+  assert.equal(stats.todayVolumeA, '380.0', '今日量应为 100 蓄能 + 250 驱动 + 30 流通');
+  assert.equal(stats.todayVolumeUsdt, '38.0', '今日成交额应对应同一批实际流水');
 
-  // ── 规则 2：首次开启合约跟单销毁 100 枚 AIX ──
+  // ── 规则 2：首次开启合约跟单销毁 100 枚 SVX ──
   const strategies = new Map(), batches = new Map(), rewards = new Map();
   const platformService = {
     database: {
@@ -77,7 +94,7 @@ try {
   };
   const ai = createAiManagedService({ platformService, walletService, fetchCandles: async () => [], aTokenService: aToken });
 
-  // ── VIP 会员制：必须先 unlock() 销毁 100 AIX 开通 30 天 VIP，才能 start() 跟单 ──
+  // ── VIP 会员制：必须先 unlock() 销毁 100 SVX 开通 30 天 VIP，才能 start() 跟单 ──
   const user = Wallet.createRandom().address;
   walletService.creditBalance(user, 'USDT', U(5000));
   walletService.creditBalance(user, 'A', A(99));
@@ -86,12 +103,12 @@ try {
   await assert.rejects(async () => ai.start(user, '500'), /请先开通 VIP 跟单权益/);
   assert.equal(walletService.balanceUnits(user, 'USDT'), U(5000), '未开通 VIP 跟单不能扣 USDT 本金');
 
-  // AIX 余额不足开通 VIP：友好报错，不扣任何款项
-  await assert.rejects(async () => ai.unlock(user), /开通 VIP 跟单权益需销毁 100\.0 枚 AIX/);
+  // SVX 余额不足开通 VIP：友好报错，不扣任何款项
+  await assert.rejects(async () => ai.unlock(user), /开通 VIP 跟单权益需销毁 100\.0 枚 SVX/);
   assert.equal(walletService.balanceUnits(user, 'USDT'), U(5000), '开通失败不能扣 USDT');
-  assert.equal(walletService.balanceUnits(user, 'A'), A(99), '开通失败不能扣 AIX');
+  assert.equal(walletService.balanceUnits(user, 'A'), A(99), '开通失败不能扣 SVX');
 
-  // 补足 AIX，开通 VIP：销毁 100 枚，获得 30 天权益
+  // 补足 SVX，开通 VIP：销毁 100 枚，获得 30 天权益
   walletService.creditBalance(user, 'A', A(1));
   const burnedBefore = aToken.totalBurned();
   const vip = await ai.unlock(user);
@@ -100,20 +117,20 @@ try {
   assert.equal(vip.unlockDays, 30, 'VIP 权益应为 30 天');
   assert.equal(vip.unlockDaysLeft, 30, '刚开通剩余天数应为 30 天');
   assert.ok(vip.unlockExpiresAt, '应返回权益到期时间');
-  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '100 枚 AIX 应被销毁扣除');
+  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '100 枚 SVX 应被销毁扣除');
   assert.equal(aToken.totalBurned() - burnedBefore, A(100), '销毁总额应增加 100 枚');
 
   // VIP 有效期内重复开通：拒绝且不销毁
   await assert.rejects(async () => ai.unlock(user), /VIP 跟单权益有效中/);
   assert.equal(aToken.totalBurned() - burnedBefore, A(100), '重复开通不能再销毁');
 
-  // VIP 有效期内跟单：只扣 USDT 本金，不再销毁 AIX
+  // VIP 有效期内跟单：只扣 USDT 本金，不再销毁 SVX
   const pres = await ai.start(user, '500');
   assert.equal(pres.copyTradeUnlocked, true);
-  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '跟单不能扣 AIX');
+  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '跟单不能扣 SVX');
   assert.equal(aToken.totalBurned() - burnedBefore, A(100), '跟单销毁总额不能增加');
   await ai.start(user, '500'); // 追加批次同样不销毁
-  assert.equal(aToken.totalBurned() - burnedBefore, A(100), '追加批次不能销毁 AIX');
+  assert.equal(aToken.totalBurned() - burnedBefore, A(100), '追加批次不能销毁 SVX');
 
   // VIP 到期（31 天后）：状态失效，跟单被拒且不扣 USDT
   const expiredState = strategies.get(user);
@@ -127,17 +144,17 @@ try {
   assert.equal(walletService.balanceUnits(user, 'USDT'), usdtBeforeRenew, '到期后跟单不能扣 USDT 本金');
 
   // 续费：余额不足友好报错；补足后 unlock 重新销毁 100 枚、恢复 30 天，跟单不再销毁
-  await assert.rejects(async () => ai.unlock(user), /续费 VIP 跟单权益需销毁 100\.0 枚 AIX/);
+  await assert.rejects(async () => ai.unlock(user), /续费 VIP 跟单权益需销毁 100\.0 枚 SVX/);
   walletService.creditBalance(user, 'A', A(100));
   const burnedBeforeRenew = aToken.totalBurned();
   const renewRes = await ai.unlock(user);
   assert.equal(renewRes.copyTradeUnlocked, true, '续费后 VIP 应恢复有效');
   assert.equal(renewRes.unlockDaysLeft, 30, '续费后应重新获得 30 天');
-  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '续费应销毁 100 枚 AIX');
+  assert.equal(walletService.balanceUnits(user, 'A'), 0n, '续费应销毁 100 枚 SVX');
   assert.equal(aToken.totalBurned() - burnedBeforeRenew, A(100), '续费销毁总额应再增加 100 枚');
   assert.equal(aToken.totalBurned() - burnedBefore, A(200), '首开+续费累计应销毁 200 枚');
   await ai.start(user, '100');
-  assert.equal(aToken.totalBurned() - burnedBefore, A(200), '续费后跟单不能再销毁 AIX');
+  assert.equal(aToken.totalBurned() - burnedBefore, A(200), '续费后跟单不能再销毁 SVX');
 
   // 老用户兼容：上线前已有跟单批次的钱包首次跟单赠送 30 天 VIP，不销毁
   const old = Wallet.createRandom().address;
@@ -154,7 +171,7 @@ try {
   });
   const oldRes = await ai.start(old, '300');
   assert.equal(oldRes.copyTradeUnlocked, true, '老用户首次跟单应赠送 VIP');
-  assert.equal(walletService.balanceUnits(old, 'A'), A(50), '老用户赠送 VIP 不能扣 AIX');
+  assert.equal(walletService.balanceUnits(old, 'A'), A(50), '老用户赠送 VIP 不能扣 SVX');
 
   // 老用户赠送的 VIP 到期后：跟单被拒，必须 unlock 销毁 100 枚续费
   const oldExpired = strategies.get(old);
@@ -162,11 +179,11 @@ try {
   strategies.set(old, oldExpired);
   await assert.rejects(async () => ai.start(old, '100'), /请先开通 VIP 跟单权益/);
   const oldBurnedBefore = aToken.totalBurned();
-  await assert.rejects(async () => ai.unlock(old), /续费 VIP 跟单权益需销毁 100\.0 枚 AIX/);
+  await assert.rejects(async () => ai.unlock(old), /续费 VIP 跟单权益需销毁 100\.0 枚 SVX/);
   walletService.creditBalance(old, 'A', A(50));
   const oldRenew = await ai.unlock(old);
   assert.equal(oldRenew.copyTradeUnlocked, true, '老用户续费后 VIP 恢复');
-  assert.equal(walletService.balanceUnits(old, 'A'), 0n, '老用户续费应销毁 100 枚 AIX');
+  assert.equal(walletService.balanceUnits(old, 'A'), 0n, '老用户续费应销毁 100 枚 SVX');
   assert.equal(aToken.totalBurned() - oldBurnedBefore, A(100), '老用户续费销毁总额应增加 100 枚');
 
   ai.stop();

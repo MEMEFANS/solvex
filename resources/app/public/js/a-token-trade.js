@@ -1,10 +1,11 @@
-(() => {
+﻿﻿(() => {
   const P = Portal;
   let poolStats = null;
   let profile = null;
   let currentSide = 'buy';
-  let currentOrderType = 'market';       // 'market' | 'limit'
-  let accountTab = 'balances';           // 底部账户面板 tab：balances/positions/orders/history/fills
+  let currentOrderType = 'market';       // 兼容旧引用；2026-11-09 P2 起挂单已下线
+  let currentZone = 'alpha';             // 一键买入口：alpha=蓄能额度（质押/节点），beta=驱动额度
+  let accountTab = 'balances';           // 底部账户面板 tab：balances/positions/orders/fills
   let atradePeriod = '15m';
   let atradeChart = null, atradeChartHost = null;
   let atradeCandleSeries = null;
@@ -27,11 +28,6 @@
   let atradeOrdersTimer = null;          // 我的委托 5s 轮询
   let atradeStatsTimer = null;
   let atradeStatsSeq = 0;
-  let atradeBookTimer = null;            // 真实 P2P 盘口 4s 轮询
-  let atradeBookSeq = 0;                 // 盘口请求序号，忽略过期响应
-  let bookData = { bids: [], asks: [], markPrice: null };
-  let openOrdersData = { buys: [], sells: [], count: 0 };
-  let atradeOpenOrdersSeq = 0;
   let myOrdersCache = [];
   // 报价请求序号：输入、买卖方向或订单类型快速切换时，忽略过期响应，
   // 避免旧报价覆盖当前表单内容。
@@ -43,7 +39,7 @@
     let payload;
     try { payload = await response.json(); }
     catch { throw new Error('交易服务暂时不可用，请稍后重试'); }
-    if (!response.ok) throw new Error(payload.error || 'AIX 代币交易请求失败');
+    if (!response.ok) throw new Error(payload.error || 'SVX 代币交易请求失败');
     return payload;
   };
   const authApi = async (path, options = {}) => {
@@ -54,7 +50,7 @@
   };
   const fmtA = (v) => { const n = Number(v); return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '0'; };
   const fmtUsdt = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'; };
-  // 委托价 / 成交价：AIX 价格在 4 位小数上波动，2 位小数会看不出来（如 0.1045 显示成 $0.10）
+  // 委托价 / 成交价：SVX 价格在 4 位小数上波动，2 位小数会看不出来（如 0.1045 显示成 $0.10）
   const fmtPrice4 = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(4)}` : '—'; };
   function showOk(msg) { if (typeof showToast === 'function') showToast(msg, 'ok'); else alert(msg); }
   function showErr(msg) { if (typeof showToast === 'function') showToast(msg, 'error'); else alert(msg); }
@@ -63,12 +59,36 @@
     return e?.message === 'SESSION_REQUIRED' ? '请先连接并确认钱包' : (e?.message || fallback || '交易失败');
   }
   const esc = P.esc;
+  const orderMedia = matchMedia('(max-width: 768px)');
+  window.atradeCloseOrder = () => {
+    const sheet = document.getElementById('svx-order-sheet');
+    if (sheet?.matches(':modal')) sheet.close();
+  };
+  window.atradeOpenOrder = side => {
+    const sheet = document.getElementById('svx-order-sheet');
+    if (!sheet) { showErr('交易数据正在同步，请稍后重试'); return; }
+    if (side !== currentSide) window.atradeSide(side);
+    if (orderMedia.matches) {
+      if (!sheet.matches(':modal')) { sheet.close(); sheet.showModal(); }
+    } else sheet.scrollIntoView({ block:'nearest', behavior:'smooth' });
+  };
+  orderMedia.addEventListener('change', () => {
+    const sheet = document.getElementById('svx-order-sheet');
+    if (!sheet) return;
+    sheet.close();
+    if (!orderMedia.matches) sheet.show();
+  });
+  document.addEventListener('click', event => {
+    const sheet = document.getElementById('svx-order-sheet');
+    if (event.target !== sheet || !sheet.matches(':modal')) return;
+    const rect = sheet.getBoundingClientRect();
+    if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) sheet.close();
+  });
 
   function render() {
     const root = document.getElementById('tab-a-token-trade');
     if (!root) return;
     root.innerHTML = `<div class="portal-shell">
-      ${P.header('AIX 代币交易', 'AIX / 泰达币（USDT）· 买方 0 手续费 · 卖方统一 3% 手续费（50%销毁 + 50%进A10分红池）')}
       <div id="atrade-content">${P.loading(6)}</div>
     </div>`;
   }
@@ -76,26 +96,21 @@
   let loadSeq = 0;
   const active = () => P.active('a-token-trade');
   function stopPolling() {
-    for (const timer of [atradeBookTimer, atradeOrdersTimer, atradeKlineTimer, atradeStatsTimer]) clearInterval(timer);
+    window.atradeCloseOrder();
+    for (const timer of [atradeOrdersTimer, atradeKlineTimer, atradeStatsTimer]) clearInterval(timer);
     atradeStatsTimer = null;
     ++atradeStatsSeq;
-    atradeBookTimer = atradeOrdersTimer = atradeKlineTimer = null;
+    atradeOrdersTimer = atradeKlineTimer = null;
     clearTimeout(quoteTimer);
     ++quoteRequestId;
   }
   function activate() {
-    if (!active() || !poolStats || atradeBookTimer) return;
+    if (!active() || !poolStats || atradeStatsTimer) return;
     refreshPoolStats();
     atradeStatsTimer = setInterval(refreshPoolStats, 5000);
-    window.atradeLoadBook().catch(() => {});
-    atradeBookTimer = setInterval(() => {
-      if (!active()) return;
-      window.atradeLoadBook().catch(() => {});
-      if (document.getElementById('atrade-orders-panel')?.style.display !== 'none') window.atradeLoadOpenOrders().catch(() => {});
-    }, 4000);
     atradeOrdersTimer = setInterval(() => {
       if (!active() || !profile) return;
-      if (accountTab === 'orders' || accountTab === 'history') window.atradeRefreshOrders();
+      if (accountTab === 'orders') window.atradeRefreshOrders();
       else atradeRefreshBalances();
     }, 5000);
     const chartHost = document.getElementById('atrade-chart');
@@ -118,11 +133,11 @@
       poolStats = stats;
       const today = document.getElementById('atrade-burn-today');
       const total = document.getElementById('atrade-burn-total');
-      if (today) today.textContent = fmtA(stats.todayBurned) + ' AIX';
-      if (total) total.textContent = fmtA(stats.totalBurned) + ' AIX';
+      if (today) today.textContent = fmtA(stats.todayBurned) + ' SVX';
+      if (total) total.textContent = fmtA(stats.totalBurned) + ' SVX';
     } catch { /* Retain the last successful public stats during a network outage. */ }
   }
-  window.addEventListener('aix:balance-changed', refreshPoolStats);
+  window.addEventListener('svx:balance-changed', refreshPoolStats);
   async function load(context = { isCurrent:() => true }) {
     const host = document.getElementById('atrade-content');
     if (!host) return;
@@ -136,8 +151,9 @@
       host.querySelector('.balance-bar')?.remove();
       const mount = document.getElementById('atrade-account-mount');
       if (mount) mount.innerHTML = accountSection();
+      const liquidity = document.getElementById('atrade-liquidity-total');
+      if (liquidity) liquidity.textContent = profile.liquidity?.enabled ? '已开放' : '待开放';
       window.atradeSide(currentSide);
-      if (currentOrderType === 'limit') window.atradeOrderType('limit');
       window.atradeRenderAccount();
     };
     const account = authApi('profile').then(prof => {
@@ -170,7 +186,7 @@
     const price = Number(s.priceUsdt || 0.1);
     const priceStr = price.toLocaleString('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 });
     const volA = Number(s.todayVolumeA || 0);
-    const volUsdt = volA * price;
+    const volUsdt = s.todayVolumeUsdt == null ? volA * price : Number(s.todayVolumeUsdt);
     const burned = Number(s.totalBurned || 0);
     const dividendPool = Number(s.dividendPool || 0);
     const high24h = Number(s.todayHigh || price);
@@ -190,7 +206,7 @@
     const up = changePct >= 0;
     const cls = up ? 'up' : 'down';
 
-    // 顶部余额四格（USDT/AIX/等级/UID）已移除：余额在下单面板显示，等级/UID 在赚币页显示，游客仅保留连接钱包按钮
+    // 顶部余额四格（USDT/SVX/等级/UID）已移除：余额在下单面板显示，等级/UID 在赚币页显示，游客仅保留连接钱包按钮
     const balanceBar = p
       ? ''
       : `<div class="balance-bar">
@@ -199,64 +215,65 @@
 
     return `<div class="atrade-spot-price-strip">
       <div class="atrade-pair-name">
-        <div class="pair-icon" style="overflow:hidden"><img src="/assets/tokens/a.png?v=4" alt="AIX" style="width:100%;height:100%;object-fit:cover"></div>
-        <div>
-          <h2>AIX / USDT <span class="change-pill" style="margin-left:8px;background:rgba(80,210,194,0.12);color:#50d2c2;border:1px solid rgba(80,210,194,0.3);font-weight:700;padding:2px 8px;border-radius:999px;font-size:10px">委托簿撮合 · 买需有卖 / 卖需有买</span></h2>
-          <small>AIX 代币 / 泰达币 · BSC · 用户委托互为对手方</small>
+        <div class="pair-icon" style="overflow:hidden"><img src="/assets/brand/logo.svg" alt="SVX" style="width:100%;height:100%;object-fit:cover"></div>
+        <div class="atrade-pair-copy">
+          <h2><span>SVX / USDT</span><span class="change-pill atrade-asset-badge" style="margin-left:8px;background:rgba(14,156,136,0.12);color:var(--brand);border:1px solid rgba(14,156,136,0.3);font-weight:700;padding:2px 8px;border-radius:999px;font-size:10px">生态资产</span></h2>
+          <small>SVX / 泰达币 · 平台内账本交易（提现时才发生链上转账）</small>
         </div>
       </div>
       <div class="price-big">
-        <div class="num ${cls}">$${priceStr}<small style="font-size:13px;color:#81918e;margin-left:8px;font-weight:500">USDT</small></div>
+        <div class="num ${cls}">$${priceStr}<small style="font-size:13px;color:var(--mut);margin-left:8px;font-weight:500">USDT</small></div>
         <div class="sub">
-          <span class="change-pill ${cls}">${up ? '+' : ''}${changePct.toFixed(2)}%</span>
-          <span>24h 最高 <b style="color:#e7f1ef">$${high24h.toFixed(4)}</b></span>
-          <span>24h 最低 <b style="color:#e7f1ef">$${low24h.toFixed(4)}</b></span>
+          <span class="change-pill price-change ${cls}">${up ? '+' : ''}${changePct.toFixed(2)}%</span>
+          <span class="price-range-item">24h 最高 <b style="color:var(--txt)">$${high24h.toFixed(4)}</b></span>
+          <span class="price-range-item">24h 最低 <b style="color:var(--txt)">$${low24h.toFixed(4)}</b></span>
         </div>
       </div>
-      <div class="atrade-spot-meta">
-        <div class="meta-kv"><span>今日交易量（AIX）</span><b>${fmtA(volA)} AIX</b></div>
+      <div class="svx-market-details"><div class="atrade-spot-meta">
+        <div class="meta-kv"><span>今日交易量（SVX）</span><b>${fmtA(volA)} SVX</b></div>
         <div class="meta-kv"><span>今日成交额</span><b>${fmtUsdt(volUsdt)}</b></div>
-        <div class="meta-kv"><span>今日销毁数量</span><b id="atrade-burn-today" style="color:#f26c78">${fmtA(Number(s.todayBurned || 0))} AIX</b></div>
-        <div class="meta-kv"><span title="含矿机激活全额销毁">累计销毁 AIX</span><b id="atrade-burn-total" style="color:#f26c78">${fmtA(burned)} AIX</b></div>
-        <div class="meta-kv"><span>A10 团队分红池</span><b style="color:#f6c454">${fmtA(dividendPool)} AIX</b></div>
-        <div class="meta-kv"><span>委托求购额度</span><b style="color:#50d2b8">${fmtUsdt(Number(s.depth?.openBuyUsdt || 0))}</b></div>
-      </div>
+        <div class="meta-kv"><span>今日销毁数量</span><b id="atrade-burn-today" style="color:#c62a37">${fmtA(Number(s.todayBurned || 0))} SVX</b></div>
+        <div class="meta-kv"><span title="含矿机激活全额销毁">累计销毁 SVX</span><b id="atrade-burn-total" style="color:#c62a37">${fmtA(burned)} SVX</b></div>
+      </div></div>
       ${balanceBar}
     </div>`;
   }
 
-  // ── 左：下单面板（v14 重做：对齐现货 order-entry，独立 .aentry 作用域样式）──
+  // ── 左：一键交易面板（蓄能额度 / 驱动额度两个买入口）──
   function orderPanel() {
     const p = profile || {};
     const balUsdt = Number(p.balances?.USDT || 0);
     const balA = Number(p.balances?.A || 0);
     const price = Number(poolStats?.priceUsdt || 0.1);
-    const showBalance = (side) => side === 'buy' ? fmtUsdt(balUsdt) : fmtA(balA) + ' AIX';
-    const placeholder = (side) => side === 'buy' ? `最多使用 ${fmtUsdt(balUsdt)}` : `最多卖出 ${fmtA(balA)} AIX`;
-    const isLimit = currentOrderType === 'limit';
+    const quotaAvail = Number(profile?.sellQuota?.available || 0);
+    const sellMax = Math.max(0, Math.min(balA, quotaAvail));
+    // 卖出只展示「流通额度」一个口径（2026-11-12）：不再同时显示 SVX 余额/可卖上限，
+    // 实际可成交数量仍由后端按余额与流通额度取小校验，placeholder 保留该上限提示。
+    const showBalance = (side) => side === 'buy' ? fmtUsdt(balUsdt) : fmtA(quotaAvail) + ' SVX';
+    const placeholder = (side) => side === 'buy'
+      ? `最多支付 ${fmtUsdt(balUsdt)}（买入 0 手续费）`
+      : `最多卖出 ${fmtA(sellMax)} SVX`;
+    const zoneName = ({alpha:'蓄能额度',beta:'驱动额度',market:'自由交易（驱动额度）'})[currentZone];
 
-    return `<aside class="aentry">
-      <div class="aentry-title">下单<small>AIX / USDT · 撮合价 $${price.toFixed(4)}</small></div>
+    return `<dialog id="svx-order-sheet" class="svx-order-sheet" aria-labelledby="svx-order-title" ${orderMedia.matches ? '' : 'open'}>
+      <header class="svx-order-sheet-head"><div><h2 id="svx-order-title">SVX 交易</h2><p>核对方向、分区与预计到账金额</p></div><button type="button" onclick="window.atradeCloseOrder()" aria-label="关闭交易面板">✕</button></header>
+      <aside class="aentry">
+      <div class="aentry-title">一键交易<small>SVX / USDT · 大盘价 $${price.toFixed(4)}</small></div>
       <div class="aentry-switch">
-        <button type="button" data-side="buy" class="active buy" onclick="window.atradeSide('buy')">买入 AIX</button>
-        <button type="button" data-side="sell" class="sell" onclick="window.atradeSide('sell')">卖出 AIX</button>
+        <button type="button" data-side="buy" class="active buy" onclick="window.atradeSide('buy')">买入 SVX</button>
+        <button type="button" data-side="sell" class="sell" onclick="window.atradeSide('sell')">卖出 SVX</button>
       </div>
-      <div class="aentry-type" aria-label="订单类型">
-        <button type="button" data-otype="market" class="active" onclick="window.atradeOrderType('market')">市价</button>
-        <button type="button" data-otype="limit" onclick="window.atradeOrderType('limit')">限价委托</button>
+      <div class="aentry-type" id="atrade-zone-switch" ${currentSide === 'buy' ? '' : 'hidden'} aria-label="买入分区">
+        <button type="button" data-zone="alpha" class="${currentZone === 'alpha' ? 'active' : ''}" onclick="window.atradeZone('alpha')">蓄能额度</button>
+        <button type="button" data-zone="beta" class="${currentZone === 'beta' ? 'active' : ''}" onclick="window.atradeZone('beta')">驱动额度</button>
       </div>
-      <label class="aentry-avail" title="点击填满数量"><span>可用</span><b id="atrade-balance-val" style="cursor:pointer" onclick="window.atradeSliderFill(100)">${showBalance(currentSide)}</b></label>
+      <label class="aentry-avail" title="点击填满数量"><span id="atrade-balance-label">${currentSide === 'buy' ? '可用' : '流通额度'}</span><b id="atrade-balance-val" style="cursor:pointer" onclick="window.atradeSliderFill(100)">${showBalance(currentSide)}</b></label>
 
-      <label id="atrade-input-label" class="aentry-amt-label">${currentSide === 'buy' ? '支付 USDT 数量' : '卖出 AIX 数量'}</label>
-      <div class="aentry-field" id="atrade-price-field" ${isLimit ? '' : 'hidden'}>
-        <span>限价</span>
-        <input id="atrade-input-price" type="number" min="0" step="0.0001" autocomplete="off" inputmode="decimal" placeholder="低于现价买 · 高于现价卖" oninput="window.atradeInputChanged()">
-        <b>USDT</b>
-      </div>
+      <label id="atrade-input-label" class="aentry-amt-label">${currentSide === 'buy' ? `支付 USDT 数量（进${zoneName}）` : '卖出 SVX 数量（消耗流通额度）'}</label>
       <div class="aentry-field">
         <span>数量</span>
-        <input id="atrade-input-amount" type="number" min="0" step="any" autocomplete="off" inputmode="decimal" placeholder="${placeholder(currentSide)}" oninput="window.atradeInputChanged()">
-        <b id="atrade-input-unit">${currentSide === 'buy' ? 'USDT' : 'AIX'}</b>
+        <input id="atrade-input-amount" aria-labelledby="atrade-input-label" type="number" min="0" step="any" autocomplete="off" inputmode="decimal" placeholder="${placeholder(currentSide)}" oninput="window.atradeInputChanged()">
+        <b id="atrade-input-unit">${currentSide === 'buy' ? 'USDT' : 'SVX'}</b>
       </div>
 
       <input class="aentry-slider" id="atrade-slider" type="range" min="0" max="100" value="0" aria-label="仓位比例" oninput="window.atradeSliderChanged(this.value)">
@@ -276,94 +293,49 @@
       </button>
 
       <div class="aentry-sum"><span>订单价值</span><b id="atrade-summary-value">$0.00</b></div>
-      <div class="aentry-sum"><span>预计手续费</span><b id="atrade-summary-fee">0 AIX</b></div>
-      <div class="aentry-sum match"><span>撮合说明</span><b style="font-size:11px;font-weight:500;color:#b7c5c1">${isLimit ? '与对手方挂单撮合 · 未成转委托' : '按现价吃对手方挂单 · 未成转委托'}</b></div>
-      <div class="aentry-sum match"><span>卖出规则</span><b style="font-size:11px;font-weight:500;color:#b7c5c1">最少 1 AIX 起卖 · 买入不限制</b></div>
-    </aside>`;
+      <div class="aentry-sum"><span>预计平台交易费</span><b id="atrade-summary-fee">0 USDT</b></div>
+      <div class="aentry-sum match"><span>成交方式</span><b style="font-size:11px;font-weight:500;color:var(--mut)">按大盘价即时成交 · 不挂单</b></div>
+      <details class="svx-trade-rules"><summary>交易规则与费用说明</summary>
+        <p>自由交易须达到 500,000 USDT 平台流动性准备金，并由运营开启；未开放时仅支持蓄能额度/驱动额度一键买入。</p>
+        <p>平台内买入不收手续费；卖出按成交额收 5% 交易费（50% 销毁 / 50% 合伙人分红）。SVX 提现到链上后，代币合约在卖出时另有 5% 转账税（买入 0），两者分开计算。</p>
+        <p>蓄能额度：买入后留在蓄能额度，用于能量/矿池，不产生流通额度；驱动额度：买入后留在驱动额度，进超速驱动满 24 小时释放等额流通额度，两者不可互转。</p>
+        <p>卖出需驱动额度超速驱动释放的流通额度，最低 1 SVX。</p>
+      </details>
+    </aside></dialog>`;
   }
   function atradeSubmitButtonLabel() {
-    if (currentOrderType === 'limit') {
-      return currentSide === 'buy' ? '挂限价买单' : '挂限价卖单';
-    }
-    return currentSide === 'buy' ? '立即买入 AIX' : '立即卖出 AIX';
+    return currentSide === 'buy'
+      ? `立即买入（${({alpha:'蓄能额度',beta:'驱动额度',market:'自由交易'})[currentZone]}）`
+      : '立即卖出 SVX';
   }
 
   function quoteBoxBuy() {
-    return `<div class="q-row"><span>可获得 AIX</span><b class="gain" id="q-buy-a">—</b></div>
+    return `<div class="q-row"><span>可获得 SVX</span><b class="gain" id="q-buy-a">—</b></div>
+      <div class="q-row" id="q-buy-beta-row" ${currentZone === 'alpha' ? 'hidden' : ''}><span>驱动额度</span><b style="color:#8a5508" id="q-buy-beta">${fmtA(profile?.turbo?.betaBalance || 0)} SVX</b></div>
       <div class="q-row"><span>成交单价</span><b id="q-buy-price">—</b></div>
-      <div class="q-row"><span>买方手续费</span><b style="color:#50d2b8">$0.00（免）</b></div>`;
+      <div class="q-row"><span>平台交易费（买入 0）</span><b class="loss" id="q-buy-fee">—</b></div>
+      <div class="q-row"><span>合计支付</span><b id="q-buy-total">—</b></div>`;
   }
-  // 卖出手续费标签：全站统一 3%（profile 下发费率档案）
+  // 平台交易费标签：按成交 USDT 金额 5%，50%销毁 / 50%股东分红（profile 下发费率档案）
   function sellFeeLabel() {
     const sf = profile?.sellFee;
-    if (sf?.feePct) return `手续费 (${sf.feePct} · 成交时扣)`;
-    return '手续费 (3% · 成交时扣)';
+    if (sf?.feePct) return `平台交易费 (${sf.feePct} · 成交 USDT 金额)`;
+    return '平台交易费 (5% · 成交 USDT 金额)';
   }
   function quoteBoxSell() {
-    const q = profile?.sellQuota;
-    const quotaTxt = q?.available ? `${fmtA(q.available)} AIX` : '0 AIX';
-    return `<div class="q-row"><span>可用额度（匹配池产出）</span><b style="color:#f6c454" id="q-sell-quota">${quotaTxt}</b></div>
-      <div class="q-row"><span>净得 USDT</span><b class="gain" id="q-sell-usdt">—</b></div>
+    // 流通额度已在输入框上方展示，这里只保留成交金额与费用，避免重复两个额度口径。
+    return `<div class="q-row"><span>净得 USDT</span><b class="gain" id="q-sell-usdt">—</b></div>
       <div class="q-row"><span id="q-sell-fee-lbl">${sellFeeLabel()}</span><b class="loss" id="q-sell-fee">—</b></div>
-      <div class="q-row"><span>&nbsp;&nbsp;· 销毁 (手续费50%)</span><b style="color:#f26c78" id="q-sell-burn">—</b></div>
-      <div class="q-row"><span>&nbsp;&nbsp;· A10分红池 (手续费50%)</span><b style="color:#f6c454" id="q-sell-div">—</b></div>`;
-  }
-
-  // ── 中：订单簿 / 成交 / 我的委托 tab ──
-  function middlePanel() {
-    const s = poolStats || {};
-    const price = Number(s.priceUsdt || 0.1);
-    const recentTrades = s.recentTrades || [];
-
-    const tradeRows = recentTrades.map(t => {
-      const tSide = t.side === 'buy' ? 'bid' : 'ask';
-      return `<div style="display:grid;grid-template-columns:repeat(3,1fr);padding:3px 16px;font-size:12px;font-variant-numeric:tabular-nums">
-        <span style="text-align:left;color:${tSide==='bid'?'#50d2b8':'#f26c78'};font-weight:600">${fmtPrice4(t.priceUsdt)}</span>
-        <span style="text-align:right">${fmtA(t.size)} AIX</span>
-        <span style="text-align:right;color:#81918e;font-size:11px">${new Date(t.createdAt).toLocaleTimeString('zh-CN',{hour12:false})}</span>
-      </div>`;
-    }).join('') || `<div class="ev2-empty" style="padding:28px 20px">暂无成交 · 等待首笔交易 🎉</div>`;
-
-    return `<div class="book-card">
-      <div class="book-head-tabs">
-        <div class="tabs-mini" id="atrade-tabs-middle">
-          <button type="button" class="active" data-mview="book"   onclick="window.atradeMiddleView('book')">📊 订单簿</button>
-          <button type="button" data-mview="orders" onclick="window.atradeMiddleView('orders')">📋 挂单明细</button>
-        </div>
-      </div>
-
-      <!-- 订单簿 -->
-      <div id="atrade-book-panel">
-        <div class="book-head"><span>价格</span><span>数量（AIX）</span><span>合计</span></div>
-        <div class="rows-ask" id="atrade-rows-ask"></div>
-        <div class="book-divider">
-          <span id="atrade-book-mark">$${price.toFixed(4)}</span>
-          <span></span>
-          <span></span>
-        </div>
-        <div class="rows-bid" id="atrade-rows-bid"></div>
-      </div>
-
-      <!-- 挂单明细：逐笔 OPEN 委托 -->
-      <div id="atrade-orders-panel" style="display:none">
-        <div id="atrade-open-orders-body" style="max-height:420px;overflow-y:auto"></div>
-      </div>
-
-      <!-- 最近成交 -->
-      <div id="atrade-trades-panel" style="display:none">
-        <div class="book-head"><span>价格</span><span>数量（AIX）</span><span>时间</span></div>
-        ${tradeRows}
-      </div>
-    </div>`;
+      <div class="q-row"><span>&nbsp;&nbsp;· 平台费 50%销毁 / 50%股东分红</span><b style="color:#8a5508" id="q-sell-pool">—</b></div>`;
   }
 
   // ── 右：账户/池数据卡片（v11 重布局：已上提到顶部 topInfoBar，rightPanel 删除）──
 
-  // ── 底部：账户面板（登录用户）· 与现货终端一致的五 tab ──
+  // ── 底部：账户面板（登录用户）· 资产/持仓/当前委托/成交历史 ──
   function accountSection() {
     const p = profile || null;
     if (!p) return '';
-    const labels = { balances: '资产', positions: '持仓', orders: '当前委托', history: '历史委托', fills: '成交历史' };
+    const labels = { balances: '资产', positions: '持仓', orders: '当前委托', fills: '成交历史' };
     const tabs = Object.entries(labels).map(([view, label]) =>
       `<button type="button" class="${accountTab === view ? 'active' : ''}" data-aview="${view}" onclick="window.atradeAccountTab('${view}')">${label}</button>`
     ).join('');
@@ -373,17 +345,16 @@
     </div>`;
   }
 
-  // ── 登录后完整渲染（v16：现货式三列布局 K线|订单簿|下单）──
+  // ── 登录后完整渲染（K线 + 一键下单）──
   function renderContent() {
     return `${topInfoBar()}
       <div class="atrade-terminal">
         <div class="atrade-terminal-grid">
           <section class="atrade-cell atrade-cell-chart">${chartSection()}</section>
-          <aside class="atrade-cell atrade-cell-book">${middlePanel()}</aside>
           <aside class="atrade-cell atrade-cell-entry">${orderPanel()}</aside>
         </div>
         ${accountSection()}
-      </div>`;
+      </div>${mobileActions()}`;
   }
 
   // ── 游客：无账户信息，但依然能看行情 + 连钱包按钮 ──
@@ -392,11 +363,14 @@
       <div class="atrade-terminal">
         <div class="atrade-terminal-grid">
           <section class="atrade-cell atrade-cell-chart">${chartSection()}</section>
-          <aside class="atrade-cell atrade-cell-book">${middlePanel()}</aside>
           <aside class="atrade-cell atrade-cell-entry">${orderPanel()}</aside>
         </div>
-        <div id="atrade-account-mount">${P.walletGate('连接并确认钱包后，即可使用 USDT 买入 AIX 或卖出 AIX 换回 USDT')}</div>
-      </div>`;
+        <div id="atrade-account-mount">${P.walletGate('连接并确认钱包后，即可使用 USDT 买入 SVX 或卖出 SVX 换回 USDT')}</div>
+      </div>${mobileActions()}`;
+  }
+
+  function mobileActions() {
+    return '<div class="svx-mobile-actions" aria-label="SVX 快捷交易"><button type="button" class="svx-mobile-buy" onclick="window.atradeOpenOrder(\'buy\')">买入 SVX <span>买入手续费 0</span></button><button type="button" class="svx-mobile-sell" onclick="window.atradeOpenOrder(\'sell\')">卖出 SVX <span>按流通额度卖出</span></button></div>';
   }
 
   // ── K 线区域 ──
@@ -414,7 +388,7 @@
       <section class="atrade-chart-card atrade-chart-section">
         <div class="atrade-chart-toolbar">
           <div class="atrade-chart-tabs">${tabs}</div>
-          <span class="muted" style="font-size:11px;margin-left:auto">AIX / USDT · 实时行情</span>
+          <span class="muted" style="font-size:11px;margin-left:auto">SVX / USDT · ${profile?.liquidity?.enabled ? '实时行情' : '内盘行情'}</span>
         </div>
         <div id="atrade-chart" class="atrade-chart-host"></div>
       </section>
@@ -429,7 +403,7 @@
     quoteRequestId += 1;
     clearTimeout(quoteTimer);
     currentSide = side === 'sell' ? 'sell' : 'buy';
-    // tab 样式（A 币下单面板的买卖切换是 .aentry-switch，注意别写成主终端的 .side-switch）
+    // tab 样式（SVX下单面板的买卖切换是 .aentry-switch，注意别写成主终端的 .side-switch）
     document.querySelectorAll('.aentry-switch button[data-side]').forEach(b => {
       const s = b.dataset.side;
       b.classList.toggle('active', s === currentSide);
@@ -445,243 +419,87 @@
     const p = profile || {};
     const balUsdt = Number(p.balances?.USDT || 0);
     const balA = Number(p.balances?.A || 0);
+    const quotaAvail = Number(p.sellQuota?.available || 0);
+    const sellMax = Math.max(0, Math.min(balA, quotaAvail));
     const balVal = document.getElementById('atrade-balance-val');
     const inpLabel = document.getElementById('atrade-input-label');
     const inpUnit = document.getElementById('atrade-input-unit');
     const inp = document.getElementById('atrade-input-amount');
     const btn = document.getElementById('atrade-order-btn');
-    const limitTypeBtn = document.querySelector('[data-otype="limit"]');
-    if (limitTypeBtn) {
-      limitTypeBtn.hidden = false;
-      limitTypeBtn.setAttribute('aria-hidden', 'false');
-    }
-    if (balVal)   balVal.textContent   = currentSide === 'buy' ? fmtUsdt(balUsdt) : fmtA(balA) + ' AIX';
-    if (inpLabel) inpLabel.textContent = currentSide === 'buy' ? '支付 USDT 数量' : '卖出 AIX 数量';
-    if (inpUnit)  inpUnit.textContent  = currentSide === 'buy' ? 'USDT' : 'AIX';
+    const zoneSwitch = document.getElementById('atrade-zone-switch');
+    if (zoneSwitch) zoneSwitch.hidden = currentSide !== 'buy';
+    if (balVal)   balVal.textContent   = currentSide === 'buy' ? fmtUsdt(balUsdt) : fmtA(quotaAvail) + ' SVX';
+    const balLabel = document.getElementById('atrade-balance-label');
+    if (balLabel) balLabel.textContent = currentSide === 'buy' ? '可用' : '流通额度';
+    if (inpLabel) inpLabel.textContent = currentSide === 'buy'
+      ? `支付 USDT 数量（进${({alpha:'蓄能额度',beta:'驱动额度',market:'自由交易'})[currentZone]}）`
+      : '卖出 SVX 数量（消耗流通额度）';
+    if (inpUnit)  inpUnit.textContent  = currentSide === 'buy' ? 'USDT' : 'SVX';
     if (inp) {
       inp.placeholder = currentSide === 'buy'
-        ? `最多使用 ${fmtUsdt(balUsdt)} USDT`
-        : `最多卖出 ${fmtA(balA)} AIX`;
+        ? `最多支付 ${fmtUsdt(balUsdt)}（买入 0 手续费）`
+        : `最多卖出 ${fmtA(sellMax)} SVX`;
       inp.value = '';
     }
     if (btn) {
       btn.className = 'terminal-order-btn' + (currentSide === 'sell' ? ' sell' : '');
       btn.textContent = profile ? atradeSubmitButtonLabel() : '连接钱包开始交易';
     }
-    const priceField = document.getElementById('atrade-price-field');
-    if (priceField) priceField.hidden = currentOrderType !== 'limit';
-    document.querySelectorAll('[data-otype]').forEach(b => {
-      b.classList.toggle('active', b.dataset.otype === currentOrderType);
-    });
+    // 挂单已下线：不再处理限价输入与订单类型
     // slider 归零
     const slider = document.getElementById('atrade-slider');
     if (slider) slider.value = 0;
     // summary 清空
     const sv = document.getElementById('atrade-summary-value'); if (sv) sv.textContent = '$0.00';
-    const sf = document.getElementById('atrade-summary-fee');   if (sf) sf.textContent = '0 AIX';
+    const sf = document.getElementById('atrade-summary-fee');   if (sf) sf.textContent = '0 USDT';
     // quote 清空
     const e = (id) => document.getElementById(id);
     if (currentSide === 'buy') {
       if (e('q-buy-a'))     e('q-buy-a').textContent = '—';
       if (e('q-buy-price')) e('q-buy-price').textContent = '—';
+      if (e('q-buy-fee'))   e('q-buy-fee').textContent = '—';
+      if (e('q-buy-total')) e('q-buy-total').textContent = '—';
     } else {
       if (e('q-sell-usdt')) e('q-sell-usdt').textContent = '—';
       if (e('q-sell-fee'))  e('q-sell-fee').textContent  = '—';
-      if (e('q-sell-burn')) e('q-sell-burn').textContent = '—';
-      if (e('q-sell-div'))  e('q-sell-div').textContent  = '—';
+      if (e('q-sell-pool')) e('q-sell-pool').textContent = '—';
     }
   };
 
-  window.atradeOrderType = (type) => {
+  // 挂买挂卖已下线（2026-11-09 P2）：保留空实现，避免旧 DOM 残留 onclick 报错
+  window.atradeOrderType = () => {};
+
+  window.atradeZone = (zone) => {
+    currentZone = ['beta','market'].includes(zone) ? zone : 'alpha';
     quoteRequestId += 1;
     clearTimeout(quoteTimer);
-    // 买卖双方均可挂限价单
-    currentOrderType = type === 'limit' ? 'limit' : 'market';
-    // tab 高亮
-    document.querySelectorAll('[data-otype]').forEach(b => {
-      b.classList.toggle('active', b.dataset.otype === currentOrderType);
+    document.querySelectorAll('#atrade-zone-switch [data-zone]').forEach(b => {
+      b.classList.toggle('active', b.dataset.zone === currentZone);
     });
-    // 显示/隐藏限价输入框（hidden 属性，保证与选择器 .aentry-field[hidden] 命中且不产生 margin 留白）
-    const pf = document.getElementById('atrade-price-field');
-    if (pf) pf.hidden = currentOrderType !== 'limit';
-    // 按钮文字
+    const inpLabel = document.getElementById('atrade-input-label');
+    if (inpLabel && currentSide === 'buy') {
+      inpLabel.textContent = `支付 USDT 数量（进${({alpha:'蓄能额度',beta:'驱动额度',market:'自由交易'})[currentZone]}）`;
+    }
     const btn = document.getElementById('atrade-order-btn');
     if (btn) btn.textContent = profile ? atradeSubmitButtonLabel() : '连接钱包开始交易';
-    // 撮合价摘要行文案
-    const m = document.getElementById('atrade-summary-match');
-    const price = Number(poolStats?.priceUsdt || 0.1);
-    if (m) m.textContent = `$${price.toFixed(4)}${currentOrderType === 'limit' ? '（限价触发）' : ' / AIX（即时）'}`;
-    // 限价切换时，以当前 pool 现价自动预填限价 input
-    if (currentOrderType === 'limit') {
-      const pinp = document.getElementById('atrade-input-price');
-      if (pinp && !pinp.value) {
-        // 挂买单默认比现价低 0.05%，挂卖单默认高 0.05%，引导用户正确的方向
-        const base = currentSide === 'buy' ? price * 0.995 : price * 1.005;
-        pinp.value = Math.max(0.0001, base).toFixed(4);
-      }
-    }
-    // 若已有输入值，重算一次报价
+    const betaRow = document.getElementById('q-buy-beta-row');
+    if (betaRow) betaRow.hidden = currentZone === 'alpha';
     const ainp = document.getElementById('atrade-input-amount');
     if (ainp && ainp.value) window.atradeInputChanged(true);
-  };
-
-  window.atradeMiddleView = (view) => {
-    document.querySelectorAll('#atrade-tabs-middle button').forEach(b => {
-      b.classList.toggle('active', b.dataset.mview === view);
-    });
-    const bp = document.getElementById('atrade-book-panel');
-    const op = document.getElementById('atrade-orders-panel');
-    const tp = document.getElementById('atrade-trades-panel');
-    if (bp) bp.style.display = view === 'book' ? '' : 'none';
-    if (op) op.style.display = view === 'orders' ? '' : 'none';
-    if (tp) tp.style.display = view === 'trades' ? '' : 'none';
-    if (view === 'orders') {
-      window.atradeLoadOpenOrders().catch(() => {});
-    }
-  };
-
-  // ── 拉取挂单明细（逐笔 OPEN 委托） ──
-  window.atradeLoadOpenOrders = async () => {
-    if (!active()) return;
-    const seq = ++atradeOpenOrdersSeq;
-    try {
-      const data = await api('open-orders?limit=2000');
-      if (seq !== atradeOpenOrdersSeq) return;
-      openOrdersData = data || { buys: [], sells: [], count: 0 };
-      window.atradeRefreshOpenOrders();
-    } catch { /* 静默：保留上一帧 */ }
-  };
-
-  // ── 渲染挂单明细：买入/卖出两段，每笔展示挂单价、数量、金额、市价/限价、时间 ──
-  window.atradeRefreshOpenOrders = () => {
-    const host = document.getElementById('atrade-open-orders-body');
-    if (!host) return;
-    const p4 = (v) => { const n = Number(v || 0); return Number.isFinite(n) ? n.toFixed(4) : '0.0000'; };
-    const num = (v, d=2) => { const n = Number(v || 0); return Number.isFinite(n) ? n.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }) : '—'; };
-    const t = (ts) => new Date(Number(ts) || Date.now()).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit', hour12:false });
-    const typeTag = (type) => type === 'limit'
-      ? '<span style="font-size:10px;color:#7fc7d9;border:1px solid rgba(127,199,217,.35);border-radius:4px;padding:0 4px;line-height:16px;height:16px">限价</span>'
-      : '<span style="font-size:10px;color:#d9c27f;border:1px solid rgba(217,194,127,.35);border-radius:4px;padding:0 4px;line-height:16px;height:16px">市价跟随</span>';
-
-    const renderSection = (title, rows, side, isBuy) => {
-      if (!rows.length) {
-        return `<div style="margin-bottom:10px"><div style="font-size:11px;color:#81918e;padding:4px 2px 6px">${title}</div>`
-          + `<div style="text-align:center;color:#5f6f6c;font-size:11px;padding:14px 0">暂无${isBuy ? '买单' : '卖单'}</div></div>`;
-      }
-      const rowsHtml = rows.map(r => {
-        const amountLabel = isBuy
-          ? `<div>金额 <b style="color:#dfeae8">$${num(r.amountUsdt)}</b></div><div style="color:#81918e">可买 ${num(r.sizeA, 4)} AIX</div>`
-          : `<div>数量 <b style="color:#dfeae8">${num(r.sizeA, 4)} AIX</b></div><div style="color:#81918e">净额 ${num(r.netA, 4)} · $${num(r.amountUsdt)}</div>`;
-        return `<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;padding:7px 4px;border-bottom:1px dashed rgba(255,255,255,.05)">`
-          + `<div style="min-width:0">${amountLabel}<div style="color:#5f6f6c;font-size:10px;margin-top:2px">${t(r.createdAt)}</div></div>`
-          + `<div style="text-align:right;white-space:nowrap"><div class="${side}" style="font-size:12px;font-weight:600">$${p4(r.priceUsdt)}</div><div style="margin-top:2px">${typeTag(r.orderType)}</div></div>`
-          + `</div>`;
-      }).join('');
-      return `<div style="margin-bottom:10px"><div style="font-size:11px;color:#81918e;padding:4px 2px 6px">${title}（${rows.length}）</div>${rowsHtml}</div>`;
-    };
-
-    const sells = openOrdersData.sells || [];
-    const buys = openOrdersData.buys || [];
-    if (!sells.length && !buys.length) {
-      host.innerHTML = '<div style="text-align:center;color:#5f6f6c;font-size:12px;padding:36px 16px;line-height:1.8">当前没有任何挂单<br><span style="font-size:11px">用户提交市价或限价委托后，会在这里逐笔显示</span></div>';
-      return;
-    }
-    host.innerHTML = renderSection('卖盘委托', sells, 'down', false) + renderSection('买盘委托', buys, 'up', true);
-  };
-
-  // ── 拉取真实 P2P 盘口（聚合 OPEN 委托），4s 轮询 ──
-  window.atradeLoadBook = async () => {
-    if (!active()) return;
-    const seq = ++atradeBookSeq;
-    try {
-      const data = await api('orderbook?limit=50&tick=0.0001');
-      if (seq !== atradeBookSeq) return;   // 丢弃过期响应
-      bookData = data || { bids: [], asks: [] };
-      window.atradeRefreshBook();
-    } catch { /* 静默：保留上一帧盘口 */ }
-  };
-
-  // ── 渲染订单簿（真实 OPEN 委托档位） ──
-  window.atradeRefreshBook = () => {
-    const askBox = document.getElementById('atrade-rows-ask');
-    const bidBox = document.getElementById('atrade-rows-bid');
-    if (!askBox || !bidBox) return;
-
-    const asks = (bookData?.asks || []).slice(0, 12);   // 价低在前（最优）
-    const bids = (bookData?.bids || []).slice(0, 12);   // 价高在前（最优）
-    const p4 = (v) => { const n = Number(v || 0); return Number.isFinite(n) ? n.toFixed(4) : '0.0000'; };
-
-    // 深度条按本侧最大档位归一化
-    const maxAsk = Math.max(1, ...asks.map(r => Number(r.size) || 0));
-    const maxBid = Math.max(1, ...bids.map(r => Number(r.size) || 0));
-
-    const rowHtml = (r, side, maxSize) => {
-      const p = p4(r.price);
-      const size = Number(r.size) || 0;
-      const usdt = Number(r.usdt) || 0;
-      const pct = Math.min(100, 100 * size / maxSize);
-      // 同价位多笔时展开金额最大的前 5 笔明细（保证大单可见）
-      const detailRows = (r.count > 1 && Array.isArray(r.top) ? r.top : []).map((t, i) => {
-        const ts = Number(t.size) || 0;
-        const tu = Number(t.usdt) || 0;
-        return `<div class="book-row ${side}" style="font-size:9.5px;color:#7d8f8b;opacity:.85">`
-          + `<span style="font-weight:400;padding-left:10px">└</span>`
-          + `<span>${fmtA(ts)}</span>`
-          + `<span>$${tu.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>`;
-      }).join('');
-      const countTag = r.count > 1 ? `<span style="font-size:8.5px;color:#7d8f8b;font-weight:400;margin-left:4px">×${r.count}笔</span>` : '';
-      return `<div class="book-row ${side}"><div class="depth-bg" style="width:${pct.toFixed(1)}%"></div>`
-        + `<span class="book-price" data-side="${side === 'ask' ? 'ask' : 'bid'}" data-price="${p}" style="cursor:pointer" title="${side === 'ask' ? '点击填为卖单限价' : '点击切换为市价买入'}">$${p}${countTag}</span>`
-        + `<span>${fmtA(size)}</span>`
-        + `<span>$${usdt.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}</span></div>`
-        + detailRows;
-    };
-    const emptyRow = (txt) => `<div class="book-row" style="justify-content:center;color:#5f6f6c;font-size:11px;padding:6px 0"><span style="display:block;grid-column:1/-1;text-align:center;white-space:nowrap;font-weight:400">${txt}</span></div>`;
-
-    // 卖盘高价在上：后端最优价（最低）在前 → reverse
-    askBox.innerHTML = asks.length
-      ? asks.slice().reverse().map(r => rowHtml(r, 'ask', maxAsk)).join('')
-      : emptyRow('暂无卖单 · 挂卖单后显示');
-    // 买盘最优价（最高）在上，直接渲染
-    bidBox.innerHTML = bids.length
-      ? bids.map(r => rowHtml(r, 'bid', maxBid)).join('')
-      : emptyRow('暂无买单 · 挂买单后显示');
-
-    // 更新中间现价
-    const markEl = document.getElementById('atrade-book-mark');
-    if (markEl) {
-      const mp = bookData?.markPrice != null ? p4(bookData.markPrice) : p4(poolStats?.priceUsdt);
-      markEl.textContent = '$' + mp;
-    }
-
-    // 订单簿点价即填
-    try {
-      document.querySelectorAll('#atrade-book-panel .book-price').forEach(el => {
-        el.addEventListener('click', (e) => {
-          const price = e.currentTarget.dataset.price;
-          const side_ = e.currentTarget.dataset.side;
-          if (!price) return;
-          // 点 bid → 切 side=buy；点 ask → 切 side=sell
-          const newSide = side_ === 'bid' ? 'buy' : 'sell';
-          window.atradeSide(newSide);
-          // 买盘点击只能切到市价买入；卖盘点击才允许带入限价。
-          if (newSide === 'sell') window.atradeOrderType('limit');
-          const pinp = document.getElementById('atrade-input-price');
-          if (pinp && newSide === 'sell') {
-            pinp.value = price;
-            window.atradeInputChanged(true);
-          } else if (pinp) {
-            pinp.value = '';
-          }
-        });
-      });
-    } catch {}
   };
 
   // ── 滑条 → 输入框 ──
   function maxAmount() {
     const p = profile || {};
-    return currentSide === 'buy' ? Number(p.balances?.USDT || 0) : Number(p.balances?.A || 0);
+    if (currentSide === 'buy') {
+      // 买入 0 手续费：可买成交金额 = USDT 余额（向下取 2 位）
+      const usdt = Number(p.balances?.USDT || 0);
+      return Math.floor(usdt * 100) / 100;
+    }
+    // 卖出同时受 SVX 余额与流通额度限制（涡轮释放的额度）
+    const balA = Number(p.balances?.A || 0);
+    const quota = Number(p.sellQuota?.available || 0);
+    return Math.max(0, Math.min(balA, quota));
   }
   window.atradeSliderFill = (pct) => {
     const slider = document.getElementById('atrade-slider');
@@ -720,17 +538,18 @@
     const amt = input.value?.trim();
     if (!amt) {
       if (sv) sv.textContent = '$0.00';
-      if (sf) sf.textContent = '0 AIX';
+      if (sf) sf.textContent = '0 USDT';
       // 清空 quote 展示
       const e = (id) => document.getElementById(id);
       if (currentSide === 'buy') {
         if (e('q-buy-a'))     e('q-buy-a').textContent = '—';
         if (e('q-buy-price')) e('q-buy-price').textContent = '—';
+        if (e('q-buy-fee'))   e('q-buy-fee').textContent = '—';
+        if (e('q-buy-total')) e('q-buy-total').textContent = '—';
       } else {
         if (e('q-sell-usdt')) e('q-sell-usdt').textContent = '—';
         if (e('q-sell-fee'))  e('q-sell-fee').textContent  = '—';
-        if (e('q-sell-burn')) e('q-sell-burn').textContent = '—';
-        if (e('q-sell-div'))  e('q-sell-div').textContent  = '—';
+        if (e('q-sell-pool')) e('q-sell-pool').textContent = '—';
       }
       return;
     }
@@ -746,38 +565,28 @@
     clearTimeout(quoteTimer);
     quoteTimer = setTimeout(async () => {
       try {
-        let q;
-        if (currentOrderType === 'limit') {
-          // 限价单：取限价输入框
-          const priceInput = document.getElementById('atrade-input-price');
-          const priceUsdt = String(priceInput?.value || '').trim();
-          if (!priceUsdt) {
-            if (sv) sv.textContent = '$0.00';
-            if (sf) sf.textContent = '请先填写限价';
-          return;
-          }
-          q = await api(`orders/quote?side=${currentSide}&priceUsdt=${encodeURIComponent(priceUsdt)}&amount=${encodeURIComponent(amt)}`);
-        } else {
-          q = await api(`quote?side=${currentSide}&amount=${encodeURIComponent(amt)}`);
-        }
+        // 一键买/一键卖报价：按大盘价，买入 0 手续费，卖出 5% 进股东池
+        const q = await api(`zone/quote?side=${currentSide}&zone=${currentZone}&amount=${encodeURIComponent(amt)}`);
         if (requestId !== quoteRequestId) return;
         const e = (id) => document.getElementById(id);
         if (currentSide === 'buy') {
-          if (e('q-buy-a'))     e('q-buy-a').textContent     = `${fmtA(q.aOut)} AIX`;
+          if (e('q-buy-a'))     e('q-buy-a').textContent     = `${fmtA(q.aOut)} SVX`;
           if (e('q-buy-price')) e('q-buy-price').textContent = q.priceUsdt != null ? fmtPrice4(q.priceUsdt) : '—';
+          const fee = Number(q.feeUsdt || 0);   // 买入 0 手续费
+          const total = q.totalUsdt != null ? Number(q.totalUsdt) : Number(q.usdtIn || q.amountUsdt || 0);
+          if (e('q-buy-fee'))   e('q-buy-fee').textContent = `${fmtUsdt(fee)} USDT`;
+          if (e('q-buy-total')) e('q-buy-total').textContent = `${fmtUsdt(total)} USDT`;
           if (sv) sv.textContent = fmtUsdt(q.amountUsdt || q.usdtIn || 0);
-          if (sf) sf.textContent = '$0.00（买方免）';
+          if (sf) sf.textContent = `${fmtUsdt(fee)} USDT（买入免手续费）`;
         } else {
           if (e('q-sell-usdt')) e('q-sell-usdt').textContent = fmtUsdt(q.usdtOut);
-          // 卖方手续费全站统一 3%
           const feeLbl = e('q-sell-fee-lbl');
-          if (feeLbl && q.feePct) feeLbl.textContent = `手续费 (${q.feePct} · 成交时扣)`;
-          if (e('q-sell-fee'))  e('q-sell-fee').textContent  = `-${fmtA(q.feeA)} AIX`;
-          // 手续费固定 50% 销毁 + 50% 进 A10 池（不受后台销毁开关影响）
-          if (e('q-sell-burn')) e('q-sell-burn').textContent = `-${fmtA(Number(q.feeA)/2)} AIX`;
-          if (e('q-sell-div'))  e('q-sell-div').textContent  = `-${fmtA(Number(q.feeA)/2)} AIX`;
+          if (feeLbl && q.feePct) feeLbl.textContent = `平台交易费 (${q.feePct} · 成交 USDT 金额)`;
+          const feeUsdt = Number(q.feeUsdt || 0);
+          if (e('q-sell-fee'))  e('q-sell-fee').textContent  = `-${fmtUsdt(feeUsdt)} USDT`;
+          if (e('q-sell-pool')) e('q-sell-pool').textContent = `-${fmtUsdt(feeUsdt)} USDT`;
           if (sv) sv.textContent = fmtUsdt(q.amountUsdt || (q.aIn ? (Number(q.aIn) * Number(q.priceUsdt || 0)) : 0));
-          if (sf) sf.textContent = `${fmtA(q.feeA)} AIX（50%销毁 ${fmtA(Number(q.feeA)/2)} + 50%进A10池 ${fmtA(Number(q.feeA)/2)}）`;
+          if (sf) sf.textContent = `${fmtUsdt(feeUsdt)} USDT（平台费 50%销毁 / 50%股东分红）`;
         }
       } catch (e) {
         // 忽略
@@ -785,7 +594,7 @@
     }, 300);
   };
 
-  // ── 提交下单（统一新接口 /api/a-token/orders） ──
+  // ── 一键买 / 一键卖（2026-11-09 P2：取消挂买挂卖）──
   window.atradeSubmit = async () => {
     if (!profile) {
       if (typeof showToast === 'function') showToast('请先连接并确认钱包', 'error');
@@ -794,58 +603,49 @@
     }
     const inp = document.getElementById('atrade-input-amount');
     const amt = inp?.value?.trim();
-    if (!amt) { showErr(currentSide === 'buy' ? '请输入支付 USDT 数量' : '请输入卖出 AIX 数量'); return; }
+    if (!amt) { showErr(currentSide === 'buy' ? '请输入支付 USDT 数量' : '请输入卖出 SVX 数量'); return; }
+    if (!(Number(amt) > 0) || !Number.isFinite(Number(amt))) { showErr('请输入有效数量'); return; }
     const max = maxAmount();
-    if (Number(amt) > max) {
-      showErr(currentSide === 'buy' ? `USDT 余额不足（当前 ${fmtUsdt(max)}）` : `AIX 余额不足（当前可用 ${fmtA(max)} AIX）`);
+    if (Number(amt) > max + 1e-9) {
+      showErr(currentSide === 'buy'
+        ? `USDT 余额不足（当前最多可买 ${fmtUsdt(max)} 成交额）`
+        : `超过可卖上限（余额与流通额度取小：${fmtA(max)} SVX）`);
       return;
     }
+    if (currentSide === 'sell' && Number(amt) < 1) { showErr('SVX 卖出最低 1 个起'); return; }
+    if (!connectedProvider || !connectedWalletAddress) { showErr('请先连接钱包'); return; }
 
-    if (currentSide === 'sell' && Number(amt) < 1) { showErr('AIX 卖出最低 1 个起，买入不限制'); return; }
-
-    // 买卖双方均支持市价跟随 / 限价委托
-    const submitOrderType = currentOrderType;
-    let priceUsdt = undefined;
-    if (submitOrderType === 'limit') {
-      const pinp = document.getElementById('atrade-input-price');
-      const pv = String(pinp?.value || '').trim();
-      if (!pv) { showErr('请填写限价（USDT / AIX）'); return; }
-      if (Number(pv) <= 0) { showErr('限价必须大于 0'); return; }
-      priceUsdt = pv;
-    }
-    // 市价买入先看盘口：没有卖单时不会立即成交，先确认是否转为「委托求购」再冻结 USDT
-    if (currentSide === 'buy' && submitOrderType === 'market') {
-      const hasAsks = (bookData.asks || []).length > 0 || Number(poolStats?.depth?.openSellCount || 0) > 0;
-      if (!hasAsks) {
-        const goOrder = typeof confirmDialog === 'function'
-          ? await confirmDialog(`当前盘口没有卖单，买入无法立即成交。是否转为「委托求购」？将冻结 ${fmtUsdt(Number(amt))} USDT 挂单，有卖单时自动成交。`, { title: '暂无卖单' })
-          : true;
-        if (!goOrder) return;
-      }
-    }
+    const zoneName = ({alpha:'蓄能额度',beta:'驱动额度',market:'自由交易（驱动额度）'})[currentZone];
     try {
-      const r = await authApi('orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ side: currentSide, orderType: submitOrderType, priceUsdt, amount: amt }),
-      });
-      if (r.orderStatus === 'FILLED') {
-        if (currentSide === 'buy') showOk(`买入成功 · 支付 ${fmtUsdt(r?.usdtPaid || amt)}，获得 ${fmtA(r?.aReceived)} AIX`);
-        else showOk(`卖出成功 · 卖出 ${fmtA(r?.aSold || amt)} AIX，净得 ${fmtUsdt(r?.usdtReceived)}，扣手续费 ${fmtA(r?.feeA)} AIX（50%销毁+50%进A10池）`);
-      } else if (r.orderStatus === 'OPEN' && r.partialFilled) {
-        showOk(`${currentSide === 'buy'
-          ? `已成交部分：获得 ${fmtA(r.aReceived)} AIX；剩余自动挂单（冻结 ${fmtUsdt(r.lockedUsdt)} USDT）`
-          : `已成交部分：净得 ${fmtUsdt(r.usdtReceived)}；剩余自动挂单（冻结 ${fmtA(r.lockedA)} AIX）`} · 等待对手方`);
-      } else if (r.orderStatus === 'OPEN') {
-        showOk(`暂无对手方挂单 · 已转为${currentSide === 'buy' ? '求购委托' : '挂牌委托'} · 冻结 ${currentSide === 'buy' ? fmtUsdt(r.lockedUsdt) + ' USDT' : fmtA(r.lockedA) + ' AIX'}${currentSide === 'sell' ? '（手续费成交时划扣）' : ''}`);
+      const q = await api(`zone/quote?side=${currentSide}&zone=${currentZone}&amount=${encodeURIComponent(amt)}`);
+      const requestId = 'azt_' + (globalThis.crypto?.randomUUID?.().replaceAll('-', '') || `${Date.now()}${Math.floor(Math.random() * 1e6)}`);
+      const timestamp = String(Date.now());
+      let message, path, body;
+      if (currentSide === 'buy') {
+        message = `Solvex ${zoneName}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`;
+        path = 'zone/buy';
+        body = { zone: currentZone, amount: amt, timestamp };
       } else {
-        showOk('下单成功');
+        message = `Solvex 一键卖出确认：卖出 ${q.aIn} SVX，编号 ${requestId}，时间：${timestamp}`;
+        path = 'zone/sell';
+        body = { amount: amt, timestamp };
+      }
+      const signature = await connectedProvider.request({ method: 'personal_sign', params: [message, connectedWalletAddress] });
+      const r = await authApi(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': requestId },
+        body: JSON.stringify({ ...body, signature }),
+      });
+      if (currentSide === 'buy') {
+        showOk(`买入成功 · ${fmtUsdt(r.usdtCost || amt)} USDT 买入 ${fmtA(r.aOut)} SVX 进${r.zoneLabel || zoneName}（买入手续费 0）`);
+      } else {
+        showOk(`卖出成功 · 卖出 ${fmtA(r.aIn || amt)} SVX，净得 ${fmtUsdt(r.netUsdt)} USDT（平台交易费 ${fmtUsdt(r.feeUsdt)} USDT，50%销毁/50%股东分红）`);
       }
       if (inp) inp.value = '';
       const slider = document.getElementById('atrade-slider');
       if (slider) slider.value = 0;
       await load();
-    } catch (e) { showErr(friendlyError(e, submitOrderType === 'limit' ? '挂单失败' : (currentSide === 'buy' ? '买入失败' : '卖出失败'))); }
+    } catch (e) { showErr(friendlyError(e, currentSide === 'buy' ? '买入失败' : '卖出失败')); }
   };
 
   // ── 我的委托：拉取列表 + 渲染 ──
@@ -877,14 +677,14 @@
       if (accountTab === 'balances' || accountTab === 'positions') window.atradeRenderAccount();
     } catch (e) { /* ignore */ }
   }
-  // ── 底部账户面板：五 tab 渲染（资产/持仓/当前委托/历史委托/成交历史），样式对齐现货终端 ──
+  // ── 底部账户面板：资产/持仓/当前委托/成交历史 ──
   window.atradeAccountTab = (view) => {
-    accountTab = ['balances', 'positions', 'orders', 'history', 'fills'].includes(view) ? view : 'balances';
+    accountTab = ['balances', 'positions', 'orders', 'fills'].includes(view) ? view : 'balances';
     document.querySelectorAll('#atrade-account-tabs button').forEach(b => {
       b.classList.toggle('active', b.dataset.aview === accountTab);
     });
     window.atradeRenderAccount();
-    if (accountTab === 'orders' || accountTab === 'history') window.atradeRefreshOrders();
+    if (accountTab === 'orders') window.atradeRefreshOrders();
   };
 
   window.atradeRenderAccount = () => {
@@ -899,56 +699,50 @@
     if (accountTab === 'balances') {
       host.innerHTML = `<table class="terminal-data-table"><thead><tr><th>资产</th><th>余额</th><th>冻结中</th><th>市值</th></tr></thead><tbody>
         <tr><td data-label="资产" class="asset-name">USDT</td><td data-label="余额">${fmtUsdt(balU)}</td><td data-label="冻结中">${fmtUsdt(lockU)}</td><td data-label="市值">${fmtUsdt(balU)}</td></tr>
-        <tr><td data-label="资产" class="asset-name">AIX</td><td data-label="余额">${fmtA(balA)}</td><td data-label="冻结中">${fmtA(lockA)}</td><td data-label="市值">${fmtUsdt(balA * price)}</td></tr>
+        <tr><td data-label="资产" class="asset-name">SVX</td><td data-label="余额">${fmtA(balA)}</td><td data-label="冻结中">${fmtA(lockA)}</td><td data-label="市值">${fmtUsdt(balA * price)}</td></tr>
       </tbody></table>`;
       return;
     }
     if (accountTab === 'positions') {
-      if (!(balA > 0)) { host.innerHTML = '<div class="terminal-empty">暂无 AIX 持仓</div>'; return; }
+      if (!(balA > 0)) { host.innerHTML = '<div class="terminal-empty">暂无 SVX 持仓</div>'; return; }
       host.innerHTML = `<table class="terminal-data-table"><thead><tr><th>市场</th><th>持仓数量</th><th>冻结中</th><th>现价</th><th>市值</th></tr></thead><tbody>
-        <tr><td data-label="市场">AIX/USDT</td><td data-label="持仓数量">${fmtA(balA)} AIX</td><td data-label="冻结中">${fmtA(lockA)} AIX</td><td data-label="现价">${fmtPrice4(price)}</td><td data-label="市值">${fmtUsdt(balA * price)}</td></tr>
+        <tr><td data-label="市场">SVX/USDT</td><td data-label="持仓数量">${fmtA(balA)} SVX</td><td data-label="冻结中">${fmtA(lockA)} SVX</td><td data-label="现价">${fmtPrice4(price)}</td><td data-label="市值">${fmtUsdt(balA * price)}</td></tr>
       </tbody></table>`;
       return;
     }
-    if (accountTab === 'orders' || accountTab === 'history') {
+    if (accountTab === 'orders') {
       const list = Array.isArray(myOrdersCache) ? myOrdersCache : [];
-      const filtered = accountTab === 'orders'
-        ? list.filter(o => o.orderStatus === 'OPEN')
-        : list.filter(o => o.orderStatus !== 'OPEN');
-      if (!filtered.length) { host.innerHTML = `<div class="terminal-empty">${accountTab === 'orders' ? '暂无当前委托' : '暂无历史委托'}</div>`; return; }
+      const filtered = list.filter(o => o.orderStatus === 'OPEN');
+      if (!filtered.length) { host.innerHTML = '<div class="terminal-empty">暂无当前委托</div>'; return; }
       const rows = filtered.map(o => {
         const filled = o.side === 'buy'
           ? `${fmtUsdt(Number(o.filledUsdt || 0))} USDT`
-          : `${fmtA(Number(o.filledA || 0))} AIX`;
+          : `${fmtA(Number(o.filledA || 0))} SVX`;
         // 挂单中：委托量显示「剩余未成交」（随成交递减，成交多少减多少）；
         // 已结束的委托：显示原始委托量（剩余 + 累计成交，否则 FILLED/CANCELLED 单会显示成 0 或退回部分）
         const size = o.orderStatus === 'OPEN'
-          ? (o.side === 'buy' ? `${fmtUsdt(Number(o.inputUsdt || 0))} USDT` : `${fmtA(Number(o.inputA || 0))} AIX`)
+          ? (o.side === 'buy' ? `${fmtUsdt(Number(o.inputUsdt || 0))} USDT` : `${fmtA(Number(o.inputA || 0))} SVX`)
           : (o.side === 'buy'
               ? `${fmtUsdt(Number(o.inputUsdt || 0) + Number(o.filledUsdt || 0))} USDT`
-              : `${fmtA(Number(o.inputA || 0) + Number(o.filledA || 0))} AIX`);
-        const status = o.orderStatus === 'OPEN' ? '<span style="color:#f6c454">挂单中</span>'
-          : o.orderStatus === 'FILLED' ? '<span style="color:#50d2b8">已成交</span>'
-          : o.orderStatus === 'CANCELLED' ? '<span style="color:#81918e">已撤单</span>'
+              : `${fmtA(Number(o.inputA || 0) + Number(o.filledA || 0))} SVX`);
+        const status = o.orderStatus === 'OPEN' ? '<span style="color:#8a5508">挂单中</span>'
+          : o.orderStatus === 'FILLED' ? '<span style="color:var(--brand)">已成交</span>'
+          : o.orderStatus === 'CANCELLED' ? '<span style="color:var(--mut)">已撤单</span>'
           : `<span>${o.orderStatus}</span>`;
         const action = o.orderStatus === 'OPEN'
           ? `<button class="table-action" onclick="window.atradeCancelOrder('${o.orderId}')">撤单</button>`
-          : (o.fillPriceUsdt ? `<span style="color:#81918e">${fmtPrice4(o.fillPriceUsdt)}</span>` : '—');
-        const fillCell = accountTab === 'history'
-          ? `<td data-label="成交价">${o.fillPriceUsdt ? fmtPrice4(o.fillPriceUsdt) : '—'}</td>` : '';
+          : (o.fillPriceUsdt ? `<span style="color:var(--mut)">${fmtPrice4(o.fillPriceUsdt)}</span>` : '—');
         const orderTypeLabel = o.orderType === 'market' ? '市价' : '限价';
-        return `<tr><td data-label="时间">${zTime(o.createdAt)}</td><td data-label="方向" class="${o.side === 'buy' ? 'up' : 'down'}">${o.side === 'buy' ? '买入' : '卖出'}</td><td data-label="类型">${orderTypeLabel}</td><td data-label="委托价">${fmtPrice4(o.orderPriceUsdt)}</td><td data-label="委托量">${size}</td><td data-label="已成交">${filled}</td>${fillCell}<td data-label="状态">${status}</td><td data-label="操作">${action}</td></tr>`;
+        return `<tr><td data-label="时间">${zTime(o.createdAt)}</td><td data-label="方向" class="${o.side === 'buy' ? 'up' : 'down'}">${o.side === 'buy' ? '买入' : '卖出'}</td><td data-label="类型">${orderTypeLabel}</td><td data-label="委托价">${fmtPrice4(o.orderPriceUsdt)}</td><td data-label="委托量">${size}</td><td data-label="已成交">${filled}</td><td data-label="状态">${status}</td><td data-label="操作">${action}</td></tr>`;
       }).join('');
-      const head = accountTab === 'orders'
-        ? '<th>时间</th><th>方向</th><th>类型</th><th>委托价</th><th>委托量</th><th>已成交</th><th>状态</th><th>操作</th>'
-        : '<th>时间</th><th>方向</th><th>类型</th><th>委托价</th><th>委托量</th><th>已成交</th><th>成交价</th><th>状态</th><th>操作</th>';
+      const head = '<th>时间</th><th>方向</th><th>类型</th><th>委托价</th><th>委托量</th><th>已成交</th><th>状态</th><th>操作</th>';
       host.innerHTML = `<table class="terminal-data-table"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table>`;
       return;
     }
     // fills · 成交历史
     const trades = p.trades || [];
     if (!trades.length) { host.innerHTML = '<div class="terminal-empty">暂无成交记录</div>'; return; }
-    const rows = trades.map(t => `<tr><td data-label="时间">${zTime(t.createdAt)}</td><td data-label="方向" class="${t.side === 'buy' ? 'up' : 'down'}">${t.side === 'buy' ? '买入' : '卖出'}</td><td data-label="价格">${fmtPrice4(t.priceUsdt)}</td><td data-label="数量">${fmtA(t.size)} AIX</td><td data-label="成交额">${fmtUsdt(t.amountUsdt)}</td><td data-label="销毁" style="color:#f26c78">${t.burn ? `${fmtA(t.burn)} AIX` : '—'}</td><td data-label="入A10池" style="color:#f6c454">${t.dividend ? `${fmtA(t.dividend)} AIX` : '—'}</td></tr>`).join('');
+    const rows = trades.map(t => `<tr><td data-label="时间">${zTime(t.createdAt)}</td><td data-label="方向" class="${t.side === 'buy' ? 'up' : 'down'}">${t.side === 'buy' ? '买入' : '卖出'}</td><td data-label="价格">${fmtPrice4(t.priceUsdt)}</td><td data-label="数量">${fmtA(t.size)} SVX</td><td data-label="成交额">${fmtUsdt(t.amountUsdt)}</td><td data-label="销毁" style="color:#c62a37">${t.burn ? `${fmtA(t.burn)} SVX` : '—'}</td><td data-label="入A10池" style="color:#8a5508">${t.dividend ? `${fmtA(t.dividend)} SVX` : '—'}</td></tr>`).join('');
     host.innerHTML = `<table class="terminal-data-table"><thead><tr><th>时间</th><th>方向</th><th>价格</th><th>数量</th><th>成交额</th><th>销毁</th><th>入A10池</th></tr></thead><tbody>${rows}</tbody></table>`;
   };
   window.atradeCancelOrder = async (orderId) => {
@@ -1014,6 +808,24 @@
     fitAtradeChart();
     atradeCandleSeries = atradeChart.addSeries(LightweightCharts.CandlestickSeries, {
       upColor:'#4fd1b5', downColor:'#f06f75', borderVisible:false, wickUpColor:'#4fd1b5', wickDownColor:'#f06f75',
+      // 内盘横盘时保留至少 0.2% 的纵轴范围：小蜡烛可见，微波也不会拉满整张图。
+      // 后台主动调大行情后仍按实际高低价扩展，不会裁掉真实波动。
+      autoscaleInfoProvider: (original) => {
+        const info = original();
+        const range = info?.priceRange;
+        if (!range) return info;
+        const center = (range.minValue + range.maxValue) / 2;
+        const referencePrice = Number(poolStats?.priceUsdt || center);
+        const minimumVisibleSpan = referencePrice * 0.002;
+        if (!(minimumVisibleSpan > 0) || range.maxValue - range.minValue >= minimumVisibleSpan) return info;
+        return {
+          ...info,
+          priceRange: {
+            minValue: center - minimumVisibleSpan / 2,
+            maxValue: center + minimumVisibleSpan / 2,
+          },
+        };
+      },
     });
     atradeCandleSeries.priceScale().applyOptions({
       autoScale:true,
@@ -1054,6 +866,19 @@
       low: Number(c.low),
       close: Number(c.close),
     }));
+    // 内盘阶段（自由交易未开放、50 万 LP 后才接链上）：还没有成交记录时 K 线不能空白，
+    // 用平台内盘指导价铺满最近 60 个周期，让行情图立即可见；价格全部取当前内盘价，
+    // 不编造涨跌幅与成交量，后续有真实内盘成交就由成交 K 线逐根替换。
+    if (!candles.length) {
+      const price = Number(poolStats?.priceUsdt || 0);
+      if (price > 0) {
+        const sec = ({ '1m':60, '5m':300, '15m':900, '1h':3600, '4h':14400, '1d':86400 })[period] || 900;
+        const now = Math.floor(Date.now() / 1000 / sec) * sec;
+        for (let i = 59; i >= 0; i--) {
+          candles.push({ time: now - i * sec, open: price, high: price, low: price, close: price });
+        }
+      }
+    }
     series.setData(candles);
     atradeLastTime = candles[candles.length - 1]?.time || 0;
     atradeLoadedPeriod = period;

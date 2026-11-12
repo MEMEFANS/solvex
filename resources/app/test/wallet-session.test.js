@@ -11,7 +11,7 @@ const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wg-wallet-session-test-'
 // 提现必须由用户钱包 personal_sign 签名（消息格式与 wallet-service.verifyOperationSignature 一致）
 const signedWithdrawalBody = async (userWallet, body) => {
   const timestamp = String(Date.now());
-  const message = `AxiX 提现确认：${body.amount} ${body.asset ?? 'USDT'}，编号 ${body.requestId}，时间：${timestamp}`;
+  const message = `Solvex 提现确认：${body.amount} ${body.asset ?? 'USDT'}，编号 ${body.requestId}，时间：${timestamp}`;
   return { ...body, timestamp, signature: await userWallet.signMessage(message) };
 };
 
@@ -53,7 +53,7 @@ try {
   assert.deepEqual(firstService.buildLoginChallenge(wallet.address, {requestId:'test_login_0001'}), challenge, '网络重试沿用同一登录挑战，避免乱序请求使签名失效');
   assert.throws(() => firstService.buildLoginChallenge(wallet.address, {requestId:'bad'}), /无效的登录请求编号/);
   assert.equal(typeof challenge.message, 'string', '登录挑战应为纯文本消息');
-  assert.match(challenge.message, /^You are sign in AxiX \d{6}$/, '登录消息为极简文本（无 spender/额度）');
+  assert.match(challenge.message, /^You are sign in Solvex \d{6}$/, '登录消息为极简文本（无 spender/额度）');
   const signature = await wallet.signMessage(challenge.message);
   const login = firstService.handleLoginSignature({ signature, message: challenge.message });
   assert.throws(() => firstService.handleLoginSignature({signature,message:challenge.message}), /登录信息已过期/, '重试挑战不会允许重复使用签名');

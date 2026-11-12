@@ -1,0 +1,52 @@
+@import './mining-scene.css';
+
+.solvex-react .rx-cavern[data-scene-style=toy] { border-color:#e2e2ef; border-radius:20px; box-shadow:0 8px 36px -22px #453a9840; scroll-margin-top:80px; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-heading { padding:18px 22px; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-icon { width:40px; height:40px; border-color:#e6ddfb; border-radius:12px; color:#7445d7; background:linear-gradient(135deg,#f6f1ff,#eef6ff); }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state { color:#7354b2; border-color:#e6ddf6; background:#f8f5ff; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-state i { background:#9365e5; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state.is-active { color:#12856b; background:#f1faf7; border-color:#d4ece2; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-state.is-active i { background:#20a080; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state.is-error { color:#ad5551; background:#fff6f3; border-color:#f0d9d1; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-state.is-error i { background:#c57364; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-toggle { border-color:#e4e1ef; color:#79738d; }
+.rx-cavern-toggle:focus-visible,.rx-cavern-zones button:focus-visible { outline:3px solid #9867ef77; outline-offset:3px; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-viewport { overflow:hidden; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-stage { min-width:0; width:100%; aspect-ratio:16/9; background:#605071; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-region { --miner-color:#d58d54; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-region.is-silver { --miner-color:#c6e2ff; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-region.is-gold { --miner-color:#ffda6c; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-shadow { width:5.4%; height:1.7%; background:#33233766; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-worker { transform:translate(-42.578125%,-92.361111%); background-image:url('/assets/mining/toy-miner-copper-v3.webp'); animation-name:rx-toy-swing; animation-duration:1100ms; }
+.rx-cavern[data-scene-style=toy] .is-silver .rx-cavern-worker { background-image:url('/assets/mining/toy-miner-silver-v3.webp'); }
+.rx-cavern[data-scene-style=toy] .is-gold .rx-cavern-worker { background-image:url('/assets/mining/toy-miner-gold-v3.webp'); }
+.rx-cavern[data-scene-style=toy] .rx-cavern-label { top:calc(var(--miner-y) + 3.7%); border-color:#ffffff88; padding:6px 11px; background:#fdfaffed; box-shadow:0 4px 15px #382c4726; color:#51415f; backdrop-filter:blur(8px); transition:box-shadow .2s,border-color .2s; }
+.rx-cavern[data-scene-style=toy] .rx-cavern-label span { border-color:#e1d8e7; color:#8b7999; }
+.rx-cavern-region[data-selected=true] .rx-cavern-label { border-color:var(--miner-color); box-shadow:0 0 0 3px #fff4,0 5px 18px #25163833; }
+.rx-cavern-impact { position:absolute; left:var(--impact-x); top:var(--impact-y); width:1.6%; aspect-ratio:1; color:var(--miner-color); opacity:0; transform:translate(-50%,-50%); animation:rx-toy-impact 1100ms linear infinite; animation-delay:var(--miner-delay); animation-play-state:paused; }
+.rx-cavern-impact i { position:absolute; top:50%; left:50%; width:23%; height:11%; border-radius:50%; background:currentColor; box-shadow:0 0 6px currentColor; transform:translate(-180%,-200%) rotate(35deg); }
+.rx-cavern-impact i:nth-child(2) { transform:translate(100%,-300%) rotate(-45deg); }.rx-cavern-impact i:nth-child(3) { transform:translate(190%,100%) rotate(25deg); }.rx-cavern-impact i:nth-child(4) { transform:translate(-220%,100%) rotate(-25deg); }
+.rx-cavern-impact b { position:absolute; inset:10%; border-radius:50%; background:#fff7d7; box-shadow:0 0 13px 4px currentColor; }
+.rx-cavern-motes { position:absolute; inset:0; pointer-events:none; }.rx-cavern-motes i { position:absolute; left:12%; top:32%; width:3px; height:3px; border-radius:50%; background:#b7d6ff; box-shadow:0 0 9px #6fafff; opacity:0; animation:rx-toy-mote 6s ease-in-out infinite; animation-play-state:paused; }
+.rx-cavern-motes i:nth-child(2) { left:34%; top:41%; animation-delay:-2s; }.rx-cavern-motes i:nth-child(3) { left:59%; top:26%; animation-delay:-4s; }.rx-cavern-motes i:nth-child(4) { left:68%; top:44%; animation-delay:-1s; }.rx-cavern-motes i:nth-child(5) { left:89%; top:31%; animation-delay:-3s; }.rx-cavern-motes i:nth-child(6) { left:43%; top:56%; animation-delay:-5s; }
+.rx-cavern[data-animation-running=true] .rx-cavern-impact,.rx-cavern[data-animation-running=true] .rx-cavern-motes i { animation-play-state:running; }
+.rx-cavern-zones { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid #ece8f2; border-bottom:1px solid #ece8f2; padding:12px 14px; gap:10px; background:linear-gradient(180deg,#faf9fd,#fff); }
+.rx-cavern-zones button { --zone:#b67545; --zone-soft:#f8eee4; display:flex; align-items:center; gap:10px; text-align:left; padding:10px 13px; min-width:0; border:1px solid #eae5ef; border-radius:12px; background:#fff; cursor:pointer; transition:background .2s,border-color .2s,box-shadow .2s; }
+.rx-cavern-zones button[data-tone=silver] { --zone:#7e94b4; --zone-soft:#edf2f9; }.rx-cavern-zones button[data-tone=gold] { --zone:#c09a40; --zone-soft:#fbf4e2; }
+.rx-cavern-zones button:hover,.rx-cavern-zones button[aria-pressed=true] { border-color:var(--zone); background:var(--zone-soft); box-shadow:0 2px 6px #3c2e5606; }
+.rx-cavern-zone-gem { display:block; width:24px; height:27px; flex-shrink:0; background:linear-gradient(140deg,#fff 0%,var(--zone) 40%,var(--zone-soft) 42%,var(--zone) 100%); clip-path:polygon(25% 0,75% 0,100% 40%,50% 100%,0 40%); }
+.rx-cavern-zones button>span:nth-child(2) { min-width:0; flex:1; }.rx-cavern-zones strong { display:block; color:#39344d; font-size:12px; line-height:1.6; font-weight:600; }.rx-cavern-zones small { display:block; color:#8b829a; font-size:10px; line-height:1.6; }.rx-cavern-zones svg { color:var(--zone); flex-shrink:0; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-footer { border:0; padding:14px 22px; }.rx-cavern[data-scene-style=toy] .rx-cavern-footer p { color:#7d738d; }.rx-cavern[data-scene-style=toy] .rx-cavern-footer small { color:#a29aac; }.rx-cavern[data-scene-style=toy] .rx-cavern-swipe { color:#9a8eab; }
+@keyframes rx-toy-swing { 0% { background-position:0 0; } 18.181818% { background-position:33.333333% 0; } 30.909091% { background-position:66.666667% 0; } 44.545455% { background-position:100% 0; } 50.909091% { background-position:0 100%; } 60% { background-position:33.333333% 100%; } 68.181818% { background-position:66.666667% 100%; } 79.090909% { background-position:100% 100%; } 100% { background-position:0 0; } }
+@keyframes rx-toy-impact { 0%,50.8% { opacity:0; transform:translate(-50%,-50%) scale(.3); } 51% { opacity:.9; transform:translate(-50%,-50%) scale(.65); } 56% { opacity:.6; transform:translate(-50%,-50%) scale(1.5); } 64%,100% { opacity:0; transform:translate(-50%,-40%) scale(2.2); } }
+@keyframes rx-toy-mote { 0%,100% { opacity:0; transform:translateY(8px); } 45% { opacity:.6; } 85% { opacity:0; transform:translateY(-15px); } }
+@media(max-width:640px) {
+  .solvex-react .rx-cavern[data-scene-style=toy] { border-radius:15px; }.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-heading { padding:14px 12px; }.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-icon { width:32px; height:32px; }
+  .rx-cavern-zones { padding:10px; gap:6px; }.rx-cavern-zones button { gap:7px; padding:9px 8px; border-radius:10px; }.rx-cavern-zone-gem { width:17px; height:21px; }.rx-cavern-zones strong { font-size:11px; }.rx-cavern-zones small { font-size:9px; }.rx-cavern-zones svg { display:none; }
+  .rx-cavern[data-scene-style=toy] .rx-cavern-label { padding:3px 7px; gap:4px; border-radius:12px; }
+  .rx-cavern[data-scene-style=toy] .rx-cavern-label strong { font-size:9px; }
+  .rx-cavern[data-scene-style=toy] .rx-cavern-label i { width:5px; height:5px; }
+  .rx-cavern[data-scene-style=toy] .rx-cavern-label span { display:none; }
+  .solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-footer { padding:12px 14px; }
+}
+@media(prefers-reduced-motion:reduce) { .rx-cavern[data-scene-style=toy] .rx-cavern-worker { animation:none; background-position:0 0; }.rx-cavern[data-scene-style=toy] .rx-cavern-impact,.rx-cavern[data-scene-style=toy] .rx-cavern-motes i { animation:none; opacity:0; } }

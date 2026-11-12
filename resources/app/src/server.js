@@ -1,26 +1,21 @@
-// 三交易所整合服务器
-// 路由规则：
-//   /api/de/*  → Decibel 交易所
-//   /api/ex/*  → Extended 交易所
-//   /api/rs/*  → RISEx 交易所
-//   /api/overview → 三交易所总览（余额+盈亏）
+import { createCommunityGroupService } from './community-group-service.js';
+import { createRegistrationIpService } from './registration-ip-service.js';
+// Solvex 平台服务器
+// 钱包 / 平台现货与合约 / Solvex 合约跟单 / SVX生态 / 运营后台
 import http from 'node:http';
 import crypto from 'node:crypto';
+import { traceRequest } from './request-diagnostics.js';
+import { SOLVEX_RULES } from '../shared/solvex-rules.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { formatUnits } from 'ethers';
 import { readAdminAixIncome } from './a-token-admin-income.js';
 import { getConfig, ROOT, DATA_ROOT } from './config.js';
-import { createExchange as createDeExchange } from './exchange/de/index.js';
-import { createExchange as createExExchange } from './exchange/ex/index.js';
-import { createExchange as createRsExchange } from './exchange/rs/index.js';
-import { GridBot } from './bot.js';
-import { analyzeTrend } from './trend.js';
-import { setupProxies, checkProxy } from './proxy.js';
-import { flushState, loadSnapshot, saveSnapshot } from './persist.js';
+import { setupProxies } from './proxy.js';
 import { createAiService } from './ai/service.js';
 import { createTradeLedger } from './ledger.js';
 import { createWalletService } from './wallet-service.js';
+import { createDeviceService } from './device-service.js';
 import { PLATFORM_SYMBOLS, createPlatformService, setPlatformSymbols } from './platform-service.js';
 import { createMarketCatalog, toBinanceMarketSymbol } from './market-catalog.js';
 import { createAdminAuth } from './admin-auth.js';
@@ -28,92 +23,54 @@ import { createFundsAdminApi } from './funds-admin-api.js';
 import { OPERATOR_ADMIN_CSP, FUNDS_ADMIN_CSP, adminPageKind, isLegacyFundsPath } from './admin-security.js';
 import { createAgentAuth, hashPassword } from './agent-auth.js';
 import { createAgentService } from './agent-service.js';
-import { createCommunityLinksService } from './community-links.js';
-import { createCommunityLinksApi } from './community-links-api.js';
 import { createWithdrawalPayoutService } from './withdrawal-payout-service.js';
 import { createBridgeService } from './bridge-service.js';
 import { createPlatformApi } from './platform-api.js';
-import { createInternalStrategyApi } from './internal-strategy-api.js';
-import { createInternalStrategyService } from './internal-strategy-service.js';
 import { createAiManagedApi } from './ai-managed-api.js';
 import { createAiManagedService } from './ai-managed-service.js';
 import { createReferralApi } from './referral-api.js';
 import { createReferralService } from './referral-service.js';
 import { createATokenService, A_TOKEN_DECIMALS } from './a-token-service.js';
+import { installSolvexWithdrawalFees } from './solvex-withdrawal-fees.js';
+import { createATokenLpJobService } from './a-token-lp-job-service.js';
 import { createATokenPoolService } from './a-token-pool-service.js';
 import { createATokenMinerService } from './a-token-miner-service.js';
 import { createATokenTeamService } from './a-token-team-service.js';
+import { createATokenUpgradeService } from './a-token-upgrade-service.js';
 import { createATokenStakingService } from './a-token-staking-service.js';
 import { createATokenTransferService } from './a-token-transfer-service.js';
 import { createATokenActivationService } from './a-token-activation-service.js';
 import { createATokenKlineService } from './a-token-kline-service.js';
 import { createATokenOrderService } from './a-token-order-service.js';
+import { createATokenShareholderService } from './a-token-shareholder-service.js';
 import { createATokenMatchPoolService } from './a-token-match-pool-service.js';
+import { createATokenTurboService } from './a-token-turbo-service.js';
+import { createATokenZoneTradeService } from './a-token-zone-trade-service.js';
+import { createATokenPendingService } from './a-token-pending-service.js';
+import { createATokenNodeService } from './a-token-node-service.js';
+import { createATokenBlindBoxService } from './a-token-blindbox-service.js';
+import { createATokenBlindBoxChainVerifier } from './a-token-blindbox-chain.js';
 import { createATokenApi } from './a-token-api.js';
-import { createRunAixGameApi } from './run-aix-game-api.js';
-import { createHashAixGameApi } from './hash-aix-game-api.js';
 import { createMallApi } from './mall-api.js';
 import { createATokenAdminApi } from './a-token-admin-api.js';
 import { createSupportService } from './support-service.js';
 import { createSupportApi } from './support-api.js';
+import { createCommunityService } from './community-service.js';
+import { createCommunityAdminService } from './community-admin-service.js';
+import { createCommunityRedPacketService } from './community-redpacket-service.js';
+import { createCommunityApi } from './community-api.js';
 import { createATokenWithdrawalService } from './a-token-withdrawal-service.js';
 import { createATokenClaimService } from './a-token-claim-service.js';
-import { createLotteryService } from './lottery-service.js';
 import { createAirdropPointsService } from './airdrop-points-service.js';
-import { createLotteryApi } from './lottery-api.js';
 import { fetchFuturesCandles, fetchFuturesOrderBook, fetchFuturesPrices, fetchFuturesTickers, fetchFuturesTrades, fetchPublicCandles, fetchPublicOrderBook, fetchPublicPrices, fetchPublicTickers, fetchPublicTrades, marketFetch, subscribeFuturesPrices, subscribeFuturesTradePrices, subscribePublicPrices } from './market-data/public.js';
 
 // ── 启动配置 ─────────────────────────────────────────────────────────────────
 const cfg = getConfig();
 
-// ── 实盘凭据预检查：缺什么直接列出来，不甩堆栈吓人 ─────────────────────────────
-{
-  const missing = [];
-  if (cfg.de.mode === 'live') {
-    if (!cfg.de.apiKey) missing.push(['Decibel ', 'DECIBEL_API_KEY', '在 geomi.dev 免费创建']);
-    if (!cfg.de.privateKey) missing.push(['Decibel ', 'DECIBEL_PRIVATE_KEY', '在 app.decibel.trade/api 创建 API 钱包']);
-  }
-  if (cfg.ex.mode === 'live') {
-    if (!cfg.ex.apiKey) missing.push(['Extended', 'EXTENDED_API_KEY', 'app.extended.exchange → API Management']);
-    if (!cfg.ex.vault) missing.push(['Extended', 'EXTENDED_VAULT', '同上，创建 API Key 时一并显示']);
-    if (!cfg.ex.starkPrivateKey) missing.push(['Extended', 'EXTENDED_STARK_PRIVATE_KEY', '同上，只显示一次务必保存']);
-  }
-  if (cfg.rs.mode === 'live') {
-    if (!cfg.rs.account) missing.push(['RISEx   ', 'ACCOUNT_ADDRESS', 'RISEx 应用的账户 / API 设置']);
-    if (!cfg.rs.signerKey) missing.push(['RISEx   ', 'SIGNER_PRIVATE_KEY', 'RISEx 应用的账户 / API 设置']);
-  }
-  if (missing.length) {
-    console.error('\n[启动失败] 有交易所被设为 live 实盘模式，但 .env 里还缺以下凭据：\n');
-    for (const [ex, key, where] of missing) {
-      console.error(`  ${ex}  缺 ${key}`);
-      console.error(`            获取方式：${where}`);
-    }
-    console.error('\n解决办法（二选一）：');
-    console.error('  1. 用记事本打开项目里的 .env，补齐上面列出的字段');
-    console.error('     （详细获取教程见 README.md 第七节）');
-    console.error('  2. 暂时不实盘：把 .env 里对应的 DE_MODE / EX_MODE / RS_MODE 改回 paper\n');
-    process.exit(1);
-  }
-}
-
 // ── 代理设置 ─────────────────────────────────────────────────────────────────
 const proxyResult = await setupProxies(cfg);
 if (proxyResult.used) {
   console.log('[代理] 已启用: ' + proxyResult.used);
-  console.log('[代理检测] 正在验证代理可用性...');
-  const chk = await checkProxy();
-  if (chk.ok) {
-    console.log('[代理检测] ✓ 代理正常，当前出口 IP: ' + chk.ip);
-  } else {
-    console.error('[代理检测] ✗ 代理无法联网：' + chk.error);
-    const hasLive = cfg.de.mode === 'live' || cfg.ex.mode === 'live' || cfg.rs.mode === 'live';
-    if (hasLive) {
-      console.error('  实盘模式已中止启动，以免在断网状态下运行造成挂单失控。');
-      process.exit(1);
-    } else {
-      console.error('  模拟模式将继续运行，但可能拿不到真实行情。');
-    }
-  }
 } else {
   console.log('[代理] 未配置（直连模式）');
 }
@@ -128,96 +85,14 @@ process.on('unhandledRejection', (reason) => {
   console.error(`[unhandledRejection ${ts}] ${reason?.stack || reason?.message || reason}`);
 });
 
-// ── 创建三个交易所和机器人 ────────────────────────────────────────────────────
-const deExchange = createDeExchange(cfg.de);
-const exExchange = createExExchange(cfg.ex);
-const rsExchange = createRsExchange(cfg.rs);
-
-function recoverLegacyPaperSnapshot(key, snapshot) {
-  if (!snapshot?.config || (snapshot.stats?.completedRungs || 0) <= 0) return snapshot;
-  if (snapshot.paperAccount?.version === 1) return snapshot;
-  const candidates = [];
-  const addCandidate = (state) => {
-    const baseline = state?.ai?.baseline;
-    const realized = baseline?.per?.[key]?.realizedPnl;
-    if (!Number.isFinite(Number(realized)) || Number(realized) === 0) return;
-    candidates.push({ t: Number(baseline.t) || 0, realized: Number(realized) });
-  };
-  addCandidate({ ai: loadSnapshot('ai') });
-  try {
-    const recoveryFile = path.join(DATA_ROOT, 'ledger-recovery.json');
-    if (fs.existsSync(recoveryFile)) {
-      const recovery = JSON.parse(fs.readFileSync(recoveryFile, 'utf8'));
-      const realized = recovery?.per?.[key]?.realizedPnl;
-      if (recovery?.version === 1 && Number.isFinite(Number(realized))) {
-        candidates.push({ t: Number(recovery.baselineT) || 0, realized: Number(realized), authoritative: true });
-      }
-    }
-  } catch { /* best-effort one-time recovery */ }
-  try {
-    const backupDir = path.join(DATA_ROOT, 'state-backups');
-    if (fs.existsSync(backupDir)) {
-      for (const file of fs.readdirSync(backupDir)) {
-        if (!file.endsWith('.json')) continue;
-        try { addCandidate(JSON.parse(fs.readFileSync(path.join(backupDir, file), 'utf8'))); } catch {}
-      }
-    }
-  } catch { /* best-effort migration */ }
-  candidates.sort((a, b) => Number(b.authoritative) - Number(a.authoritative) || b.t - a.t);
-  const best = candidates[0];
-  if (!best) return snapshot;
-  const afterBaseline = (snapshot.fills || [])
-    .filter((fill) => Number(fill.t) > best.t)
-    .reduce((sum, fill) => sum + (Number(fill.realizedPnl) || 0), 0);
-  return { ...snapshot, forceLegacyPaperRestore: true, legacyRealizedPnl: best.realized + afterBaseline };
-}
-
-const restoredSnapshots = {
-  de: recoverLegacyPaperSnapshot('de', loadSnapshot('de')),
-  ex: recoverLegacyPaperSnapshot('ex', loadSnapshot('ex')),
-  rs: recoverLegacyPaperSnapshot('rs', loadSnapshot('rs')),
-};
-
+// ── 成交历史账本（只读；网格引擎移除后不再产生新成交）────────────────────────
 const tradeLedger = createTradeLedger();
 const exchangeNames = { de: 'Decibel', ex: 'Extended', rs: 'RISEx' };
-for (const key of ['de', 'ex', 'rs']) {
-  tradeLedger.importSnapshot(key, restoredSnapshots[key]?.fills || [], {
-    market: restoredSnapshots[key]?.config?.displayName || restoredSnapshots[key]?.config?.marketId || null,
-    mode: cfg[key].mode,
-  });
-}
 
-function botOptions(key) {
-  return {
-    onChange: (snapshot) => saveSnapshot(key, snapshot),
-    onFillRecord: (fill) => tradeLedger.append(key, fill, {
-      market: bots[key]?.config?.displayName || bots[key]?.config?.marketId || null,
-      mode: cfg[key].mode,
-    }),
-  };
-}
-const bots = {};
-const deBot = bots.de = new GridBot(deExchange, botOptions('de'));
-const exBot = bots.ex = new GridBot(exExchange, botOptions('ex'));
-const rsBot = bots.rs = new GridBot(rsExchange, botOptions('rs'));
-
-// Restore cumulative stats / config from the previous run (display continuity).
-// Trading does NOT auto-resume; stray-order cleanup happens after each exchange
-// finishes init (see below).
-deBot.restore(restoredSnapshots.de);
-exBot.restore(restoredSnapshots.ex);
-rsBot.restore(restoredSnapshots.rs);
-
-// Belt-and-suspenders: ensure every exchange always has an 'error' listener so a
-// stray emit can never crash the process (the GridBot also attaches one).
-for (const ex of [deExchange, exExchange, rsExchange]) {
-  ex.on('error', (e) => { try { console.error('[交易所错误] ' + (e?.message || e)); } catch {} });
-}
-
-// ── AI 服务（哨兵/日报/分析/对话/出区间建议）────────────────────────────────
+// ── AI 服务（公共行情分析 / 问答 / 市场日报）────────────────────────────────
 const aiService = createAiService({
-  bots: { de: deBot, ex: exBot, rs: rsBot },
-  exchanges: { de: deExchange, ex: exExchange, rs: rsExchange },
+  fetchCandles: fetchFuturesCandles,
+  fetchSpotCandles: fetchPublicCandles,
 });
 aiService.start();
 
@@ -230,6 +105,13 @@ const bridgeService = createBridgeService({
 const walletService = createWalletService({ ...cfg.wallet, dataRoot: DATA_ROOT, bridgeService, withdrawalPrivateKey: cfg.wallet.withdrawalPrivateKey,
   // 充值自动扫链对账专用 RPC（需支持 eth_getLogs；主 RPC 一般不支持）
   depositReconcileRpcUrl: process.env.DEPOSIT_RECONCILE_RPC_URL || 'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3' });
+// 设备限制：同一设备最多绑定 N 个钱包（DEVICE_MAX_WALLETS，默认 3）
+const deviceService = createDeviceService({
+  database: walletService.database,
+  maxWalletsPerDevice: cfg.wallet.maxWalletsPerDevice,
+});
+walletService.setDeviceGuard(deviceService);
+walletService.setRegistrationGuard(createRegistrationIpService({database:walletService.database}));
 const referralService = createReferralService({ database:walletService.database, walletService });
 const withdrawalPayoutService = createWithdrawalPayoutService({
   walletService,
@@ -297,18 +179,20 @@ const platformService = createPlatformService({ dataRoot: DATA_ROOT, walletServi
 platformService.setReferralService(referralService);
 platformService.consolidateStrategyBalances();
 
-// SSE 客户端集合（按交易所分组）
-const deClients = new Set();
-const exClients = new Set();
-const rsClients = new Set();
-
 // ── 工具函数 ──────────────────────────────────────────────────────────────────
+// 站内页面名（与 frontend/src/lib/runtime.ts 的 pageNames 保持一致）：/xxx 直连时 302 到 /#/xxx
+const SPA_HASH_ROUTES = new Set([
+  'earn', 'mall', 'trade', 'a-token-trade', 'leaderboard', 'referrals', 'account',
+  'support', 'community-chat', 'portfolio', 'vaults', 'staking', 'ledger', 'ai', 'ai-managed',
+]);
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'text/javascript',
   '.css': 'text/css',
   '.svg': 'image/svg+xml',
   '.png': 'image/png',
+  '.webp': 'image/webp',
   '.ico': 'image/x-icon',
   '.json': 'application/json',
   '.woff2': 'font/woff2',
@@ -349,13 +233,10 @@ function requireOperator(req, res) {
 }
 
 function isOperatorPath(pathname) {
-  return pathname === '/api/prices/stream'
-    || pathname === '/api/overview' || pathname === '/api/overview/stream'
-    || pathname === '/api/ledger' || pathname === '/api/ledger/export.csv'
+  return pathname === '/api/ledger' || pathname === '/api/ledger/export.csv'
     || pathname === '/api/env' || pathname.startsWith('/api/ai/') || pathname.startsWith('/api/operator/')
     || pathname.startsWith('/api/hyperliquid/')
-    || ['/api/platform/stake', '/api/platform/unstake'].includes(pathname)
-    || pathname.startsWith('/api/de/') || pathname.startsWith('/api/ex/') || pathname.startsWith('/api/rs/');
+    || ['/api/platform/stake', '/api/platform/unstake'].includes(pathname);
 }
 
 const rateBuckets = new Map();
@@ -464,7 +345,7 @@ function walletSession(req) {
 }
 
 function sendIdleAccountResponse(res) {
-  res.writeHead(204, { 'X-AxiX-Action':'idle', 'Cache-Control':'no-store' });
+  res.writeHead(204, { 'X-Solvex-Action':'idle', 'Cache-Control':'no-store' });
   return res.end();
 }
 
@@ -512,31 +393,19 @@ const platformApi = createPlatformApi({
   readBody,
   getSession: walletSession,
 });
-const communityLinksApi = createCommunityLinksApi({
-  service:createCommunityLinksService({dataRoot:DATA_ROOT}),
-  send, readBody, getAdminSession:adminSession, isSameOrigin,
-});
-const internalStrategyService = createInternalStrategyService({
-  dataRoot: DATA_ROOT,
-  walletService,
-  platformService,
-  referralService,
-  getMarkets: () => marketCatalog.list({ product:'perp' }),
-  getMarkPrice: (product, symbol) => platformApi.marketPrice(product, symbol, { allowStale:true }),
-});
-const internalStrategyApi = createInternalStrategyApi({
-  strategyService: internalStrategyService,
-  fetchPrices: fetchFuturesPrices,
-  fetchCandles: fetchFuturesCandles,
-  analyzeTrend,
-  send,
-  readBody,
-  getSession: walletSession,
-  withAccountLock: platformApi.withAccountLock,
-});
 const referralApi = createReferralApi({ service:referralService, send, readBody, getSession:walletSession });
-// ── A 币生态服务（需在 AI 跟单服务前创建：跟单开启要销毁 1000 枚 AIX）──
+// ── SVX生态服务（需在 AI 跟单服务前创建：跟单开启要销毁 1000 枚 SVX）──
 const aTokenService = createATokenService({ database: walletService.database, walletService });
+// 平台阶段：提现手续费计入流动性准备金，北京时间 08:00 归集。
+// 不向 SVX 执行器提供私钥，环境变量也不能开启链上广播。
+const aTokenLpJobService = createATokenLpJobService({
+  database: walletService.database,
+  config: { ...cfg.wallet.autoLp, enabled: false, settleHourUtc8: SOLVEX_RULES.settlement.hour },
+  privateKey: '',
+  isWithdrawalPaid: id => walletService.payoutRecord(id)?.status === 'paid',
+});
+installSolvexWithdrawalFees({walletService,aTokenService,database:walletService.database,lpJobService:aTokenLpJobService});
+aTokenLpJobService.start();
 const aiManagedService = createAiManagedService({
   platformService,
   walletService,
@@ -554,9 +423,9 @@ const aiManagedApi = createAiManagedApi({
 // 跟单提现额度（2026-10-25）：USDT 提现占用跟单本金 30 天线性解锁的额度，驳回返还
 walletService.setWithdrawalQuotaHook?.(aiManagedService.withdrawQuota);
 
-// ── A 币赚取生态服务 ───────────────────────────────────────────────────────────
+// ── SVX赚取生态服务 ───────────────────────────────────────────────────────────
 const bscNetworkCfg = (cfg.wallet.networks || []).find(n => n.id === 'bsc') || {};
-// 注入 A 币现价：资产管理页把 OPEN 卖单锁定的 A 折算进总资产
+// 注入 SVX现价：资产管理页把 OPEN 卖单锁定的 A 折算进总资产
 platformService.setATokenPriceProvider(() => { try { return BigInt(aTokenService.getPriceUsdtUnits()); } catch { return 0n; } });
 const aTokenPoolService = createATokenPoolService({
   aTokenService,
@@ -574,9 +443,24 @@ const aTokenRotationAddresses = [...new Set([
 const aTokenRotationHideViewers = String(process.env.A_TOKEN_ROTATION_HIDE_VIEWERS || '').trim();
 const proReportingFile = path.join(DATA_ROOT, 'pro-reporting-exclusions.json');
 const proReportingExclusions = fs.existsSync(proReportingFile) ? JSON.parse(fs.readFileSync(proReportingFile, 'utf8')) : null;
-const aTokenTeamService = createATokenTeamService({ database: walletService.database, walletService, rotationAddresses: aTokenRotationAddresses, rotationHideViewers: aTokenRotationHideViewers, reportingExclusions: proReportingExclusions });
+// 统一待领取账本（2026-11-09 P0）：所有新产出先挂 pending，用户手动领取，滚动 24 小时未领作废
+// P3：级差收益复用同一本待领取账本，团队服务构造时直接注入。
+const aTokenPendingService = createATokenPendingService({
+  aTokenService, database: walletService.database,
+});
+const aTokenTeamService = createATokenTeamService({
+  database: walletService.database, walletService, pendingService: aTokenPendingService,
+  rotationAddresses: aTokenRotationAddresses, rotationHideViewers: aTokenRotationHideViewers,
+  reportingExclusions: proReportingExclusions,
+});
 const aTokenMinerService = createATokenMinerService({ aTokenService, database: walletService.database, teamService: aTokenTeamService });
-const aTokenStakingService = createATokenStakingService({ aTokenService, database: walletService.database, teamService: aTokenTeamService });
+// 升级舱不产收益；生效本金计入上级团队业绩，赎回立即冲销并在 30 天后返还。
+const aTokenUpgradeService = createATokenUpgradeService({
+  database: walletService.database, walletService, aTokenService, teamService: aTokenTeamService,
+});
+const upgradeReconciliation = aTokenUpgradeService.reconcileActivePerformance();
+if (upgradeReconciliation.recorded) console.log('[升级舱] 已补齐团队业绩事件', upgradeReconciliation.recorded);
+const aTokenStakingService = createATokenStakingService({ aTokenService, database: walletService.database, teamService: aTokenTeamService, pendingService: aTokenPendingService });
 const aTokenTransferService = createATokenTransferService({ aTokenService, database: walletService.database, referralService, teamService: aTokenTeamService, walletService });
 const aTokenActivationService = createATokenActivationService({
   aTokenService, minerService: aTokenMinerService, database: walletService.database,
@@ -599,17 +483,28 @@ const aTokenActivationService = createATokenActivationService({
   reconcileRangeCap: Number(process.env.A_TOKEN_RECONCILE_RANGE_CAP || 2000),
   reconcileConcurrency: Number(process.env.A_TOKEN_RECONCILE_CONCURRENCY || 8),
   extraCollectionAddresses: process.env.A_TOKEN_RECONCILE_EXTRA_ADDRESSES || '',
-  // 积分在服务内部 confirm() 汇聚点发放（惰性引用：lotteryService 在下方创建）
-  onConfirmed: (wallet, plan) => lotteryService.onMinerActivated(wallet, plan),
 });
-// 启动 pending 激活记录的自动链上校验:确认达标自动发矿机,无需用户或后台手动操作
-aTokenActivationService.startAutoVerify(Number(process.env.A_TOKEN_ACTIVATION_AUTO_VERIFY_MS || 30_000));
-// 启动链上收款对账:兜底前端 POST 失败导致的漏单(链上已付款但站内无记录)
-aTokenActivationService.startOnchainReconcile(Number(process.env.A_TOKEN_RECONCILE_MS || 60_000));
+// 旧链上矿机激活已停用，不运行自动验款或链上补单任务。
+// 股东池（2026-11-11）：卖出手续费 5% 按成交 USDT 金额归集（买入 0），每 500 USDT 一池
+// P3：注入团队业绩（S3 判定）与统一待领取账本（分红以 USDT 挂 pending），满池即分红
+const aTokenShareholderService = createATokenShareholderService({
+  database: walletService.database, walletService, aTokenService,
+  teamService: aTokenTeamService, pendingService: aTokenPendingService,
+});
+// 满池分红兜底：每 5 分钟扫描仍为 closed 的池（如当时无 S3 达标股东，后续达标后补发）
+const aTokenShareholderTimer = setInterval(() => {
+  try {
+    const r = aTokenShareholderService.distributeClosedPools(50);
+    if (r.settled || r.failed) console.log('[股东池] 分红扫描：结算', r.settled, '池，失败', r.failed);
+  } catch (e) { console.error('[股东池] 分红扫描失败', e?.message || e); }
+}, 5 * 60_000);
+aTokenShareholderTimer.unref?.();
+try { aTokenShareholderService.distributeClosedPools(50); } catch (e) { console.error('[股东池] 启动分红扫描失败', e?.message || e); }
 const aTokenOrderService = createATokenOrderService({
       aTokenService,
       database: walletService.database, teamService: aTokenTeamService,
       referralService,
+      shareholderService: aTokenShareholderService,
       // 撮合同价档内：买单始终小额优先（金额小者先成交）；卖单默认按挂单时间先来先成交，
       // 每 W 次撮合尝试中有 C 次走小额轮（卖单也按金额小者优先）= 默认 10 次里 3 次
       matchSmallFirstWindow: Number(process.env.A_TOKEN_MATCH_SMALL_FIRST_WINDOW || 10),
@@ -618,53 +513,101 @@ const aTokenOrderService = createATokenOrderService({
 const aTokenKlineService = createATokenKlineService({
   database: walletService.database, aTokenService, orderService: aTokenOrderService,
 });
-// AIX 匹配池（2026-10-31）：匹配额度（质押产出）+ 涡轮额度（USDT 购买）1:1 进池，到期出 2× 可用额度
+try { aTokenKlineService.ensureSeeded(); } catch (e) { console.error('[SVX K线] 初始化种子失败', e?.message || e); }
+// SVX 匹配池（2026-10-31）：蓄能额度（质押产出）+ 驱动额度（USDT 购买）1:1 进池，到期出 2× 流通额度
 const aTokenMatchPoolService = createATokenMatchPoolService({
+  aTokenService, database: walletService.database, shareholderService: aTokenShareholderService,
+});
+// SVX 涡轮（2026-11-09 P2）：乙区币进涡轮 → 满 24h 释放等额流通额度，滚动叠加、30 天到期作废
+const aTokenTurboService = createATokenTurboService({
   aTokenService, database: walletService.database,
 });
-// 启动时若任一周期 K 线 < 30 根 → 自动播种种子历史 K 线
-try { aTokenKlineService.ensureSeeded(); } catch (e) { console.error('[A币K线] 初始化种子失败', e?.message || e); }
-// A 币链上提现服务（BSC 单链，依赖 A_TOKEN_CONTRACT_ADDRESS + A_TOKEN_HOT_WALLET + A_TOKEN_HOT_PRIVATE_KEY）
+// 一键买 / 一键卖（2026-11-09 P2）：取消挂买挂卖，甲区/乙区两个买入口 + 额度闸门卖出
+const aTokenZoneTradeService = createATokenZoneTradeService({
+  aTokenService, database: walletService.database, shareholderService: aTokenShareholderService,
+});
+// 涡轮到点释放 / 到期作废：每 5 分钟兜底扫描一次（用户访问总览时也会懒结算）
+const aTokenTurboTimer = setInterval(() => {
+  try { aTokenTurboService.releaseDue(); } catch (e) { console.error('[涡轮] 释放扫描失败', e?.message || e); }
+  try { aTokenTurboService.expireDue(); } catch (e) { console.error('[涡轮] 作废扫描失败', e?.message || e); }
+}, 5 * 60_000);
+aTokenTurboTimer.unref?.();
+// 升级仓到期返还：每 5 分钟兜底扫描一次（redeeming 且 return_at <= now → 返还本金）
+const aTokenUpgradeReturnTimer = setInterval(() => {
+  try {
+    const r = aTokenUpgradeService.processDueReturns();
+    if (r.processed) console.log('[升级仓] 已返还', r.processed, '笔，合计', r.returnedA, 'SVX');
+  } catch (e) { console.error('[升级仓] 返还扫描失败', e?.message || e); }
+}, 5 * 60_000);
+aTokenUpgradeReturnTimer.unref?.();
+try { aTokenUpgradeService.processDueReturns(); } catch (e) { console.error('[升级仓] 启动返还扫描失败', e?.message || e); }
+// 统一待领取账本（2026-11-09 P0）：所有新产出先挂 pending，用户手动领取，滚动 24 小时未领作废
+// （实例在质押服务之前创建，见上方 aTokenPendingService）
+// 算力节点（2026-11-09 P1）：只从甲区扣币建仓，到期一条待领取（本金 + 收益）
+const aTokenNodeService = createATokenNodeService({
+  aTokenService, database: walletService.database, pendingService: aTokenPendingService, teamService: aTokenTeamService,
+});
+// 盲盒（2026-11-09 P4）：1 USDT 进 LP、按钱包地址限 1 份、随机 100–500 币、
+// 30 天每日领取（每日额度固定为总币数/30，滚动 24h 未领作废）；产出进乙区，不计团队业绩与推广收益。
+const blindBoxChainVerifier = createATokenBlindBoxChainVerifier({
+  rpcUrl: cfg.wallet.autoLp.rpcUrl,
+  contractAddress: cfg.wallet.autoLp.contractAddress,
+  usdtAddress: cfg.wallet.autoLp.usdtContract,
+  chainId: cfg.wallet.autoLp.chainId,
+  confirmations: cfg.wallet.autoLp.confirmations,
+});
+const aTokenBlindBoxService = createATokenBlindBoxService({
+  aTokenService, database: walletService.database, pendingService: aTokenPendingService,
+  chainPayment: blindBoxChainVerifier,
+});
+// 盲盒每日额度发放：每 5 分钟扫描一次进行中的盲盒，只补发「当天」窗口（错过日期作废）
+const aTokenBlindBoxTimer = setInterval(() => {
+  try {
+    const r = aTokenBlindBoxService.processDue();
+    if (r.issued || r.completed) console.log('[盲盒] 发放', r.issued, '份，结束', r.completed, '份');
+  } catch (e) { console.error('[盲盒] 发放扫描失败', e?.message || e); }
+}, 5 * 60_000);
+aTokenBlindBoxTimer.unref?.();
+try { aTokenBlindBoxService.processDue(); } catch (e) { console.error('[盲盒] 启动发放扫描失败', e?.message || e); }
+// 行情只读取已记录数据；空库不补造历史曲线。
+// 平台阶段只保留 SVX 历史提现查询/撤销，合约及私钥始终为空。
 const aTokenWithdrawalService = createATokenWithdrawalService({
   aTokenService,
   walletService,
   database: walletService.database,
-  contractAddress: process.env.A_TOKEN_CONTRACT_ADDRESS || '',
-  hotWalletAddress: process.env.A_TOKEN_HOT_WALLET || '',
-  hotPrivateKey: process.env.A_TOKEN_HOT_PRIVATE_KEY || '',
+  contractAddress: '',
+  hotWalletAddress: '',
+  hotPrivateKey: '',
   rpcUrl: process.env.BSC_RPC_URL || 'https://bsc-dataseed.binance.org',
   pollIntervalMs: Number(process.env.A_TOKEN_WITHDRAWAL_POLL_MS || 15_000),
-  // 全部自动放款，不做大额人工审核（只要用户内盘 A 余额够 + 平台热钱包链上有 A 就直接出款）
+  // 链上出款进程在当前阶段不启动。
   autoApproveThresholdA: Number.MAX_SAFE_INTEGER,
 });
-try { aTokenWithdrawalService.start(); } catch (e) { console.error('[A币提现] 启动失败', e?.message || e); }
-// AIX 链上提取签名服务（AIXPool harvest 模式，用户付 Gas）
-// 依赖：AIX_POOL_CONTRACT_ADDRESS（已部署的 AIXPool 合约地址）
-//       AIX_POOL_SIGNER_PRIVATE_KEY（平台签名私钥，对应合约里的 platformSigner）
+// 保留历史记录查询与撤销；平台阶段不启动 SVX 链上出款轮询。
+// SVX 链上提取签名服务（SolvexPool harvest 模式，用户付 Gas）
+// 依赖：SVX_POOL_CONTRACT_ADDRESS（已部署的 SolvexPool 合约地址）
+//       SVX_POOL_SIGNER_PRIVATE_KEY（平台签名私钥，对应合约里的 platformSigner）
+// 平台阶段不读取任何 SVX 合约/签名私钥配置。
 const aTokenClaimService = createATokenClaimService({
   aTokenService,
   walletService,
   rpcUrl: cfg.wallet.networks.find(network => network.chainId === Number(process.env.BSC_CHAIN_ID || 56))?.rpcUrl,
   confirmations: Number(process.env.BSC_CONFIRMATIONS || 15),
   database: walletService.database,
-  contractAddress: process.env.AIX_POOL_CONTRACT_ADDRESS || '',
-  signerPrivateKey: process.env.AIX_POOL_SIGNER_PRIVATE_KEY || '',
+  contractAddress: '',
+  signerPrivateKey: '',
   chainId: Number(process.env.BSC_CHAIN_ID || 56),
 });
 // 仅统计待核对记录；旧合约授权不按本地时间过期，禁止超时退款。
 try {
   const swept = aTokenClaimService.sweepStaleClaims();
-  if (swept.refunded > 0) console.log(`[AIX提取] 启动时回滚 ${swept.refunded} 条过期 claim`);
-} catch (e) { console.error('[AIX提取] 启动回滚失败', e?.message || e); }
+  if (swept.refunded > 0) console.log(`[SVX提取] 启动时回滚 ${swept.refunded} 条过期 claim`);
+} catch (e) { console.error('[SVX提取] 启动回滚失败', e?.message || e); }
 // 每小时检查待核对记录，不退回仍可能在链上领取的资金。
 setInterval(() => {
   try { aTokenClaimService.sweepStaleClaims(); } catch (e) { /* silent */ }
 }, 60 * 60_000).unref?.();
-// 积分抽奖服务
-const lotteryService = createLotteryService({
-  database: walletService.database, walletService, platformService, referralService,
-});
-// 空投积分（独立于抽奖积分，参考 Hyperliquid Points：有效成交量计分 + 对敲剔除 + 周快照）
+// 空投积分（参考 Hyperliquid Points：有效成交量计分 + 对敲剔除 + 周快照）
 const airdropPointsService = createAirdropPointsService({ database: walletService.database });
 platformService.setPointsService(airdropPointsService);
 aiManagedService.setPointsService?.(airdropPointsService);
@@ -672,40 +615,39 @@ aiManagedService.setPointsService?.(airdropPointsService);
 try { airdropPointsService.settleDue(); } catch (e) { console.warn('[空投积分] 启动结算失败:', e?.message || e); }
 const airdropSettleTimer = setInterval(() => { try { airdropPointsService.settleDue(); } catch {} }, 10 * 60_000);
 airdropSettleTimer.unref?.();
-const lotteryApi = createLotteryApi({
-  lotteryService, send, readBody, getSession: walletSession,
-  adminOnly: (req, res) => {
-    const s = adminSession(req);
-    if (!s) { send(res, 401, { error:'后台登录已失效，请重新登录', code:'ADMIN_AUTH_REQUIRED' }); return false; }
-    return true;
-  },
-});
 const aTokenApi = createATokenApi({
       aTokenService, poolService: aTokenPoolService, minerService: aTokenMinerService,
       stakingService: aTokenStakingService, transferService: aTokenTransferService, activationService: aTokenActivationService,
       klineService: aTokenKlineService, orderService: aTokenOrderService, withdrawalService: aTokenWithdrawalService,
       claimService: aTokenClaimService,
       walletService, teamService: aTokenTeamService, matchPoolService: aTokenMatchPoolService,
+      nodeService: aTokenNodeService, pendingService: aTokenPendingService, shareholderService: aTokenShareholderService,
+      turboService: aTokenTurboService, zoneTradeService: aTokenZoneTradeService,
+      upgradeService: aTokenUpgradeService,
+      blindBoxService: aTokenBlindBoxService,
+      verifyBlindboxPayment: blindBoxChainVerifier.verify,
+      tokenInfo: {
+        configured: /^0x[a-fA-F0-9]{40}$/.test(String(cfg.wallet.autoLp.svxContract || '')),
+        address: cfg.wallet.autoLp.svxContract || '',
+        symbol: 'SVX',
+        name: 'Solvex',
+        decimals: 18,
+        chainId: Number(cfg.wallet.autoLp.chainId) || 56,
+        chainName: 'BNB Smart Chain',
+        explorerUrl: 'https://bscscan.com',
+        feeBps: 500,
+        burnShareBps: 5000,
+      },
       send, readBody, getSession: walletSession, withAccountLock: platformApi.withAccountLock,
     });
-// 奔跑吧 AIX 押注经济（自选押注 + 距离阶梯返还 + 1% 流水转可卖额度）
-const runAixGameApi = createRunAixGameApi({
-  aTokenService, database: walletService.database,
-  send, readBody, getSession: walletSession, withAccountLock: platformApi.withAccountLock,
-});
-// 哈希星盘 AIX 押注（commit-reveal 公平架构 + 1% 流水转可卖额度）
-const hashAixGameApi = createHashAixGameApi({
-  aTokenService, database: walletService.database,
-  send, readBody, getSession: walletSession, withAccountLock: platformApi.withAccountLock,
-});
-// AIX 商城（商户上架 + AIX 支付 + 收货地址 / 物流发货记录）
+// Solvex 商城（商户上架 + SVX 支付 + 收货地址 / 物流发货记录）
 const mallApi = createMallApi({
   aTokenService, database: walletService.database, walletService,
   send, readBody, getSession: walletSession, withAccountLock: platformApi.withAccountLock,
 });
 // 商城超时自动确认收货：启动 1 分钟后先跑一轮，之后每 10 分钟扫描（发货满 15 天自动结算给商户）
-setTimeout(() => { try { mallApi.autoConfirmStaleOrders(); } catch (e) { console.error('[AIX商城] 自动确认任务异常:', e?.message || e); } }, 60 * 1000);
-setInterval(() => { try { mallApi.autoConfirmStaleOrders(); } catch (e) { console.error('[AIX商城] 自动确认任务异常:', e?.message || e); } }, 10 * 60 * 1000);
+setTimeout(() => { try { mallApi.autoConfirmStaleOrders(); } catch (e) { console.error('[SVX商城] 自动确认任务异常:', e?.message || e); } }, 60 * 1000);
+setInterval(() => { try { mallApi.autoConfirmStaleOrders(); } catch (e) { console.error('[SVX商城] 自动确认任务异常:', e?.message || e); } }, 10 * 60 * 1000);
 // 充值自动扫链对账（2026-11-02）：启动 20s 后首跑，之后每 60s 扫一次新增区块；
 // 把「链上已到、站内无记录」的 USDT 充值自动补录并入账（只认已注册用户钱包发起）。
 const depositReconcileTick = () => {
@@ -721,7 +663,8 @@ const aTokenAdminApi = createATokenAdminApi({
   aTokenService, poolService: aTokenPoolService, minerService: aTokenMinerService,
   stakingService: aTokenStakingService, activationService: aTokenActivationService,
   klineService: aTokenKlineService, orderService: aTokenOrderService, walletService,
-  aTokenTeamService,
+  aTokenTeamService, blindBoxService: aTokenBlindBoxService,
+  aTokenLpJobService,
   send, readBody,
 });
 // 在线客服：用户端 + 后台回复
@@ -731,37 +674,70 @@ const supportService = createSupportService({
   blockWallet: (address, reason) => walletService.blockWallet(address, reason),
 });
 const supportApi = createSupportApi({ service: supportService, send, readBody, getSession: walletSession });
-const fundsAdminApi = createFundsAdminApi({ walletService, minerService:aTokenMinerService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
+// 群聊：读接口匿名可看历史，写接口走钱包会话 + 同源校验
+const communityService = createCommunityService({ database: walletService.database });
+const communityAdminService = createCommunityAdminService({ database: walletService.database });
+const communityRedPacketService = createCommunityRedPacketService({
+  database: walletService.database,
+  walletService,
+  ensureMember: address => communityService.ensureMember(address),
+});
+communityRedPacketService.startSweeper();
+const communityGroupService = createCommunityGroupService({database:walletService.database,walletService,teamService:aTokenTeamService,adminService:communityAdminService});
+const communityApi = createCommunityApi({
+  groupService:communityGroupService,
+  service: communityService,
+  adminService: communityAdminService,
+  redPacketService: communityRedPacketService,
+  send, readBody, getSession: walletSession, isSameOrigin,
+});
+const fundsAdminApi = createFundsAdminApi({ walletService, minerService:aTokenMinerService, stakingService:aTokenStakingService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
 // ── 60s 定时：矿机产出 + 质押日结 + 每日固定销毁跨日结算 ──
 // 2026-10-29：团伙深链曾使团队全量快照递归爆栈、O(N²) 自旋卡死（23:23 与 00:11 两次全站无响应）。
 // 已修复：teamHeldOf 改迭代式 + 全链路剔除封禁账号（见 a-token-team-service.js），团队任务恢复启用。
-const TEAM_JOBS_ENABLED = true;
+// 2026-11-09 P1：A10 分红池与平级奖已停止新增（新等级/分红模型在 P3 重建）。
+// 旧矿机已停止新增，历史记录保留；质押只保留能量档。
+const TEAM_JOBS_ENABLED = false;
 const aTokenMinerTimer = setInterval(() => {
-  try { aTokenMinerService.processAll(); } catch (e) { console.error('[A币矿机]', e?.message || e); }
-  try { aTokenService.settleDailyBurn(); } catch (e) { console.error('[A币每日销毁]', e?.message || e); }
+  try { aTokenService.settleDailyBurn(); } catch (e) { console.error('[SVX每日销毁]', e?.message || e); }
 }, 60_000);
 const aTokenStakeTimer = setInterval(() => {
-  try { aTokenStakingService.processAll(); } catch (e) { console.error('[A币质押]', e?.message || e); }
+  try { aTokenStakingService.processAll(); } catch (e) { console.error('[SVX质押]', e?.message || e); }
 }, 60_000);
-// 60s 定时：匹配池到期条目释放（total → 可用额度；用户拉取总览时也会懒释放本人条目）
+// 60s 定时：待领取收益过期作废（滚动 24 小时窗口；条件更新，重复扫描不会重复计数）
+const aTokenPendingTimer = setInterval(() => {
+  try {
+    const result = aTokenPendingService.sweepExpired();
+    if (result.expired > 0) console.log('[待领取] 已作废过期收益', result.expired, '条');
+  } catch (e) { console.error('[待领取] 作废任务异常', e?.message || e); }
+}, 60_000);
+aTokenPendingTimer.unref?.();
+// 60s 定时：矿池日息按北京时间08:00结算，本金到期单独挂账且不作废
+const aTokenNodeTimer = setInterval(() => {
+  try {
+    const result = aTokenNodeService.processAll();
+    if (result.settled > 0) console.log('[矿池] 结算巡检', result.settled, '笔');
+  } catch (e) { console.error('[算力节点] 结算任务异常', e?.message || e); }
+}, 60_000);
+aTokenNodeTimer.unref?.();
+// 60s 定时：匹配池到期条目释放（total → 流通额度；用户拉取总览时也会懒释放本人条目）
 const aTokenMatchPoolTimer = setInterval(() => {
   try { aTokenMatchPoolService.releaseDue(); } catch (e) { console.error('[匹配池]', e?.message || e); }
 }, 60_000);
 aTokenMatchPoolTimer.unref?.();
-// 20s 定时：K 线实时推进 + 价格联动
+// 20s 定时：与桌面 AXIX 一致，按后台模式推进 SVX K线和指导价。
 const aTokenKlineTimer = setInterval(() => {
-  try { aTokenKlineService.tickLiveBar(); } catch (e) { console.error('[A币K线] tick失败', e?.message || e); }
+  try { aTokenKlineService.tickLiveBar(); } catch (e) { console.error('[SVX K线] tick失败', e?.message || e); }
 }, 20_000);
+aTokenKlineTimer.unref?.();
 aTokenMinerTimer.unref?.();
 aTokenStakeTimer.unref?.();
-aTokenKlineTimer.unref?.();
 
-// 5 分钟定时：团队等级快照（O(n) 建树记忆化，前端团队页只读快照，不做实时递归）
+// 5 分钟定时：团队等级快照（P3 等级/级差依赖快照；O(n) 建树记忆化，前端团队页只读快照）
 const aTokenTeamSnapshotTimer = setInterval(() => {
-  if (!TEAM_JOBS_ENABLED) return;
   try {
     const r = aTokenTeamService.snapshotAll();
-    console.log('[团队快照] 已更新', r.count, '个用户等级');
+    if (!r.skipped) console.log('[团队快照] 已更新', r.count, '个用户等级');
   } catch (e) { console.error('[团队快照]', e?.message || e); }
 }, 5 * 60_000);
 // 每天 00:00（北京时间）定时：平级奖日结 + A10 均分池日结
@@ -773,11 +749,10 @@ const aTokenA10SettleTimer = setInterval(() => {
   const bjDay = now.toISOString().slice(0, 10);
   if (now.getUTCHours() === 0 && now.getUTCMinutes() < 5 && _dailySettleDoneDay !== bjDay) {
     // 先处理前一天最后一批矿机/质押产出，再结算，保证基数完整
-    try { aTokenMinerService.processAll(); } catch (e) { console.error('[A币矿机]', e?.message || e); }
-    try { aTokenStakingService.processAll(); } catch (e) { console.error('[A币质押]', e?.message || e); }
+    try { aTokenStakingService.processAll(); } catch (e) { console.error('[SVX质押]', e?.message || e); }
     try {
       const r = TEAM_JOBS_ENABLED ? aTokenTeamService.settleParityRewards() : null;
-      if (r?.settled) console.log('[平级奖日结] daySlot', r.daySlot, r.count, '条，合计', r.totalA, 'AIX');
+      if (r?.settled) console.log('[平级奖日结] daySlot', r.daySlot, r.count, '条，合计', r.totalA, 'SVX');
     } catch (e) { console.error('[平级奖日结]', e?.message || e); }
     try {
       const r = TEAM_JOBS_ENABLED ? aTokenTeamService.settleA10Pool() : null;
@@ -789,13 +764,13 @@ const aTokenA10SettleTimer = setInterval(() => {
 }, 60_000);
 aTokenTeamSnapshotTimer.unref?.();
 aTokenA10SettleTimer.unref?.();
-// 启动时先跑一次快照（团队任务停用期间跳过）
-if (TEAM_JOBS_ENABLED) { try { aTokenTeamService.snapshotAll(); } catch (e) { console.error('[团队快照] 启动失败', e?.message || e); } }
+// 启动时先跑一次快照（P3 等级/级差依赖快照，不再受旧团队任务开关影响）
+try { aTokenTeamService.snapshotAll(); } catch (e) { console.error('[团队快照] 启动失败', e?.message || e); }
 // 启动时补跑平级奖日结：幂等，前一天已结算则快速跳过；重启/宕机错过 0 点窗口时自动补发
 if (TEAM_JOBS_ENABLED) {
   try {
     const r = aTokenTeamService.settleParityRewards();
-    if (r?.settled) console.log('[平级奖日结] 启动补发 daySlot', r.daySlot, r.count, '条，合计', r.totalA, 'AIX');
+    if (r?.settled) console.log('[平级奖日结] 启动补发 daySlot', r.daySlot, r.count, '条，合计', r.totalA, 'SVX');
   } catch (e) { console.error('[平级奖日结] 启动补发失败', e?.message || e); }
 }
 
@@ -813,203 +788,53 @@ function restartPlatformMarketFeeds() {
   platformRiskFeed = perpSymbols.length ? subscribeFuturesPrices(perpSymbols, (update) => {
     try { platformApi.updateMarket(update); }
     catch (error) { console.error('[平台合约风控]', error?.message || error); }
-    internalStrategyService.processPrice(update?.symbol, update?.price).catch((error) => console.error('[内部策略]', error?.message || error));
   }) : null;
 }
 restartPlatformMarketFeeds();
 
-// Keep contract risk controls and internal strategies moving when the Binance
-// WebSocket is blocked or stale. Liquidation must never depend on a browser view.
-let internalStrategyFallbackBusy = false;
-let internalStrategyFailCount = 0;
-const internalStrategyFallbackTimer = setInterval(async () => {
-  if (internalStrategyFallbackBusy) return;
-  internalStrategyFallbackBusy = true;
+// 行情兜底：Binance WebSocket 被墙或数据陈旧时，用 REST 轮询驱动平台合约风控。
+// 强平绝不能依赖浏览器是否打开。
+let platformRiskFallbackBusy = false;
+let platformRiskFailCount = 0;
+const platformRiskFallbackTimer = setInterval(async () => {
+  if (platformRiskFallbackBusy) return;
+  platformRiskFallbackBusy = true;
   try {
     const symbols = marketCatalog.symbols('perp');
     const prices = await fetchFuturesPrices(symbols, { timeoutMs:10000 });
-    internalStrategyFailCount = 0;
+    platformRiskFailCount = 0;
     const receivedAt = Date.now();
     for (const symbol of symbols) {
       const price = Number(prices.get(`${symbol}USDT`) || prices.get(symbol) || 0);
       if (!(price > 0)) continue;
       platformApi.updateMarket({ product:'perp', symbol, price, priceType:'mark', receivedAt });
-      await internalStrategyService.processPrice(symbol, price);
     }
   } catch (error) {
     // 行情兜底失败属预期内（代理偶发抖动 / Binance API 限流），仅连续失败时才告警，
     // 避免每次单次超时都刷错误日志。
-    internalStrategyFailCount += 1;
-    if (internalStrategyFailCount >= 3) {
-      console.warn('[内部策略行情兜底] 连续失败 ' + internalStrategyFailCount + ' 次，重建代理连接...', error?.message || error);
+    platformRiskFailCount += 1;
+    if (platformRiskFailCount >= 3) {
+      console.warn('[平台行情兜底] 连续失败 ' + platformRiskFailCount + ' 次，重建代理连接...', error?.message || error);
       try {
         await setupProxies(cfg);
-        console.log('[内部策略行情兜底] 代理连接已重建');
+        console.log('[平台行情兜底] 代理连接已重建');
       } catch (e) {
-        console.error('[内部策略行情兜底] 重建代理失败：', e?.message || e);
+        console.error('[平台行情兜底] 重建代理失败：', e?.message || e);
       }
-      internalStrategyFailCount = 0;
+      platformRiskFailCount = 0;
     }
   } finally {
-    internalStrategyFallbackBusy = false;
+    platformRiskFallbackBusy = false;
   }
 }, 10000);
-internalStrategyFallbackTimer.unref?.();
+platformRiskFallbackTimer.unref?.();
 
-function marketPricesFor(exchange) {
-  const priceMap = exchange.prices instanceof Map
-    ? exchange.prices
-    : exchange._prices instanceof Map ? exchange._prices : null;
-  if (!priceMap) return {};
-
-  return Object.fromEntries(
-    [...priceMap.entries()]
-      .map(([marketId, price]) => [String(marketId), Number(price)])
-      .filter(([, price]) => Number.isFinite(price) && price > 0),
-  );
-}
-
-function stateWithMarketPrices(bot, exchange, exchangeKey = null) {
-  const state = bot.getState();
-  if (exchangeKey) state.exchange = exchangeKey;
-  state.marketPrices = marketPricesFor(exchange);
-  return state;
-}
-
-// ── 交易所路由处理器工厂 ───────────────────────────────────────────────────────
-function makeExchangeHandler(prefix, bot, exchange, exCfg, clients, name) {
-  const exchangeKey = prefix.split('/').pop();
-  return async (req, res, subPath, url) => {
-    if (subPath === '/markets') {
-      return send(res, 200, {
-        exchange: name,
-        mode: exCfg.mode,
-        dataSource: exchange.dataSource || (exCfg.mode === 'live' ? 'real' : 'synthetic'),
-        dataProvider: exchange.dataProvider || null,
-        network: exchange.network || exCfg.network,
-        apiUrl: exchange.apiUrl || exCfg.apiUrl,
-        markets: await exchange.getMarkets(),
-      });
-    }
-
-    if (subPath === '/trend') {
-      const marketId = Number(url.searchParams.get('marketId') || 1);
-      const intervalSec = Number(url.searchParams.get('intervalSec') || 3600);
-      let candles = [];
-      let price = null;
-      try { price = await exchange.getPrice(marketId); } catch {}
-      try {
-        const market = (await exchange.getMarkets()).find((item) => Number(item.marketId) === marketId);
-        const symbol = market?.publicSymbol || market?.symbol || market?.displayName || market?.name;
-        candles = symbol ? await fetchPublicCandles(symbol, intervalSec, 200) : [];
-      } catch {
-        try { candles = await exchange.getCandles(marketId, intervalSec, 200); } catch { /* tolerate */ }
-      }
-      const analysis = (candles && candles.length >= 20)
-        ? analyzeTrend(candles, { currentPrice: price })
-        : {
-            trend: 'range', recommended: 'neutral', strength: 0, atrPct: null, price,
-            detail: '暂时拿不到足够K线数据，已默认中性网格。可手动设置上下边界后启动；不影响下单。',
-          };
-      return send(res, 200, { analysis, candles: (candles || []).slice(-120) });
-    }
-
-    if (subPath === '/state') return send(res, 200, stateWithMarketPrices(bot, exchange, exchangeKey));
-
-    if (subPath === '/start' && req.method === 'POST') {
-      try { return send(res, 200, await bot.start(await readBody(req))); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/stop' && req.method === 'POST') {
-      try { return send(res, 200, await bot.stop(await readBody(req))); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/adjust' && req.method === 'POST') {
-      try { return send(res, 200, await bot.adjustRange(await readBody(req))); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/reset' && req.method === 'POST') {
-      try { return send(res, 200, await bot.resetStats()); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/cancel-orders' && req.method === 'POST') {
-      try { return send(res, 200, await bot.cancelAllOrders()); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/start-recovery' && req.method === 'POST') {
-      try { return send(res, 200, await bot.startRecovery(await readBody(req))); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    // 重新与交易所建立连接：重建客户端/解卡轮询/重启轮询循环。
-    // 不撤单、不平仓、不动网格状态 —— 挂单照常被跟踪；重连成功后立刻对账一次。
-    // 若该所启动时未连上导致续跑被跳过（快照仍为运行状态），重连成功后自动续跑接管挂单。
-    if (subPath === '/reconnect' && req.method === 'POST') {
-      try {
-        if (typeof exchange.reconnect === 'function') await exchange.reconnect();
-        else if (typeof exchange.init === 'function') await exchange.init();
-        let resumed = false, resumeError = null;
-        if (!bot.running) {
-          const key = prefix.split('/').pop(); // '/api/ex' -> 'ex'
-          const snap = loadSnapshot(key);
-          if (snap?.running && snap?.config) {
-            try {
-              // marketId 是按连接会话编号的，可能已漂移：按市场名称重新解析
-              const markets = await exchange.getMarkets();
-              const norm = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-              const m = markets.find((x) => norm(x.displayName) === norm(snap.config.displayName) || norm(x.name) === norm(snap.config.displayName));
-              if (m) snap.config.marketId = m.marketId;
-              await bot.resume(snap);
-              resumed = true;
-              console.log(`[恢复] ${key.toUpperCase()} 重连成功后已自动续跑，接管挂单并完成对账。`);
-            } catch (e) {
-              resumeError = e?.message || String(e); // 续跑失败不撤单：挂单保留，可重启程序再试
-              console.error(`[恢复] ${key.toUpperCase()} 重连后续跑失败（${resumeError}），挂单保留未动。`);
-            }
-          }
-        }
-        if (bot.running) await bot.reconcileOpenOrders().catch(() => {});
-        return send(res, 200, { ok: true, resumed, resumeError, state: bot.getState() });
-      } catch (e) {
-        return send(res, 500, { error: e?.message || String(e) });
-      }
-    }
-
-    if (subPath === '/close-position' && req.method === 'POST') {
-      try { const b = await readBody(req); return send(res, 200, await bot.closePositionNow(b && b.marketId)); }
-      catch (e) { return send(res, 400, { error: e.message }); }
-    }
-
-    if (subPath === '/stream') {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      res.write(`data: ${JSON.stringify(stateWithMarketPrices(bot, exchange, exchangeKey))}\n\n`);
-      clients.add(res);
-      req.on('close', () => clients.delete(res));
-      return;
-    }
-
-    send(res, 404, { error: 'not found: ' + subPath });
-  };
-}
-
-const deHandler = makeExchangeHandler('/api/de', deBot, deExchange, cfg.de, deClients, 'Decibel');
-const exHandler = makeExchangeHandler('/api/ex', exBot, exExchange, cfg.ex, exClients, 'Extended');
-const rsHandler = makeExchangeHandler('/api/rs', rsBot, rsExchange, cfg.rs, rsClients, 'RISEx');
-
-// 游戏页需要被站内「游戏生态」弹层以同源 iframe 嵌入，其余页面维持禁止嵌入
-const GAME_PAGE_PATHS = new Set(['/games.html', '/run-aix.html', '/hash-aix.html', '/run-aix-classic.html', '/run-aix-config.html', '/mall.html']);
+// 商城页需要被站内标签页以同源 iframe 嵌入，其余页面维持禁止嵌入
+const EMBED_PAGE_PATHS = new Set(['/mall.html']);
 
 // ── HTTP 服务器 ───────────────────────────────────────────────────────────────
 export const server = http.createServer(async (request, res) => {
+  traceRequest(request, res);
   const url = new URL(request.url, 'http://localhost');
   const p = url.pathname;
 
@@ -1023,7 +848,7 @@ export const server = http.createServer(async (request, res) => {
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://bin.bnbstatic.com; connect-src 'self' https://api.hyperliquid.xyz https://stats-data.hyperliquid.xyz https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'");
-    if (GAME_PAGE_PATHS.has(p.toLowerCase())) {
+    if (EMBED_PAGE_PATHS.has(p.toLowerCase())) {
       res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; media-src 'self' data:; connect-src 'self'; frame-ancestors 'self'; base-uri 'self'; object-src 'none'; form-action 'self'");
     }
@@ -1105,81 +930,50 @@ export const server = http.createServer(async (request, res) => {
       return send(res, 404, { error:'代理接口不存在' });
     }
     if (p.startsWith('/api/admin/')) {
-      if (await communityLinksApi.handle(request, res, p)) return;
       const operatorSession = adminSession(request);
       if (!adminSession(request)) return send(res, 401, { error:'后台登录已失效，请重新登录', code:'ADMIN_AUTH_REQUIRED' });
       if (isLegacyFundsPath(p)) return send(res, 403, { error:'此操作已移至独立资金后台，请单独验证资金权限', code:'FUNDS_ADMIN_REQUIRED' });
       if (await supportApi.handleAdmin(request, res, p)) return;
+      if (await communityApi.handleAdmin(request, res, p, { operatorSession })) return;
       if (await mallApi.handleAdmin(request, res, p)) return;
       if (await aTokenAdminApi.handle(request, res, p, { operatorSession, url, allowRequest })) return;
-      if (await lotteryApi.handle(request, res, p)) return;
       // 手动触发平级奖 + A10 池日结（幂等；服务重启错过 0 点窗口时补发用）
       if (p === '/api/admin/a-token/settle-daily' && request.method === 'POST') {
         if (!allowRequest(request, res, 'a-token-admin', 10, 60_000)) return;
         try {
-          try { aTokenMinerService.processAll(); } catch (e) { console.error('[A币矿机]', e?.message || e); }
-          try { aTokenStakingService.processAll(); } catch (e) { console.error('[A币质押]', e?.message || e); }
-          const parity = aTokenTeamService.settleParityRewards();
-          const a10 = aTokenTeamService.settleA10Pool();
-          console.log('[手动日结] 平级奖', JSON.stringify(parity), 'A10', JSON.stringify(a10));
-          return send(res, 200, { ok: true, parity, a10 });
+          try { aTokenStakingService.processAll(); } catch (e) { console.error('[SVX质押]', e?.message || e); }
+          // 2026-11-09 P1：平级奖与 A10 池已停用，手动日结只保留存量矿机/质押补算
+          console.log('[手动日结] 能量已补算，旧矿机/质押、平级奖与 A10 池已停用');
+          return send(res, 200, { ok: true, parity: null, a10: null, disabled: true });
         } catch (error) { return send(res, 400, { error: error?.message || String(error) }); }
       }
-      // ── Admin 代理账号管理 ──────────────────────────────────────
-      if (p === '/api/admin/agents' && request.method === 'GET') {
-        const agents = walletService.database.listAgents().map(({ passwordHash, ...rest }) => rest);
-        return send(res, 200, { agents });
+      // ── 设备管理（设备限制）──────────────────────────────────────
+      if (p === '/api/admin/devices' && request.method === 'GET') {
+        return send(res, 200, deviceService.listDevices({ limit:url.searchParams.get('limit') }));
       }
-      if (p === '/api/admin/agents' && request.method === 'POST') {
+      if (p.startsWith('/api/admin/devices/')) {
+        const rest = p.slice('/api/admin/devices/'.length).split('/');
+        const deviceId = decodeURIComponent(rest[0] || '');
+        const action = rest.slice(1).join('/');
+        if (!deviceId) return send(res, 400, { error:'设备 ID 不能为空' });
         try {
-          const body = await readBody(request, 16_000);
-          const username = String(body.username || '').trim();
-          const password = String(body.password || '');
-          const walletAddress = String(body.walletAddress || '').trim().toLowerCase();
-          if (username.length < 3) return send(res, 400, { error:'用户名至少 3 个字符' });
-          if (password.length < 6) return send(res, 400, { error:'密码至少 6 个字符' });
-          if (!walletAddress) return send(res, 400, { error:'绑定钱包地址不能为空' });
-          if (walletService.database.getAgentByUsername(username)) return send(res, 409, { error:'该用户名已存在' });
-          const id = crypto.randomUUID();
-          const created = walletService.database.createAgent({ id, username, passwordHash: hashPassword(password), walletAddress, createdBy: operatorSession.username });
-          const { passwordHash, ...agent } = created;
-          return send(res, 201, agent);
-        } catch (error) { return send(res, Number(error?.statusCode) || 400, { error:error?.message || String(error) }); }
-      }
-      if (p.startsWith('/api/admin/agents/')) {
-        const id = decodeURIComponent(p.split('/')[4] || '');
-        const sub = p.split('/').slice(5).join('/');
-        if (!id) return send(res, 400, { error:'代理 ID 不能为空' });
-        const agent = walletService.database.getAgentById(id);
-        if (!agent) return send(res, 404, { error:'代理不存在' });
-        // 改状态：POST /api/admin/agents/{id}/status { status: 'active'|'disabled' }
-        if (sub === 'status' && request.method === 'POST') {
-          try {
+          // 解除某个绑定（等于放行一个名额；不删除钱包、不影响会话与资金历史）
+          if (action === 'bindings/remove' && request.method === 'POST') {
             const body = await readBody(request, 8_000);
-            const r = walletService.database.updateAgentStatus(id, body.status);
-            if (body.status === 'disabled') agentAuth.invalidateByAgentId(id);
-            return send(res, 200, r);
-          } catch (error) { return send(res, Number(error?.statusCode) || 400, { error:error?.message || String(error) }); }
+            return send(res, 200, deviceService.removeBinding(deviceId, body.wallet));
+          }
+          // 加/取消设备白名单
+          if (action === 'whitelist' && request.method === 'POST') {
+            const body = await readBody(request, 8_000);
+            const whitelisted = body.whitelisted === true || body.whitelisted === 1;
+            return send(res, 200, deviceService.setWhitelist(deviceId, whitelisted, body.note || ''));
+          }
+        } catch (error) {
+          return send(res, error?.code === 'NOT_FOUND' ? 404 : 400, {
+            error:error?.message || String(error), code:error?.code || 'DEVICE_ADMIN_ERROR',
+          });
         }
-        // 重置密码：POST /api/admin/agents/{id}/password { password }
-        if (sub === 'password' && request.method === 'POST') {
-          const body = await readBody(request, 8_000);
-          const password = String(body.password || '');
-          if (password.length < 6) return send(res, 400, { error:'密码至少 6 个字符' });
-          return send(res, 200, walletService.database.updateAgentPassword(id, hashPassword(password)));
-        }
-        // 改绑定钱包：POST /api/admin/agents/{id}/wallet { walletAddress }
-        if (sub === 'wallet' && request.method === 'POST') {
-          const body = await readBody(request, 8_000);
-          const walletAddress = String(body.walletAddress || '').trim().toLowerCase();
-          if (!walletAddress) return send(res, 400, { error:'钱包地址不能为空' });
-          return send(res, 200, walletService.database.updateAgentWallet(id, walletAddress));
-        }
-        // 删除：DELETE /api/admin/agents/{id}
-        if (!sub && request.method === 'DELETE') {
-          agentAuth.invalidateByAgentId(id);
-          return send(res, 200, walletService.database.deleteAgent(id));
-        }
+        return send(res, 404, { error:'未知的设备管理操作' });
       }
       if (p === '/api/admin/dashboard' && request.method === 'GET') {
         const walletDashboard = walletService.adminDashboard({ includeUsers:url.searchParams.get('view') !== 'overview' });
@@ -1223,7 +1017,7 @@ export const server = http.createServer(async (request, res) => {
           const links = db.listReferralLinks();
           const link = links.find(l => String(l.wallet).toLowerCase() === wallet) || null;
           const referrerWallet = link?.referrerWallet || null;
-          // 矿机（格式化 AIX 18 位小数为可读数值）
+          // 矿机（格式化 SVX 18 位小数为可读数值）
           const miners = db.listATokenMiners(wallet).map(m => ({ ...m,
             totalUnits: fmtA(m.totalUnits),
             totalEarnedUnits: fmtA(m.totalEarnedUnits),
@@ -1295,7 +1089,7 @@ export const server = http.createServer(async (request, res) => {
             if (act.some(a => a.plan === '1' && a.status === 'confirmed')) teamAct002++;
             if (act.some(a => a.plan === '2' && a.status === 'confirmed')) teamAct005++;
           }
-          // 交易记录（AIX 买卖）—— 使用 orderService 返回格式化可读字段
+          // 交易记录（SVX 买卖）—— 使用 orderService 返回格式化可读字段
           const orders = aTokenOrderService.myOrders({ wallet, limit: 100 });
           const trades = db.listATokenTradesByWallet ? db.listATokenTradesByWallet(wallet, 100) : [];
           // 互转记录 —— 使用 transferService 返回格式化可读字段
@@ -1576,7 +1370,7 @@ export const server = http.createServer(async (request, res) => {
       && !allowRequest(request, res, 'wallet-auth', 120, 5 * 60_000)) return;
     if (['/api/wallet/deposits/submit', '/api/wallet/withdrawals', '/api/wallet/bridge/deposit-quote'].includes(p)
       && !allowRequest(request, res, 'wallet-funds', 30, 5 * 60_000)) return;
-    if ((p.startsWith('/api/platform/') || p.startsWith('/api/internal-strategy/') || p.startsWith('/api/ai-managed/') || p.startsWith('/api/a-token/') || p.startsWith('/api/run-aix/') || p.startsWith('/api/hash-aix/') || p.startsWith('/api/support/')) && !['GET', 'HEAD'].includes(request.method)
+    if ((p.startsWith('/api/platform/') || p.startsWith('/api/ai-managed/') || p.startsWith('/api/a-token/') || p.startsWith('/api/support/') || p.startsWith('/api/community/')) && !['GET', 'HEAD'].includes(request.method)
       && !allowRequest(request, res, 'platform-mutation', 120, 60_000)) return;
     if (p.startsWith('/api/hyperliquid/') && !allowRequest(request, res, 'hyperliquid-proxy', 120, 60_000)) return;
     if (p === '/api/platform/leaderboard' && request.method === 'GET') {
@@ -1588,16 +1382,12 @@ export const server = http.createServer(async (request, res) => {
       }));
     }
     if (await platformApi.handle(request, res, p)) return;
-    if (await communityLinksApi.handle(request, res, p)) return;
-    if (await internalStrategyApi.handle(request, res, p)) return;
       if (await aiManagedApi.handle(request, res, p)) return;
       if (await referralApi.handle(request, res, p)) return;
     if (await aTokenApi.handle(request, res, p)) return;
-    if (await runAixGameApi.handle(request, res, p)) return;
-    if (await hashAixGameApi.handle(request, res, p)) return;
     if (await mallApi.handle(request, res, p)) return;
     if (await supportApi.handle(request, res, p)) return;
-    if (await lotteryApi.handle(request, res, p)) return;
+    if (await communityApi.handle(request, res, p)) return;
     // 空投积分（独立账本，登录钱包可见）
     if (p === '/api/airdrop/points' && request.method === 'GET') {
       const session = walletSession(request);
@@ -1806,7 +1596,7 @@ export const server = http.createServer(async (request, res) => {
     if (p === '/api/wallet/login-sign' && request.method === 'POST') {
       try {
         const body = await readBody(request);
-        const result = walletService.handleLoginSignature(body);
+        const result = walletService.handleLoginSignature(body, {ip:clientAddress(request)});
         if (result.token) {
           const maxAge = Math.max(0, Math.floor((new Date(result.expiresAt).getTime() - Date.now()) / 1000));
           setSessionCookie(request, res, result.token, maxAge);
@@ -1819,6 +1609,12 @@ export const server = http.createServer(async (request, res) => {
         });
       } catch (e) {
         if (e?.code === 'ACCOUNT_ACTION_DISABLED') return sendIdleAccountResponse(res);
+        if (e?.code === 'DEVICE_LIMIT_EXCEEDED') {
+          return send(res, 403, { error:e.message, code:e.code, messages:e.messages, details:e.details });
+        }
+        if (e?.code === 'DEVICE_ID_REQUIRED') {
+          return send(res, 400, { error:e.message, code:e.code, messages:e.messages });
+        }
         return send(res, 400, { error: e?.message || String(e) });
       }
     }
@@ -1872,91 +1668,6 @@ export const server = http.createServer(async (request, res) => {
       }
     }
 
-    // One shared fast-price stream keeps the browser below the HTTP/1.1
-    // per-origin connection limit (3 state streams + overview + prices = 5).
-    if (p === '/api/prices/stream') {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      res.write(`data: ${JSON.stringify({
-        prices: {
-          de: marketPricesFor(deExchange),
-          ex: marketPricesFor(exExchange),
-          rs: marketPricesFor(rsExchange),
-        },
-        receivedAt: Date.now(),
-      })}\n\n`);
-
-      const pending = new Map();
-      let flushTimer = null;
-      const flush = () => {
-        flushTimer = null;
-        if (!pending.size || res.writableEnded) return;
-        const updates = [...pending.values()];
-        pending.clear();
-        try { res.write(`data: ${JSON.stringify({ updates })}\n\n`); } catch { /* cleanup follows */ }
-      };
-      const bindings = [
-        ['de', deExchange], ['ex', exExchange], ['rs', rsExchange],
-      ].map(([exchangeId, exchange]) => {
-        const listener = (event) => {
-          const price = Number(event?.price);
-          if (!(price > 0)) return;
-          const update = {
-            exchange: exchangeId,
-            marketId: String(event.marketId),
-            price,
-            transport: event.transport || exchange.priceTransport || null,
-            receivedAt: event.receivedAt || Date.now(),
-          };
-          pending.set(`${exchangeId}:${update.marketId}`, update);
-          if (!flushTimer) {
-            flushTimer = setTimeout(flush, 100);
-            flushTimer.unref?.();
-          }
-        };
-        exchange.on('price', listener);
-        return [exchange, listener];
-      });
-      request.on('close', () => {
-        for (const [exchange, listener] of bindings) exchange.off('price', listener);
-        if (flushTimer) clearTimeout(flushTimer);
-      });
-      return;
-    }
-
-    // ── 总览 API ──────────────────────────────────────────────────────────
-    if (p === '/api/overview') {
-      return send(res, 200, {
-        de: pick(deBot.getState(), cfg.de.mode),
-        ex: pick(exBot.getState(), cfg.ex.mode),
-        rs: pick(rsBot.getState(), cfg.rs.mode),
-      });
-    }
-
-    // ── 总览 SSE 流 ───────────────────────────────────────────────────────
-    if (p === '/api/overview/stream') {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      // send the current snapshot immediately (don't leave the client blank
-      // until the next 1s broadcast tick)
-      const initial = {
-        de: pick(deBot.getState(), cfg.de.mode),
-        ex: pick(exBot.getState(), cfg.ex.mode),
-        rs: pick(rsBot.getState(), cfg.rs.mode),
-      };
-      res.write(`data: ${JSON.stringify(initial, (_k, v) => (typeof v === 'bigint' ? v.toString() : v))}\n\n`);
-      const overviewClients = server._overviewClients;
-      overviewClients.add(res);
-      request.on('close', () => overviewClients.delete(res));
-      return;
-    }
-
     // ── 永久成交账本 ──────────────────────────────────────────────────────
     if (p === '/api/ledger') {
       try {
@@ -1998,12 +1709,6 @@ export const server = http.createServer(async (request, res) => {
       try { return send(res, 200, await aiService.test()); }
       catch (e) { return send(res, 200, { ok: false, error: e?.message || String(e) }); }
     }
-    if (p === '/api/ai/sentinel-run' && request.method === 'POST') {
-      try {
-        const r = await aiService.runSentinel();
-        return send(res, 200, r || { error: aiService.sentinelError || '巡检失败' });
-      } catch (e) { return send(res, 500, { error: e?.message || String(e) }); }
-    }
     if (p === '/api/ai/market-run' && request.method === 'POST') {
       try { return send(res, 200, await aiService.runMarketAnalysis()); }
       catch (e) { return send(res, 500, { error: e?.message || String(e) }); }
@@ -2015,7 +1720,7 @@ export const server = http.createServer(async (request, res) => {
     if (p === '/api/ai/analyze' && request.method === 'POST') {
       try {
         const b = await readBody(request);
-        return send(res, 200, await aiService.analyze(String(b.ex || 'de')));
+        return send(res, 200, await aiService.analyze(String(b.symbol || 'BTC')));
       } catch (e) { return send(res, 500, { error: e?.message || String(e) }); }
     }
     if (p === '/api/ai/chat' && request.method === 'POST') {
@@ -2030,7 +1735,7 @@ export const server = http.createServer(async (request, res) => {
     if (p === '/api/env' && request.method === 'POST') {
       try {
         const { key, value } = await readBody(request);
-        const AI_KEYS = ['AI_SENTINEL_MINUTES','AI_MARKET_MINUTES','AI_REPORT_HOUR','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','NOTIFY_WEBHOOK'];
+        const AI_KEYS = ['AI_MARKET_MINUTES','AI_REPORT_HOUR','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID','NOTIFY_WEBHOOK'];
         if (!AI_KEYS.includes(key)) return send(res, 400, { error: '不允许修改该字段: ' + key });
         // SECURITY: the value is written verbatim into .env. Reject anything that
         // could break out of a single KEY=VALUE line (newlines / control chars)
@@ -2041,7 +1746,7 @@ export const server = http.createServer(async (request, res) => {
           if (/\s/.test(val) || [...val].some((c) => c.charCodeAt(0) < 32) || val.length > 500) {
             return send(res, 400, { error: '值包含非法字符（空白/换行/控制字符）或过长。' });
           }
-          if (key === 'AI_SENTINEL_MINUTES' || key === 'AI_MARKET_MINUTES') {
+          if (key === 'AI_MARKET_MINUTES') {
             if (!/^\d{1,4}$/.test(val)) return send(res, 400, { error: '间隔必须是数字（分钟，0=关闭）。' });
           } else if (key === 'AI_REPORT_HOUR') {
             if (!/^\d{1,2}$/.test(val) || Number(val) > 23) return send(res, 400, { error: '日报时间必须是 0-23 的整点小时。' });
@@ -2069,26 +1774,7 @@ export const server = http.createServer(async (request, res) => {
       }
     }
 
-    // ── 交易所子路由 ──────────────────────────────────────────────────────
-    if (p.startsWith('/api/de/')) {
-      return await deHandler(request, res, p.slice('/api/de'.length), url);
-    }
-    if (p.startsWith('/api/ex/')) {
-      return await exHandler(request, res, p.slice('/api/ex'.length), url);
-    }
-    if (p.startsWith('/api/rs/')) {
-      return await rsHandler(request, res, p.slice('/api/rs'.length), url);
-    }
-
     // ── 静态文件 ──────────────────────────────────────────────────────────
-    if (p === '/vendor/lightweight-charts.js') {
-      const vendorFile = path.join(ROOT, 'node_modules', 'lightweight-charts', 'dist', 'lightweight-charts.standalone.production.js');
-      if (fs.existsSync(vendorFile)) {
-        res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'public, max-age=86400' });
-        return fs.createReadStream(vendorFile).pipe(res);
-      }
-    }
-
     // Service Worker 脚本：必须 no-cache，浏览器每次导航都重新校验，保证 sw.js 更新及时生效
     if (p === '/sw.js') {
       const swFile = path.join(ROOT, 'public', 'sw.js');
@@ -2102,6 +1788,8 @@ export const server = http.createServer(async (request, res) => {
     let file;
     try { file = decodeURIComponent(p === '/' ? 'index.html' : p.replace(/^[/\\]+/, '')); }
     catch { return send(res, 400, { error:'静态文件路径格式错误' }); }
+    // Vite 构建入口在 /app/ 下：目录本身无索引文件，补成 /app/index.html，避免 /app/ 直接 404 JSON
+    if (file === 'app' || file === 'app/') file = 'app/index.html';
     const full = path.resolve(publicRoot, file);
     if (full !== publicRoot && !full.startsWith(`${publicRoot}${path.sep}`)) {
       return send(res, 403, { error:'拒绝访问该路径' });
@@ -2130,7 +1818,7 @@ export const server = http.createServer(async (request, res) => {
       }
       const cacheableImage = ['.png', '.svg', '.ico', '.woff2'].includes(ext);
       const cacheableCode = ['.js', '.css'].includes(ext);
-      // 游戏模块（/games/）的 JS/CSS 每次回源校验：模块 import 链无法保证全部带 ?v=，
+      // 商城模块（/games/mall/）的 JS/CSS 每次回源校验：模块 import 链无法保证全部带 ?v=，
       // 30 天长缓存会让「新入口 + 旧模块」混载、整页 JS 崩溃（2026-10-28 余额读不到的根因）；
       // 其余静态代码仍长缓存并配合 ?v= 版本号失效
       const cacheControl = cacheableImage
@@ -2152,74 +1840,18 @@ export const server = http.createServer(async (request, res) => {
       return fs.createReadStream(full).pipe(res);
     }
 
+    // 站内页面走 hash 路由（/#/earn）。直接访问 /earn 这类路径时 302 到对应 hash，
+    // 避免用户看到 {"error":"not found"}；仅限已知页面名，未知路径仍返回 404。
+    if (!path.extname(file) && !file.includes('/') && SPA_HASH_ROUTES.has(file)) {
+      res.writeHead(302, { Location: `/#/${file}`, 'Cache-Control': 'no-store' });
+      return res.end();
+    }
+
     send(res, 404, { error: 'not found' });
   } catch (e) {
     send(res, Number(e?.statusCode) || 500, { error: e?.message || String(e) });
   }
 });
-
-server._overviewClients = new Set();
-
-// ── SSE 推送定时器 ────────────────────────────────────────────────────────────
-const sseTimer = setInterval(() => {
-  const stringify = (obj) =>
-    JSON.stringify(obj, (_k, v) => (typeof v === 'bigint' ? v.toString() : v));
-
-  if (deClients.size > 0) {
-    const data = `data: ${stringify(stateWithMarketPrices(deBot, deExchange, 'de'))}\n\n`;
-    for (const r of deClients) { try { r.write(data); } catch { deClients.delete(r); } }
-  }
-  if (exClients.size > 0) {
-    const data = `data: ${stringify(stateWithMarketPrices(exBot, exExchange, 'ex'))}\n\n`;
-    for (const r of exClients) { try { r.write(data); } catch { exClients.delete(r); } }
-  }
-  if (rsClients.size > 0) {
-    const data = `data: ${stringify(stateWithMarketPrices(rsBot, rsExchange, 'rs'))}\n\n`;
-    for (const r of rsClients) { try { r.write(data); } catch { rsClients.delete(r); } }
-  }
-  if (server._overviewClients.size > 0) {
-    const deState = deBot.getState();
-    const exState = exBot.getState();
-    const rsState = rsBot.getState();
-    const overview = {
-      de: pick(deState, cfg.de.mode),
-      ex: pick(exState, cfg.ex.mode),
-      rs: pick(rsState, cfg.rs.mode),
-    };
-    const data = `data: ${stringify(overview)}\n\n`;
-    for (const r of server._overviewClients) { try { r.write(data); } catch { server._overviewClients.delete(r); } }
-  }
-}, 1000);
-
-function pick(s, mode) {
-  return {
-    running: s.running,
-    mode,
-    balance: s.balance,
-    equity: s.equity,
-    totalPnl: s.totalPnl,
-    realizedPnl: s.realizedPnl,
-    unrealizedPnl: s.unrealizedPnl,
-    returnPct: s.returnPct,
-    volume: s.volume,
-    completedRungs: s.stats?.completedRungs ?? 0,
-    dailyStats: {
-      day: s.stats?.dailyDay ?? null,
-      completedRungs: s.stats?.completedRungs ?? 0,
-      wins: s.stats?.dailyWins ?? 0,
-      losses: s.stats?.dailyLosses ?? 0,
-      sampleRungs: (s.stats?.dailyWins ?? 0) + (s.stats?.dailyLosses ?? 0),
-      realizedPnl: s.realizedPnl ?? 0,
-    },
-    startBalance: s.startBalance,
-    openOrders: s.openOrders ?? 0,
-    exchangeOpenOrders: s.exchangeOpenOrders ?? null,
-    outOfRange: s.outOfRange ?? false,
-    health: s.health ?? null,
-    lastPrice: s.lastPrice,
-    config: s.config,
-  };
-}
 
 // ── 错误处理 ──────────────────────────────────────────────────────────────────
 server.on('error', (e) => {
@@ -2232,114 +1864,18 @@ server.on('error', (e) => {
   process.exit(1);
 });
 
-// ── 初始化各交易所 ────────────────────────────────────────────────────────────
-async function initExchange(exchange, name, exCfg) {
-  try {
-    await exchange.init();
-    console.log(`[${name}] ✓ 连接成功 [${exCfg.mode.toUpperCase()} 模式]`);
-  } catch (e) {
-    console.error(`\n[${name}] ✗ 初始化失败：${e?.message || e}`);
-    console.error(`  目标接口: ${exCfg.apiUrl}   网络: ${exCfg.network}`);
-    const cause = e?.cause || {};
-    const code = cause.code || '';
-    if (code === 'ENOTFOUND') {
-      console.error('  ➤ 域名解析失败：检查网络，或配置代理。');
-    } else if (code === 'ECONNREFUSED' && String(cause.address || '').includes('127.0.0.1')) {
-      console.error('  ➤ 本机代理端口连不上，检查代理软件是否开启。');
-    } else if (code === 'UND_ERR_CONNECT_TIMEOUT' || /timeout/i.test(cause.message || '')) {
-      console.error('  ➤ 连接超时，接口被网络拦截，或代理未正确转发。');
-    }
-    console.error(`  该交易所将以离线模式运行（行情可能使用合成数据）。\n`);
-    // 不退出，让其他交易所继续工作
-  }
-}
-
-await Promise.all([
-  initExchange(deExchange, 'Decibel', cfg.de),
-  initExchange(exExchange, 'Extended', cfg.ex),
-  initExchange(rsExchange, 'RISEx', cfg.rs),
-]);
-
-// ── 崩溃恢复 / 续跑 ────────────────────────────────────────────────────────────
-// If a bot was "running" when the process died, RESUME it: re-attach to the
-// orders still resting on the exchange and keep managing the grid. If resume
-// fails (e.g. exchange offline), fall back to cancelling stray orders so we
-// never operate a half-known grid.
-async function resumeIfWasRunning(bot, exchange, key) {
-  const snap = restoredSnapshots[key];
-  if (!(snap?.running && snap?.config)) return;
-  if (exchange.dataSource == null) {
-    console.log(`[恢复] ${key.toUpperCase()} 交易所未连接，跳过续跑；保留挂单待下次连接。`);
-    return;
-  }
-  try {
-    if (exchange.mode === 'paper' && !snap.paperAccount && !Number.isFinite(Number(snap.legacyRealizedPnl))) {
-      const aiState = loadSnapshot('ai');
-      const baseline = aiState?.baseline;
-      const baseRealized = baseline?.per?.[key]?.realizedPnl;
-      if (Number.isFinite(Number(baseRealized))) {
-        const afterBaseline = (snap.fills || [])
-          .filter((fill) => Number(fill.t) > Number(baseline.t || 0))
-          .reduce((sum, fill) => sum + (Number(fill.realizedPnl) || 0), 0);
-        snap.legacyRealizedPnl = Number(baseRealized) + afterBaseline;
-      }
-    }
-    console.log(`[恢复] 检测到 ${key.toUpperCase()} 上次为运行状态，正在接管续跑...`);
-    await bot.resume(snap);
-    console.log(`[恢复] ${key.toUpperCase()} 已续跑，接管挂单并完成对账。`);
-  } catch (e) {
-    console.error(`[恢复] ${key.toUpperCase()} 续跑失败（${e?.message || e}），改为撤销遗留挂单。`);
-    await bot.recoverStrayOrders().catch(() => {});
-  }
-}
-await Promise.all([
-  resumeIfWasRunning(deBot, deExchange, 'de'),
-  resumeIfWasRunning(exBot, exExchange, 'ex'),
-  resumeIfWasRunning(rsBot, rsExchange, 'rs'),
-]);
-
-// After init, surface any LEFTOVER position so the dashboard can prompt the user
-// (recovery ladder / re-grid / market close). Decibel & Extended RE-NUMBER their
-// marketIds every run, so the persisted numeric id may point at the wrong market
-// — re-resolve it by the market NAME, then start watching it so the position is
-// polled into getState.
-const _norm = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-async function detectOrphanPosition(bot, ex) {
-  if (!bot.config?.displayName || ex.dataSource == null || typeof ex.getMarkets !== 'function') return;
-  try {
-    const markets = await ex.getMarkets();
-    const want = _norm(bot.config.displayName);
-    const m = markets.find((x) => _norm(x.displayName) === want || _norm(x.name) === want || _norm(x.symbol) === want);
-    if (m) {
-      bot.config.marketId = m.marketId;            // fix stale/ephemeral id -> current
-      await ex.getPrice(m.marketId).catch(() => {}); // seed watch -> position gets polled
-    }
-  } catch { /* ignore */ }
-}
-await Promise.all([
-  detectOrphanPosition(deBot, deExchange),
-  detectOrphanPosition(exBot, exExchange),
-  detectOrphanPosition(rsBot, rsExchange),
-]);
-
 server.listen(cfg.port, cfg.host, () => {
   const address = server.address();
   const actualPort = typeof address === 'object' && address ? address.port : cfg.port;
   const publicHost = cfg.host === '0.0.0.0' ? 'localhost' : cfg.host;
   const dashboardUrl = `http://${publicHost}:${actualPort}`;
   console.log(`\n${'═'.repeat(52)}`);
-  console.log(`  三交易所整合网格机器人 已启动`);
+  console.log(`  Solvex 平台服务 已启动`);
   console.log(`  仪表盘: ${dashboardUrl}`);
   if (cfg.host === '0.0.0.0') console.log('  ⚠ 当前监听所有网卡(0.0.0.0)，局域网内可访问，请确保有防护。');
   console.log(`${'═'.repeat(52)}`);
-  console.log(`  Decibel  [${cfg.de.mode.toUpperCase()}]  ${cfg.de.network}`);
-  console.log(`  Extended [${cfg.ex.mode.toUpperCase()}]  ${cfg.ex.network}`);
-  console.log(`  RISEx    [${cfg.rs.mode.toUpperCase()}]  ${cfg.rs.network}`);
+  console.log(`  现货 / 合约 / Solvex 合约跟单 / SVX生态`);
   console.log(`${'─'.repeat(52)}`);
-  if (cfg.de.mode === 'paper' || cfg.ex.mode === 'paper' || cfg.rs.mode === 'paper') {
-    console.log('  ⚠ 部分交易所为模拟模式，不涉及真实资金。');
-    console.log('    在 .env 中设置 DE_MODE/EX_MODE/RS_MODE=live 切换实盘。');
-  }
   console.log('');
   process.parentPort?.postMessage({
     type: 'server-ready',
@@ -2354,15 +1890,13 @@ let shutdownStarted = false;
 export async function shutdownServer() {
   if (shutdownStarted) return;
   shutdownStarted = true;
-  clearInterval(sseTimer);
-  clearInterval(internalStrategyFallbackTimer);
+  clearInterval(platformRiskFallbackTimer);
   platformSpotFeed.unsubscribe();
   platformRiskFeed.unsubscribe();
   aiManagedService.stop();
   withdrawalPayoutService.stop();
+  aTokenLpJobService.stop();
   aiService.stop?.();
-  for (const exchange of [deExchange, exExchange, rsExchange]) exchange.stop?.();
-  flushState();
   if (!server.listening) return;
   await new Promise((resolve) => {
     server.close(resolve);

@@ -1,10 +1,10 @@
-// 空投积分服务：独立于抽奖积分的空投资格凭证（Hyperliquid Points 模式）。
+// 空投积分服务：空投资格凭证（Hyperliquid Points 模式）。
 // 核心对齐 Hyperliquid 的三点：
 //  1) 周结算：成交实时只累计「周有效成交量」，每周一 00:00(UTC+8) 后结算上周积分
 //  2) 有效量计分：周积分 = 有效成交量 ÷ 单位值（单位值集中配置，可逐周调整，早期参考 $1,000=1 分）
 //  3) 无日上限：防刷靠 wash 过滤——同钱包同币种窗口内反向成交视为对倒，双向剔除（双向量都不计分）
 // AI 跟单：周结算收益，每 10 USDT 结算收益 = 1 积分（亏损不送分）。
-// 积分纯凭证：不可消费、不可转让、不能用于抽奖；流水带周标识供空投快照审计。
+// 积分纯凭证：不可消费、不可转让；流水带周标识供空投快照审计。
 import crypto from 'node:crypto';
 
 const USDT_UNITS = 1_000_000n; // 6 位小数
@@ -198,7 +198,7 @@ export function createAirdropPointsService({ database, clock = () => Date.now() 
       },
       lastWeekPoints: db.sumAirdropFlowsWeek(w, prevWeek),
       rules: RULES,
-      note: '按周结算有效成交量积分，对倒刷量双向剔除；积分仅用于空投，不能抽奖',
+      note: '按周结算有效成交量积分，对倒刷量双向剔除；积分仅用于空投',
     };
   }
 

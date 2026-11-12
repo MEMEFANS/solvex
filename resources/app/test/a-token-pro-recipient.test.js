@@ -38,7 +38,7 @@ function fixture({ expectedRotation = false, actualTo = rotation, value = proWei
     getTransaction: async () => ({ from: wallet, to: actualTo, value }),
     getTransactionReceipt: async () => ({ status: receiptStatus, blockNumber: 100 }),
     getBlockNumber: async () => 100 + confirmations,
-    // The AIX candidate permits historical BNB recovery; the BNB candidate ignores this.
+    // The SVX candidate permits historical BNB recovery; the BNB candidate ignores this.
     getBlock: async () => ({ timestamp: Math.floor(now / 1000) - 60 }),
   };
   const service = createATokenActivationService({

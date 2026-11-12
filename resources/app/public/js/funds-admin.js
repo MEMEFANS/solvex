@@ -11,7 +11,7 @@
   function lock() {
     credential = ''; revision++; withdrawalsRevision++; creditsRevision++; creditRequest = null; automation = {}; operationRequests.clear();
     byId('funds-token').value = ''; byId('funds-login').hidden = false; byId('funds-app').hidden = true; byId('funds-lock').hidden = true;
-    byId('funds-withdrawals-body').replaceChildren(); byId('funds-credits-body').replaceChildren(); byId('funds-credit-form').reset(); byId('funds-settings-form').reset();
+    byId('funds-withdrawals-body').replaceChildren(); byId('funds-daily-summary-body').replaceChildren(); byId('funds-credits-body').replaceChildren(); byId('funds-credit-form').reset(); byId('funds-settings-form').reset();
     byId('funds-assets-body').replaceChildren(); byId('funds-miners-body').replaceChildren(); byId('funds-asset-form').reset(); byId('funds-miner-form').reset();
   }
   async function api(path, options = {}) {
@@ -61,6 +61,17 @@
     if (current !== withdrawalsRevision) return;
     renderWithdrawals(data.items || []);
   }
+  async function loadDailySummary() {
+    const data = await api('withdrawal-daily-summary');
+    const body = byId('funds-daily-summary-body'); body.replaceChildren();
+    for (const item of data.days || []) {
+      const row = document.createElement('tr');
+      cell(row, item.date); cell(row, `${item.count} 笔`); cell(row, `${item.paidAmount} USDT`);
+      cell(row, `${item.paidFee} USDT`); cell(row, `${item.paidTotal} USDT`);
+      cell(row, item.pendingCount ? `${item.pendingAmount} USDT（${item.pendingCount} 笔；手续费 ${item.pendingFee}）` : '—'); body.append(row);
+    }
+    if (!data.days?.length) empty(body, 6, '暂无提现统计');
+  }
   async function loadCredits() {
     const current = ++creditsRevision;
     const data = await api('test-credits');
@@ -74,7 +85,7 @@
     if (tab === 'credits') await loadCredits();
     else if (tab === 'assets') await loadAssets();
     else if (tab === 'miners') await loadMiners();
-    else { await loadSettings(); await loadWithdrawals(); }
+    else { await loadSettings(); await loadDailySummary(); await loadWithdrawals(); }
   }
   async function loadAssets() {
     const data = await api('asset-adjustments');
@@ -83,19 +94,19 @@
     const operations = { funds_grant:'赠送', funds_debit:'扣除', admin_grant:'历史赠送', admin_debit:'历史扣除', admin_test_credit:'测试入账' };
     for (const item of data.items || []) {
       const row = document.createElement('tr'); cell(row,date(item.createdAt)); cell(row,item.wallet,'wallet'); cell(row,operations[item.type] || item.type);
-      cell(row,`${item.amount} ${item.asset === 'A' ? 'AIX' : item.asset}`); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
+      cell(row,`${item.amount} ${item.asset === 'A' ? 'SVX' : item.asset}`); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
     }
     if (!data.items?.length) empty(body,6,'暂无资产操作记录');
   }
   async function loadMiners() {
-    const data = await api('miner-grants');
+    const data = await api('energy-grants');
     const body = byId('funds-miners-body'); body.replaceChildren();
     byId('funds-miner-count').textContent = `${data.items?.length || 0} 条记录`;
     for (const item of data.items || []) {
-      const row = document.createElement('tr'); cell(row,date(item.createdAt)); cell(row,item.wallet,'wallet'); cell(row,item.plan === 'mini120' ? 'Mini' : 'Pro');
-      cell(row,item.miner?.id); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
+      const row = document.createElement('tr'); cell(row,date(item.createdAt)); cell(row,item.wallet,'wallet'); cell(row,item.amount + ' SVX');
+      cell(row,item.energy?.id); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
     }
-    if (!data.items?.length) empty(body,6,'暂无矿机赠送记录');
+    if (!data.items?.length) empty(body,6,'暂无能量充值记录');
   }
   async function submitOperation(event, kind, payload, confirmation) {
     event.preventDefault();
@@ -109,9 +120,9 @@
     }
     button.disabled = true;
     try {
-      const result = await api(kind === 'asset' ? 'asset-adjustments' : 'miner-grants',{ method:'POST',body:JSON.stringify({...payload,requestId:pending.requestId}) });
+      const result = await api(kind === 'asset' ? 'asset-adjustments' : 'energy-grants',{ method:'POST',body:JSON.stringify({...payload,requestId:pending.requestId}) });
       operationRequests.delete(kind); form.reset();
-      status(kind === 'asset' ? `${result.adjustment.amount} ${payload.asset === 'A' ? 'AIX' : payload.asset} 已${payload.action === 'debit' ? '扣除' : '赠送'}` : '矿机已赠送','ok');
+      status(kind === 'asset' ? `${result.adjustment.amount} ${payload.asset === 'A' ? 'SVX' : payload.asset} 已${payload.action === 'debit' ? '扣除' : '赠送'}` : '能量已充值','ok');
       if (kind === 'asset') await loadAssets(); else await loadMiners();
     } catch (error) { status(error.message,'error'); }
     finally { button.disabled = false; }
@@ -150,11 +161,11 @@
   byId('funds-withdrawal-filter').addEventListener('change', () => loadWithdrawals().catch(error => status(error.message, 'error')));
   byId('funds-asset-form').addEventListener('submit',event => {
     const payload = { wallet:byId('funds-asset-wallet').value.trim(), asset:byId('funds-asset-symbol').value, action:byId('funds-asset-action').value, amount:byId('funds-asset-amount').value.trim(), reason:byId('funds-asset-reason').value.trim() };
-    submitOperation(event,'asset',payload,`确认给钱包 ${payload.wallet} ${payload.action === 'debit' ? '扣除' : '赠送'} ${payload.amount} ${payload.asset === 'A' ? 'AIX' : payload.asset}？`);
+    submitOperation(event,'asset',payload,`确认给钱包 ${payload.wallet} ${payload.action === 'debit' ? '扣除' : '赠送'} ${payload.amount} ${payload.asset === 'A' ? 'SVX' : payload.asset}？`);
   });
   byId('funds-miner-form').addEventListener('submit',event => {
-    const payload = { wallet:byId('funds-miner-wallet').value.trim(), plan:byId('funds-miner-plan').value, reason:byId('funds-miner-reason').value.trim() };
-    submitOperation(event,'miner',payload,`确认给钱包 ${payload.wallet} 赠送一台 ${payload.plan === 'mini120' ? 'Mini' : 'Pro'} 矿机？`);
+    const payload = { wallet:byId('funds-miner-wallet').value.trim(), amount:byId('funds-miner-amount').value.trim(), reason:byId('funds-miner-reason').value.trim() };
+    submitOperation(event,'miner',payload,`确认给钱包 ${payload.wallet} 充值 ${payload.amount} SVX 能量，每日释放1%？`);
   });
   byId('funds-credit-form').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; const button = event.submitter || form.querySelector('button');

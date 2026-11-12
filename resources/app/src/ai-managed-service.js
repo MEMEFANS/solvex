@@ -4,7 +4,7 @@ import { A_TOKEN_DECIMALS } from './a-token-service.js';
 
 export const AI_MANAGED_KEY = 'ai-managed';
 export const AI_MANAGED_SLOT_MS = 72 * 60_000;
-// 合约跟单 VIP 会员：销毁 100 枚 AIX 开通 30 天 VIP，VIP 有效才能跟单；到期后续费需重新销毁 100 枚（永久销毁不返还）
+// 合约跟单 VIP 会员：销毁 100 枚 SVX 开通 30 天 VIP，VIP 有效才能跟单；到期后续费需重新销毁 100 枚（永久销毁不返还）
 export const COPY_TRADE_UNLOCK_A = 100n * 10n ** BigInt(A_TOKEN_DECIMALS);
 export const COPY_TRADE_UNLOCK_DAYS = 30;
 // 资产入账节奏：不每笔 slot 入账，而是每 8 小时窗口汇总入账一次（一天约 3 条结算流水，UTC+8 的 0/8/16 点）。
@@ -355,7 +355,7 @@ export function createAiManagedService({ platformService, walletService, fetchCa
     if (changed) persist(address, state);
     return state;
   }
-  // 跟单权益：销毁 100 AIX 开通 30 天，到期失效后再次开启需重新销毁
+  // 跟单权益：销毁 100 SVX 开通 30 天，到期失效后再次开启需重新销毁
   function unlockInfo(state, now = clock()) {
     const unlockedAt = Number(state.copyTradeUnlockedAt || 0);
     if (!unlockedAt) return { active:false, unlockedAt:0, expiresAt:0, daysLeft:0 };
@@ -414,13 +414,13 @@ export function createAiManagedService({ platformService, walletService, fetchCa
     if (capital < COPY_TRADE_MIN_PRINCIPAL) throw new Error(`跟单金额最低 ${formatUnits(COPY_TRADE_MIN_PRINCIPAL, USDT_DECIMALS)} USDT`);
     const dayStartAt = startOfDay(now, timezoneOffsetMs, dayMs);
     const daySlotTarget = Math.max(1, Math.min(slotsPerDay, Math.ceil((dayStartAt + dayMs - now) / slotMs)));
-    // 合约跟单采用 VIP 会员制：需先单独「开通 VIP」（销毁 100 AIX / 30 天），VIP 有效才能跟单；
-    // 跟单本身只扣 USDT 本金，不再扣 AIX（AIX 在 unlock() 开通/续费时一次性销毁）。
+    // 合约跟单采用 VIP 会员制：需先单独「开通 VIP」（销毁 100 SVX / 30 天），VIP 有效才能跟单；
+    // 跟单本身只扣 USDT 本金，不再扣 SVX（SVX 在 unlock() 开通/续费时一次性销毁）。
     // 老用户兼容：上线前已有跟单批次且从未开通的钱包，首次跟单赠送一次 30 天 VIP，不补收。
     const unlock = unlockInfo(state, now);
     const grandfathered = !state.copyTradeUnlockedAt && state.batches.some(b => b.status === 'active' || b.status === 'redeemed' || b.status === 'expired');
     if (!unlock.active && !grandfathered) {
-      throw new Error(`请先开通 VIP 跟单权益（销毁 ${formatUnits(COPY_TRADE_UNLOCK_A, A_TOKEN_DECIMALS)} 枚 AIX / ${COPY_TRADE_UNLOCK_DAYS} 天），开通后即可开始跟单`);
+      throw new Error(`请先开通 VIP 跟单权益（销毁 ${formatUnits(COPY_TRADE_UNLOCK_A, A_TOKEN_DECIMALS)} 枚 SVX / ${COPY_TRADE_UNLOCK_DAYS} 天），开通后即可开始跟单`);
     }
     // 新 batch：30 天锁仓（lockUntilAt），无到期日（expiresAt 设 3650 天≈10 年）
     walletService.debitBalance?.(address, 'USDT', capital);
@@ -440,7 +440,7 @@ export function createAiManagedService({ platformService, walletService, fetchCa
     if (!db.aiRewardById(startId)) db.insertAiReward({ id:startId, batchId:batch.id, wallet:address, amountUnits:(-capital).toString(), rewardDate:new Date(now).toISOString().slice(0, 10), slotAt:now, createdAt:now, source:'platform', kind:'start' });
     return present(read(address), address);
   }
-  // 开通 / 续费 VIP 跟单权益：销毁 100 枚 AIX = 30 天权益。跟单（start）不再扣 AIX。
+  // 开通 / 续费 VIP 跟单权益：销毁 100 枚 SVX = 30 天权益。跟单（start）不再扣 SVX。
   async function unlock(address) {
     if (!aTokenService) throw new Error('跟单 VIP 服务未启用');
     const now = clock();
@@ -450,7 +450,7 @@ export function createAiManagedService({ platformService, walletService, fetchCa
     const isRenew = Boolean(state.copyTradeUnlockedAt);
     const aBalance = BigInt(aTokenService.balanceA(address) || 0n);
     if (aBalance < COPY_TRADE_UNLOCK_A) {
-      throw new Error(`${isRenew ? '续费' : '开通'} VIP 跟单权益需销毁 ${formatUnits(COPY_TRADE_UNLOCK_A, A_TOKEN_DECIMALS)} 枚 AIX（${COPY_TRADE_UNLOCK_DAYS} 天权益），当前 AIX 余额不足（持有 ${formatUnits(aBalance, A_TOKEN_DECIMALS)} 枚）`);
+      throw new Error(`${isRenew ? '续费' : '开通'} VIP 跟单权益需销毁 ${formatUnits(COPY_TRADE_UNLOCK_A, A_TOKEN_DECIMALS)} 枚 SVX（${COPY_TRADE_UNLOCK_DAYS} 天权益），当前 SVX 余额不足（持有 ${formatUnits(aBalance, A_TOKEN_DECIMALS)} 枚）`);
     }
     walletService.debitBalance?.(address, 'A', COPY_TRADE_UNLOCK_A);
     // VIP 开通/续费固定销毁 100 枚（不受销毁开关影响）

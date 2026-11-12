@@ -19,18 +19,18 @@ let tradeHeaderPriceMode = 'last';
 // MA 简单移动平均线（主图）
 const tradeMaSeries = new Map();
 const tradeMaVisibility = new Map([[7, false], [25, false], [99, false]]);
-const tradeMaColors = { 7:'#f0c84b', 25:'#e45bb7', 99:'#a88bdf' };
+const tradeMaColors = { 7:'#a8700a', 25:'#c8307f', 99:'#7b4fd0' };
 
 // EMA 指数移动平均线（主图）
 const tradeEmaSeries = new Map();
 const tradeEmaVisibility = new Map([[7, false], [25, false], [99, false]]);
-const tradeEmaColors = { 7:'#2196f3', 25:'#ff9800', 99:'#9c27b0' };
+const tradeEmaColors = { 7:'#1d6fe0', 25:'#c25a0a', 99:'#7b4fd0' };
 
 // BOLL 布林带（主图）
 let tradeBollUpper = null, tradeBollMiddle = null, tradeBollLower = null;
 let tradeBollVisibility = false;
 const BOLL_PERIOD = 20, BOLL_STD = 2;
-const BOLL_COLOR = '#4a9eff';
+const BOLL_COLOR = '#2a72d4';
 
 // VOL 成交量（副图）
 let tradeVolSeries = null;
@@ -42,7 +42,7 @@ let tradeMacdLineSeries = null, tradeMacdSignalSeries = null, tradeMacdHistSerie
 let tradeMacdVisibility = false;
 let tradeMacdPaneIdx = -1;
 const MACD_FAST = 12, MACD_SLOW = 26, MACD_SIGNAL = 9;
-const MACD_LINE_COLOR = '#4fd1b5', MACD_SIGNAL_COLOR = '#f06f75', MACD_HIST_UP = '#4fd1b5', MACD_HIST_DOWN = '#f06f75';
+const MACD_LINE_COLOR = '#0e9c88', MACD_SIGNAL_COLOR = '#c62a37', MACD_HIST_UP = '#0e9c88', MACD_HIST_DOWN = '#c62a37';
 
 // 实时增量指标状态（避免每个成交 tick 都全量 O(n) 重算，手机端卡顿/价格延迟的根因）
 const tradeEmaLive = new Map(); // period -> { prev: 前一根EMA, cur: 最新一根EMA }
@@ -126,7 +126,7 @@ function volumeData(candles) {
   return candles.map(c => ({
     time:c.time,
     value:Number(c.volume) || 0,
-    color:c.close >= c.open ? 'rgba(79,209,181,0.5)' : 'rgba(240,111,117,0.5)',
+    color:c.close >= c.open ? 'rgba(14,156,136,0.45)' : 'rgba(217,45,60,0.45)',
   }));
 }
 
@@ -177,9 +177,9 @@ function ensureTradeChart() {
     return false;
   }
   const theme = window.WGTheme?.chartOptions?.() || {
-    layout:{ background:{ type:'solid', color:'#0b0f0e' }, textColor:'#91a19b' },
-    grid:{ vertLines:{ color:'#19211f' }, horzLines:{ color:'#19211f' } },
-    rightPriceScale:{ borderColor:'#202a27' }, timeScale:{ borderColor:'#202a27' },
+    layout:{ background:{ type:'solid', color:'#ffffff' }, textColor:'#4f605b' },
+    grid:{ vertLines:{ color:'#e6eeea' }, horzLines:{ color:'#e6eeea' } },
+    rightPriceScale:{ borderColor:'#d9e4e0' }, timeScale:{ borderColor:'#d9e4e0' },
   };
   const tzOpts = (typeof window.wgChartTzOptions === 'function') ? window.wgChartTzOptions() : { localization:{}, timeScale:{} };
   const tradeChartHost = $('trade-chart');
@@ -216,7 +216,7 @@ function ensureTradeChart() {
   window.visualViewport?.addEventListener?.('resize', fitTradeChart);
   fitTradeChart();
   tradeCandleSeries = tradeChart.addSeries(LightweightCharts.CandlestickSeries, {
-    upColor:'#4fd1b5', downColor:'#f06f75', borderVisible:false, wickUpColor:'#4fd1b5', wickDownColor:'#f06f75',
+    upColor:'#0f9c88', downColor:'#c62a37', borderVisible:false, wickUpColor:'#0f9c88', wickDownColor:'#c62a37',
   });
   tradeExecutionMarkers = LightweightCharts.createSeriesMarkers(tradeCandleSeries, []);
 
@@ -510,7 +510,7 @@ function updateTradeExecutionMarkers() {
       time:Math.floor(timestamp / 1000 / tradeIntervalSec) * tradeIntervalSec,
       position:isBuy ? 'atPriceBottom' : 'atPriceTop',
       shape:isBuy ? 'arrowUp' : 'arrowDown',
-      color:isBuy ? '#4fd1b5' : '#f06f75',
+      color:isBuy ? '#0f9c88' : '#c62a37',
       price:fillPrice,
       size:0.8,
       text:isBuy ? 'B' : 'S',
@@ -528,7 +528,7 @@ function applyTradeMarkPrice(price) {
   if (!tradeCandleSeries) return;
   if (!tradeMarkPriceLine) {
     tradeMarkPriceLine = tradeCandleSeries.createPriceLine({
-      price:nextPrice, color:'#f0c84b', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dashed,
+      price:nextPrice, color:'#a8700a', lineWidth:1, lineStyle:LightweightCharts.LineStyle.Dashed,
       lineVisible:tradeHeaderPriceMode === 'mark', axisLabelVisible:tradeHeaderPriceMode === 'mark', title:'标记',
     });
   } else {
@@ -543,7 +543,7 @@ function updateTradeEntryPriceLine(price, side) {
     if (tradeEntryPriceLine) { try { tradeCandleSeries.removePriceLine(tradeEntryPriceLine); } catch {} tradeEntryPriceLine = null; }
     return;
   }
-  const color = side === 'sell' ? '#f06f75' : '#4fd1b5';
+  const color = side === 'sell' ? '#c62a37' : '#0f9c88';
   const title = side === 'sell' ? '做空' : '做多';
   if (!tradeEntryPriceLine) {
     tradeEntryPriceLine = tradeCandleSeries.createPriceLine({
@@ -586,7 +586,7 @@ function setTradeVol(visible = !tradeVolVisibility) {
       tradeVolPaneIdx = tradeChart.panes().length;
       tradeChart.addPane();
       tradeVolSeries = tradeChart.addSeries(LightweightCharts.HistogramSeries, {
-        priceFormat:{ type:'volume' }, priceScaleId:'vol', color:'rgba(79,209,181,0.5)',
+        priceFormat:{ type:'volume' }, priceScaleId:'vol', color:'rgba(14,156,136,0.45)',
       }, tradeVolPaneIdx);
       tradeVolSeries.priceScale().applyOptions({ scaleMargins:{ top:0.15, bottom:0 } });
       tradeChart.panes()[tradeVolPaneIdx]?.setHeight(100);

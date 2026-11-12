@@ -21,8 +21,8 @@
    Keep the dark palette while giving the shell a clearer hierarchy and a
    predictable navigation rhythm at every viewport width. */
 .header {
-  background: color-mix(in srgb, var(--panel) 92%, #061015 8%);
-  box-shadow: 0 1px 0 rgba(96, 218, 194, .08), 0 8px 24px rgba(0, 0, 0, .16);
+  background: color-mix(in srgb, var(--panel) 92%, #ffffff 8%);
+  box-shadow: 0 1px 0 rgba(16,38,32,0.08), 0 8px 24px rgba(16,38,32,.12);
   backdrop-filter: blur(14px);
 }
 .main-tabs {
@@ -46,7 +46,7 @@ a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .assets-overview,
 .aim-banner,
 .earn-v2-head-banner {
-  box-shadow: 0 10px 26px rgba(0, 0, 0, .12);
+  box-shadow: 0 10px 26px rgba(16,38,32,.12);
 }
 .panel-title,
 .portal-section-head h2 { letter-spacing: .35px; }
@@ -56,14 +56,14 @@ a:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
   .header { gap: 10px; }
 }
 @media (max-width: 768px) {
-  .header { box-shadow: 0 4px 18px rgba(0, 0, 0, .24); }
+  .header { box-shadow: 0 4px 18px rgba(16,38,32,.12); }
   .panel,
   .portal-section,
   .portal-card,
   .assets-main,
   .assets-overview,
   .aim-banner,
-  .earn-v2-head-banner { box-shadow: 0 6px 16px rgba(0, 0, 0, .16); }
+  .earn-v2-head-banner { box-shadow: 0 6px 16px rgba(16,38,32,.12); }
 }
 @media (max-width: 480px) {
   .header-slogan { display: none; }

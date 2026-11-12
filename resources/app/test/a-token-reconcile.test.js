@@ -9,7 +9,6 @@ import { createATokenService } from '../src/a-token-service.js';
 import { createATokenTeamService } from '../src/a-token-team-service.js';
 import { createATokenMinerService } from '../src/a-token-miner-service.js';
 import { createReferralService } from '../src/referral-service.js';
-import { createLotteryService } from '../src/lottery-service.js';
 import { createATokenActivationService } from '../src/a-token-activation-service.js';
 
 // ══════════════════════════════════════════════════════════════
@@ -75,11 +74,9 @@ try {
   const teamService = createATokenTeamService({ database, walletService });
   const referralService = createReferralService({ database, walletService });
   const minerService = createATokenMinerService({ aTokenService: at, database, teamService, clock });
-  const lotteryService = createLotteryService({ database, walletService, referralService });
   const svc = createATokenActivationService({
     aTokenService: at, minerService, database, clock,
     rpcUrl: 'http://mock-rpc.local', collectionAddress: MAIN, confirmations: 12,
-    onConfirmed: (w, p) => lotteryService.onMinerActivated(w, p),
     reconcileLookbackBlocks: 501, // 使初始化游标 = LATEST-501 = BLK-1，下一轮从 BLK 开始扫
     providerOverride: fakeProvider,
   });

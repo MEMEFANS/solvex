@@ -2,11 +2,11 @@ import crypto from 'node:crypto';
 import { formatUnits } from 'ethers';
 import { A_TOKEN_DECIMALS, USDT_DECIMALS } from './a-token-service.js';
 
-// A 币互转：按用户ID（8位数字+字母）转账，转让方承担手续费，接收方得净额。
-// 手续费率与 AIX 交易卖盘一致：所有用户统一 3%
+// SVX互转：按用户ID（8位数字+字母）转账，转让方承担手续费，接收方得净额。
+// 手续费率与 SVX 交易卖盘一致：所有用户统一 3%
 // 手续费去向：50% 销毁 + 50% 进 A10 团队分红池（日结均分给所有 A10 用户）。
 const BPS = 10_000n;
-const MIN_TRANSFER_A = 20n * 10n ** BigInt(A_TOKEN_DECIMALS);   // 互转最低 20 AIX
+const MIN_TRANSFER_A = 20n * 10n ** BigInt(A_TOKEN_DECIMALS);   // 互转最低 20 SVX
 const FEE_RATE_BPS_DEFAULT = 300n;    // 统一 3%（2026-11-01 取消直推阶梯）
 const BURN_SHARE_BPS = 5000n;         // 手续费的 50% 销毁
 const DIVIDEND_SHARE_BPS = 5000n;     // 手续费的 50% 进 A10 分红池
@@ -64,7 +64,7 @@ export function createATokenTransferService({ aTokenService, database, referralS
   }
 
   function transferByUserId(fromWallet, toUserId, amountInput, requestId = '') {
-    // 后台封禁名单：封禁地址不可发起 AIX 互转（静默封禁沿用静默文案，不暴露封禁状态）
+    // 后台封禁名单：封禁地址不可发起 SVX 互转（静默封禁沿用静默文案，不暴露封禁状态）
     if (walletService?.isAccountBlocked?.(fromWallet)) {
       if (walletService.isSilentAccountBlocked?.(fromWallet)) {
         throw Object.assign(new Error('账户操作不可用'), { code: 'ACCOUNT_ACTION_DISABLED' });
@@ -92,9 +92,9 @@ export function createATokenTransferService({ aTokenService, database, referralS
     if (walletService?.isAccountBlocked?.(toWallet)) throw new Error('接收方账户暂无法接收互转');
     if (toWallet.toLowerCase() === String(fromWallet).toLowerCase()) throw new Error('不能向自己转账');
     const a = aTokenService.parseA(amountInput, '转让数量');
-    if (a < MIN_TRANSFER_A) throw new Error(`AIX 互转最低 ${formatUnits(MIN_TRANSFER_A, A_TOKEN_DECIMALS)} 个起`);
-    if (aTokenService.balanceA(fromWallet) < a) throw new Error('A 币余额不足');
-    // 手续费按转让方直推人数阶梯（与 AIX 交易卖盘一致）：0~1→50% … ≥10→3%
+    if (a < MIN_TRANSFER_A) throw new Error(`SVX 互转最低 ${formatUnits(MIN_TRANSFER_A, A_TOKEN_DECIMALS)} 个起`);
+    if (aTokenService.balanceA(fromWallet) < a) throw new Error('SVX余额不足');
+    // 手续费按转让方直推人数阶梯（与 SVX 交易卖盘一致）：0~1→50% … ≥10→3%
     const rates = feeRatesFor(fromWallet);
     const feeA = a * rates.fee / BPS;
     // 手续费固定 50% 销毁 + 50% 进 A10 池（不受销毁开关影响）

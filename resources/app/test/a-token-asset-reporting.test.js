@@ -31,12 +31,12 @@ try {
     db.db.prepare('UPDATE a_token_miner_releases SET payload_json=? WHERE id=?').run(JSON.stringify({ minerId:miner.id }), 'm_0');
     const stake = (id, planId, principal, paid, status='active', extra={}) => db.upsertATokenStakeRow({
       id, wallet, planId, principalUnits:A(principal).toString(), totalEarnedUnits:A(paid).toString(),
-      dailyRateBps:planId==='current'?30:80, startedAt:t, expiresAt:t+30*86400000,
+      dailyRateBps:100, startedAt:t, expiresAt:t+100*86400000,
       lastSettledAt:t+2*86400000, dayEarnedUnits:'0', status, ...extra,
     });
-    stake('fixed', 's30', 3000, 248); // legacy: 2 x (100 principal + 24 interest)
-    stake('current', 'current', 100, '1.2');
-    stake('completed', 's30', 1000, 1240, 'completed', {principalReturnedUnits:A(1000).toString(),interestEarnedUnits:A(240).toString()});
+    stake('fixed', 'energy', 3000, 248); // 能量：释放即本金返还，已释放 248，剩余 2752
+    stake('current', 'energy', 100, '1.2');
+    stake('completed', 'energy', 1000, 1240, 'completed', {principalReturnedUnits:A(1000).toString(),interestEarnedUnits:A(240).toString()});
     for (const [id, stakeId, amount, extra] of [
       ['fixed_1','fixed',124,{}], ['fixed_2','fixed',124,{}],
       ['current_1','current','1.2',{principalUnits:'0',interestUnits:A('1.2').toString()}],
@@ -51,13 +51,13 @@ try {
   assert.equal(A(summary.teamRewards.byKind.miner_level_diff), A('1.000000000000000001') * 301n);
   assert.equal(A(summary.teamRewards.byKind.parity), A('1.000000000000000001') * 300n);
   assert.equal(A(summary.minerTotalReleased), A('3.000000000000000001') * 601n);
-  assert.equal(A(summary.stakes.totalEarned), A('289.2'));
-  assert.equal(A(summary.stakes.principalReturned), A(1200));
+  assert.equal(A(summary.stakes.totalEarned), A('241.2'));
+  assert.equal(A(summary.stakes.principalReturned), A(1248));
   assert.equal(A(summary.stakes.totalCredited), A('1489.2'));
   const fixed = summary.stakes.items.find(s => s.id==='fixed');
-  assert.equal(A(fixed.interestEarnedUnits), A(48));
-  assert.equal(A(fixed.principalReturnedUnits), A(200));
-  assert.equal(A(fixed.outstandingPrincipalUnits), A(2800));
+  assert.equal(A(fixed.interestEarnedUnits), 0n);
+  assert.equal(A(fixed.principalReturnedUnits), A(248));
+  assert.equal(A(fixed.outstandingPrincipalUnits), A(2752));
   assert.equal(A(summary.stakes.items.find(s=>s.id==='completed').outstandingPrincipalUnits), 0n);
   const revenue = createATokenRevenueService({database:db}).listRevenue(wallet, {limit:1});
   assert.equal(revenue.stats.stake, summary.stakes.totalEarned);
@@ -69,15 +69,15 @@ try {
   const context = vm.createContext({emptyRow:() => '',statusBadge:() => ''});
   vm.runInContext(utilities + renderer + '\nglobalThis.renderDetail=renderUserDetail;', context);
   const html = context.renderDetail({address:wallet,stakes:summary.stakes,teamRewards:summary.teamRewards,miners:{items:[]}});
-  const table = html.match(/<table><thead><tr><th>ID<\/th><th>套餐<\/th><th>状态<\/th><th>质押 AIX<\/th>[\s\S]*?<\/table>/)?.[0];
+  const table = html.match(/<table><thead><tr><th>ID<\/th><th>套餐<\/th><th>状态<\/th><th>质押 SVX<\/th>[\s\S]*?<\/table>/)?.[0];
   assert.ok(table?.includes('<th>累计利息</th><th>已返本金</th><th>质押中本金</th>'));
   assert.equal((table.match(/<th>/g) || []).length, 7);
   assert.equal((table.match(/<td>/g) || []).length, 21);
-  assert.ok(html.includes('累计利息 289.20 AIX'));
-  assert.ok(html.includes('已返本金 1,200.00 AIX'));
-  assert.ok(html.includes('累计到账 1,489.20 AIX'));
+  assert.ok(html.includes('累计利息 241.20 SVX'));
+  assert.ok(html.includes('已返本金 1,248.00 SVX'));
+  assert.ok(html.includes('累计到账 1,489.20 SVX'));
   assert.ok(html.includes('团队分润收益（601 条'));
-  // AIX free + orders belong to spot; active, unreturned principal belongs to
+  // SVX free + orders belong to spot; active, unreturned principal belongs to
   // staking. Completed principal and unproduced miner output add no assets.
   db.sumATokenLockedByWallet = () => ({aUnits:A(25),usdtUnits:7000000n});
   const platform = createPlatformService({dataRoot:root,walletService:ws});
@@ -85,10 +85,10 @@ try {
   const profile = platform.profile(wallet);
   assert.equal(profile.spot.A, '10.0'); assert.equal(profile.spotFrozen.A, '25.0');
   assert.equal(profile.account.spotValue, '7.0');
-  assert.equal(profile.account.stakingValue, '580.0');
-  assert.equal(profile.account.totalEquity, '794.0');
+  assert.equal(profile.account.stakingValue, '570.16');
+  assert.equal(profile.account.totalEquity, '784.16');
   assert.equal(profile.account.availableMargin, '200.0');
-  assert.equal(profile.account.collateralEquity, '200.0', 'AIX is not USDT margin collateral');
+  assert.equal(profile.account.collateralEquity, '200.0', 'SVX is not USDT margin collateral');
   platform.setATokenPriceProvider(() => 0n);
   const noPrice = platform.profile(wallet);
   assert.equal(noPrice.account.spotValue, '0.0');
@@ -96,7 +96,7 @@ try {
   assert.equal(noPrice.account.totalEquity, '207.0');
   assert.equal(JSON.stringify(db.db.prepare('SELECT * FROM wallet_users').all()), before, 'reporting cannot change balances');
   assert.equal(JSON.stringify(db.db.prepare('SELECT * FROM a_token_team_rewards ORDER BY id').all()), rewardsBefore, 'reporting cannot reissue rewards');
-  console.log('AIX asset reporting passed: full history, SQL authority, principal/interest, classification, no double counting, no balance mutations');
+  console.log('SVX asset reporting passed: full history, SQL authority, principal/interest, classification, no double counting, no balance mutations');
 } finally {
   closeDatabase(root); fs.rmSync(root, {recursive:true,force:true});
 }

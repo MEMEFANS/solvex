@@ -37,10 +37,63 @@ function gauss(rand) {
   return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
+// 横盘使用“惯性 + 均值回归 + 波动聚集”的盘口过程，而不是规则正弦波。
+// 价格仍锚定在基准价附近，但每根蜡烛的实体、方向和影线会自然变化。
+const SIDEWAYS_STEP_SECONDS = 20;
+const SIDEWAYS_LIMIT = 0.00075;
+
+function sidewaysSeed(anchorTimeS, timeS, salt = 0) {
+  return ((Number(anchorTimeS) | 0) ^ Math.imul(Number(timeS) | 0, 2654435761) ^ salt) >>> 0;
+}
+
+function sidewaysAdvance(state, timeS, anchorPrice, volatility, rand) {
+  const z1 = gauss(rand);
+  const z2 = gauss(rand);
+  const regime = 0.72
+    + 0.18 * Math.sin(timeS / 1730 * Math.PI * 2)
+    + 0.10 * Math.sin(timeS / 6100 * Math.PI * 2);
+  const burst = rand() < 0.035 ? 1.65 : 1;
+  state.momentum = state.momentum * 0.86
+    + z1 * anchorPrice * 0.000028 * volatility * regime * burst;
+  const pull = (anchorPrice - state.price) * 0.042;
+  const shock = z2 * anchorPrice * 0.000012 * volatility * regime;
+  let next = state.price + pull + state.momentum + shock;
+  const lo = anchorPrice * (1 - SIDEWAYS_LIMIT);
+  const hi = anchorPrice * (1 + SIDEWAYS_LIMIT);
+  if (next < lo || next > hi) state.momentum *= -0.4;
+  state.price = clamp(next, lo, hi);
+  return state.price;
+}
+
+// 先跑一段自由横盘路径，再把末端线性桥接回基准价，历史收在重置价上但没有人为趋势。
+function sidewaysHistoricalPoints(startS, endS, anchorPrice, volatility, anchorTimeS) {
+  const points = [{ time: startS, price: anchorPrice }];
+  const state = { price: anchorPrice, momentum: 0 };
+  for (let t = startS + SIDEWAYS_STEP_SECONDS; t <= endS; t += SIDEWAYS_STEP_SECONDS) {
+    const rand = mulberry32(sidewaysSeed(anchorTimeS, t, 0x51de9a1));
+    sidewaysAdvance(state, t, anchorPrice, volatility, rand);
+    points.push({ time: t, price: state.price });
+  }
+  if (points.length > 1) {
+    const drift = points.at(-1).price - anchorPrice;
+    const lastIndex = points.length - 1;
+    for (let i = 0; i < points.length; i++) {
+      points[i].price = clamp(
+        anchorPrice + (points[i].price - anchorPrice) - drift * i / lastIndex,
+        anchorPrice * (1 - SIDEWAYS_LIMIT),
+        anchorPrice * (1 + SIDEWAYS_LIMIT),
+      );
+    }
+  }
+  return points;
+}
+
 function defaultSettings() {
   return {
     // sideways: 震荡；up: 慢牛；down: 慢熊；daily: 每日定涨/定跌；manual: 完全后台手动，自动推进不触发
     mode: 'sideways',
+    // sideways 内部锚点：切换到横盘或重置开盘时刷新，确保横盘过程从当前价连续开始
+    sideways: null,
     // 波动率放大系数（1 = 基准）。越大 K 线实体/影线越长
     volatility: 1,
     // up/down 模式的每期漂移百分比（例如 1m=0.08%），后台可调控
@@ -143,7 +196,7 @@ function akimaPath(keypoints /* [{u:0..1, v:number}] sorted by u */) {
     return h00 * y0 + h10 * s0 + h01 * y1 + h11 * s1;
   };
 }
-// 根据模式 + 起止价格生成“今天/本周期平滑路径关键点”：每日目标涨幅分 4~6 段波浪爬升，避免直上。
+// up/down 短周期路径关键点：目标分 6 段平滑推进，避免直上直下。
 function buildKeypoints({ startPrice, targetPrice, rampBarsOrDurationHours = 18, volatilityBps = 6, seed = 1 }) {
   const rand = mulberry32((seed * 2654435761) >>> 0);
   const segs = 6; // 分 6 个波浪段
@@ -164,6 +217,28 @@ function buildKeypoints({ startPrice, targetPrice, rampBarsOrDurationHours = 18,
   }
   return kps;
 }
+
+// 后台「每天涨跌固定」专用：主线缓慢推进，只叠 ±0.022% 左右的小波动。
+function buildGradualKeypoints({ startPrice, targetPrice, volatility = 1, seed = 1 }) {
+  const rand = mulberry32((seed * 2654435761) >>> 0);
+  const segs = 10;
+  const span = Number(targetPrice) - Number(startPrice);
+  const maxWobble = Math.min(
+    Math.abs(span) * 0.035,
+    Math.abs(Number(startPrice)) * 0.00022 * clamp(volatility, 0.2, 4),
+  );
+  const kps = [];
+  for (let i = 0; i <= segs; i++) {
+    const u = i / segs;
+    const smooth = 0.5 - 0.5 * Math.cos(Math.PI * u);
+    const wobble = Math.sin(u * Math.PI * 2.35 + rand() * 0.8) * maxWobble * (0.65 + rand() * 0.35);
+    let v = Number(startPrice) + span * smooth + wobble;
+    if (i === 0) v = Number(startPrice);
+    if (i === segs) v = Number(targetPrice);
+    kps.push({ u, v: Math.max(0.0001, +(+v.toFixed(8))) });
+  }
+  return kps;
+}
 export function createATokenKlineService({ database, aTokenService, clock = () => Date.now(), orderService }) {
   const db = database;
 
@@ -177,6 +252,10 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
   function saveSettings(patch) {
     const cur = getSettings();
     const next = { ...cur, ...patch, driftBpsPer1m: { ...cur.driftBpsPer1m, ...((patch && patch.driftBpsPer1m) || {}) } };
+    if (patch?.mode === 'sideways' && cur.mode !== 'sideways' && !patch.sideways) {
+      const currentPrice = Number(aTokenService.getPoolMeta().priceUsdt);
+      next.sideways = { anchorTimeS: Math.floor(clock() / 1000), anchorPrice: currentPrice > 0 ? currentPrice : 0.1 };
+    }
     db.db.prepare(`INSERT INTO service_settings(setting_key,payload_json,updated_at) VALUES(?,?,?)
       ON CONFLICT(setting_key) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at`)
       .run(SETTINGS_KEY, JSON.stringify(next), clock());
@@ -184,7 +263,7 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
   }
 
   // 新开盘语义：只生成「1 分钟」基础序列（北京时间当日 00:00 开盘锚点 → 当前），
-  // OU 均值回归保证蜡烛连续（open=上一根 close）且价格围绕基准价窄幅横盘；
+  // 惯性横盘过程保证蜡烛连续（open=上一根 close）且价格围绕基准价窄幅波动；
   // 5m/15m/1h/4h/1d 一律由 1m 聚合（open=首根、high/low=期间极值、close=末根、volume 求和），
   // 确保切换周期时高低点完全一致，不再出现各周期独立随机、跨度互相矛盾的假 K 线。
   // 日线按 UTC 日界只保留当前这根（北京开盘日当天），北京 00:00–08:00 的分钟不并入昨日 UTC 日线。
@@ -201,35 +280,41 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     return [...groups.values()].sort((a, b) => a.time - b.time);
   }
 
-  // 生成「北京时间当日 00:00 开盘 → 当前」的 1 分钟 OU 横盘序列并写库，返回分钟 bar 数组
+  // 生成「北京时间当日 00:00 开盘 → 当前」的自然横盘蜡烛。
+  // 20 秒盘口点先构成连续路径，再采样成 1m OHLC；影线来自分钟内的真实路径，不再是每根一样的机械波。
   function seedMinuteBars(basePrice, nowS) {
     const settings = getSettings();
     const openS = shanghaiDayStartSec(nowS);
-    // OU 参数（低频慢波·极窄横盘）：theta=0.02/分钟，sigma=0.0006%/分钟，
-    // 全天带宽约 ±0.009%，几乎贴着 0.1 一条直线带极小起伏；影线系数 0.06
-    const theta = 0.02;
-    const sigmaK = 0.000006;
-    const wickK = 0.06;
-    const rand = mulberry32((0xA17 ^ 0x100001b3 ^ (Math.round(basePrice * 1e7) & 0xFFFF)) >>> 0);
     const firstT = periodStart(openS, '1m');
     const endT = periodStart(nowS, '1m');
+    const volatility = clamp(settings.volatility || 1, 0.2, 4);
+    const savedAnchorS = Number(settings.sideways?.anchorTimeS);
+    const anchorTimeS = savedAnchorS > 0 ? savedAnchorS : nowS;
+    const points = sidewaysHistoricalPoints(firstT, endT, basePrice, volatility, anchorTimeS);
+    const rand = mulberry32(sidewaysSeed(anchorTimeS, firstT, 0x0b5e11));
     const volBase = settings.baseVolumePerDayA / 1440;
     let prevClose = basePrice;
     const minutes = [];
     for (let t = firstT; t <= endT; t += 60) {
       const isCurrent = t === endT;
+      const startIndex = Math.round((t - firstT) / SIDEWAYS_STEP_SECONDS);
+      const endIndex = isCurrent ? startIndex : Math.round((t + 60 - firstT) / SIDEWAYS_STEP_SECONDS);
       const open = prevClose;
-      let close;
-      if (isCurrent) close = basePrice; // 当前进行中 bar 收于基准价，交给实时 tick 接续
-      else {
-        const pull = theta * (basePrice - open);
-        const shock = gauss(rand) * sigmaK * basePrice;
-        close = Math.max(0.0001, +(open + pull + shock).toFixed(8));
+      const close = isCurrent ? basePrice : Math.max(0.0001, +points[endIndex].price.toFixed(8));
+      let high = Math.max(open, close);
+      let low = Math.min(open, close);
+      for (let i = startIndex; i <= endIndex; i++) {
+        const price = points[Math.min(i, points.length - 1)].price;
+        high = Math.max(high, price);
+        low = Math.min(low, price);
       }
-      const ext = Math.abs(gauss(rand)) * wickK * sigmaK * basePrice;
-      const high = +(Math.max(open, close) + ext).toFixed(8);
-      const low = Math.max(0.0001, +(Math.min(open, close) - ext).toFixed(8));
-      const volume = Math.max(1, volBase * (0.3 + rand() * 0.9));
+      // 只补极少量的盘口扫价，影线长短自然错开，不制造插针。
+      const upperExt = basePrice * rand() * 0.000012 * volatility;
+      const lowerExt = basePrice * rand() * 0.000012 * volatility;
+      high = +(high + upperExt).toFixed(8);
+      low = Math.max(0.0001, +(low - lowerExt).toFixed(8));
+      const rangeRatio = (high - low) / basePrice;
+      const volume = Math.max(1, volBase * (0.35 + rand() * 0.75 + rangeRatio * 9000));
       const bar = { period: '1m', time: t, open, high, low, close, volume };
       db.upsertATokenKlineRow(bar);
       minutes.push(bar);
@@ -274,12 +359,12 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
   // 只生成北京时间当日 00:00 至今的 1m 横盘序列并聚合其它周期，绝不回填过去日期的历史蜡烛。
   function rebuildAll(basePrice) {
     const price = Number(basePrice) > 0 ? Number(basePrice) : Number(aTokenService.getPoolMeta().priceUsdt || 0.1);
+    const nowS = Math.floor(clock() / 1000);
     for (const period of ORDERED_PERIODS) db.clearATokenKlines(period);
     // 同步当前价格为最新 close
     aTokenService.setPrice(price.toFixed(8));
-    // 当日涨跌幅锚点作废，从新价格重新锚定
-    try { saveSettings({ daily: null }); } catch (e) { console.warn('[A币K线] rebuildAll 重置daily锚点失败', e?.message || e); }
-    const nowS = Math.floor(clock() / 1000);
+    // 每日与横盘都从新开盘价、当前时刻重新锚定，历史与后续 tick 共用一条路径。
+    try { saveSettings({ daily: null, sideways: { anchorTimeS: nowS, anchorPrice: price } }); } catch (e) { console.warn('[A币K线] rebuildAll 重置锚点失败', e?.message || e); }
     const minutes = seedMinuteBars(price, nowS);
     seedAggregatedPeriods(minutes, nowS);
     // 重建后触发一次撮合，确保 OPEN 订单在新基价下及时处理
@@ -323,6 +408,10 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     return microState;
   }
 
+  // 横盘实时惯性只在内存中保留；后台切模式或重置开盘时清零。
+  let sidewaysMomentum = 0;
+  let sidewaysMomentumKey = '';
+
   // daily 平滑路径内存缓存：fn 不可序列化（此前存库每次 miss，导致每 tick 重建路径 + 多写一次库）
   let dailyPathCache = { key: '', fn: null };
 
@@ -361,21 +450,39 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
       const cacheKey = `daily_${st.startTimeS}_${st.endTimeS}_${st.startPrice.toFixed(8)}_${targetEod.toFixed(8)}_${settings.volatility}`;
       let path = dailyPathCache.key === cacheKey ? dailyPathCache.fn : null;
       if (!path) {
-        const kps = buildKeypoints({
+        const kps = buildGradualKeypoints({
           startPrice: Number(st.startPrice),
           targetPrice: targetEod,
-          volatilityBps: 2 * clamp(settings.volatility || 1, 0.2, 4),
+          volatility: clamp(settings.volatility || 1, 0.2, 4),
           seed: (Math.round(st.startTimeS) ^ Math.round(targetEod * 1e7)) >>> 0,
         });
         path = akimaPath(kps);
         dailyPathCache = { key: cacheKey, fn: path };
       }
       const smoothPrice = Math.max(0.0001, path(progress));
-      // 微观 tick noise：AR(1) 惯性噪声（稳态约 ±0.01%），实时段影线短而连续
-      const micro = nextMicro(std1m * 0.025);
+      // 微观 tick noise：AR(1) 惯性噪声（约 ±0.005%），实时段影线短而连续
+      const micro = nextMicro(std1m * 0.012);
       pathNextPrice = Math.max(0.0001, smoothPrice * (1 + micro));
+    } else if (settings.mode === 'sideways') {
+      // 历史播种和实时推进使用同一套惯性盘口过程；实时段从当前价继续，不产生机械周期。
+      let sideways = settings.sideways;
+      if (!(Number(sideways?.anchorPrice) > 0) || !(Number(sideways?.anchorTimeS) > 0)) {
+        sideways = { anchorTimeS: nowS, anchorPrice: curPrice > 0 ? curPrice : 0.1 };
+        saveSettings({ sideways });
+      }
+      const anchorPrice = Number(sideways.anchorPrice);
+      const volatility = clamp(settings.volatility || 1, 0.2, 4);
+      const momentumKey = `${Math.round(Number(sideways.anchorTimeS))}:${anchorPrice.toFixed(8)}`;
+      if (sidewaysMomentumKey !== momentumKey) {
+        sidewaysMomentum = 0;
+        sidewaysMomentumKey = momentumKey;
+      }
+      const state = { price: curPrice, momentum: sidewaysMomentum };
+      sidewaysAdvance(state, nowS, anchorPrice, volatility, Math.random);
+      sidewaysMomentum = state.momentum;
+      pathNextPrice = state.price;
     } else {
-      // sideways/up/down：用“短窗口平滑路径”（30 min 为一个周期）避免一根直针或连续跳针
+      // up/down：用“短窗口平滑路径”（30 min 为一个周期）避免一根直针或连续跳针
       const drift1mBps = settings.driftBpsPer1m?.[settings.mode] ?? 0;
       const windowSec = 30 * 60;
       const startOfWindow = Math.floor(nowS / windowSec) * windowSec;
@@ -465,8 +572,13 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
         const window = Math.max(1, s.daily.endTimeS - s.daily.startTimeS);
         const nowS2 = Math.floor(clock() / 1000);
         const progress = clamp((nowS2 - s.daily.startTimeS) / window, 0, 1);
-        // 当前"理论平滑位置"用 buildKeypoints(6段)+ akimaPath 算一次
-        const kps = buildKeypoints({ startPrice: start, targetPrice: target, seed: (Math.round(s.daily.startTimeS) ^ Math.round(target * 1e7)) >>> 0 });
+        // 当前"理论平滑位置"与实时 daily 路径使用同一条小波动爬坡线
+        const kps = buildGradualKeypoints({
+          startPrice: start,
+          targetPrice: target,
+          volatility: clamp(s.volatility || 1, 0.2, 4),
+          seed: (Math.round(s.daily.startTimeS) ^ Math.round(target * 1e7)) >>> 0,
+        });
         const smoothNow = +(Math.max(0.0001, akimaPath(kps)(progress))).toFixed(8);
         out.dailyProgress = {
           dayKey: s.daily.dayKey,

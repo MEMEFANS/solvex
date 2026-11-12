@@ -1,9 +1,10 @@
 import { isLegacyFundsPath } from './admin-security.js';
+import { SHAREHOLDER_TIERS, SHAREHOLDER_TIER_1000_SETTING_KEY } from './a-token-shareholder-service.js';
 
-// A 币后台路由 /api/admin/a-token/*（需后台 operator session,由 server.js 在 admin 块内调用）
+// SVX后台路由 /api/admin/a-token/*（需后台 operator session,由 server.js 在 admin 块内调用）
 export function createATokenAdminApi({
   aTokenService, poolService, minerService, stakingService, activationService, klineService, orderService, walletService,
-  aTokenTeamService,
+  aTokenTeamService, blindBoxService, aTokenLpJobService,
   send, readBody,
 }) {
   async function handle(request, res, pathname, ctx = {}) {
@@ -14,7 +15,7 @@ export function createATokenAdminApi({
       send(res, 403, { error:'此操作需要独立资金后台权限', code:'FUNDS_ADMIN_REQUIRED' });
       return true;
     }
-    const { url, allowRequest } = ctx;
+    const { url, allowRequest, operatorSession } = ctx;
     const searchParams = url?.searchParams;
 
     try {
@@ -84,7 +85,7 @@ export function createATokenAdminApi({
         if (BigInt(order.input_usdt_units || '0') > 0n) aTokenService.creditUsdt(wallet, BigInt(order.input_usdt_units), refundOpt);
         if (BigInt(order.input_a_units || '0') > 0n) {
           aTokenService.creditA(wallet, BigInt(order.input_a_units), refundOpt);
-          // 2026-10-31：后台撤卖单时返还已占用的可用额度（匹配池产出）
+          // 2026-10-31：后台撤卖单时返还已占用的流通额度（匹配池产出）
           try { walletService.database?.refundATokenUsableQuota?.(wallet, BigInt(order.input_a_units)); } catch {}
         }
         const now = Date.now();
@@ -173,20 +174,6 @@ export function createATokenAdminApi({
         return send(res, 200, { ok:true, burnEnabled: enabled, pool: aTokenService.poolStats() });
       }
 
-      // ── 活期质押下线退款（2026-10-25）：所有 active 活期质押一次性退本金、停止产出 ──
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/staking/refund-flexible') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const result = stakingService.refundAllFlexible();
-        return send(res, 200, { ok: true, ...result });
-      }
-
-      // ── 全部质押退回（2026-10-25）：所有在架质押（含固定档）退还剩余未返还本金、停止产出，之后按新规则重开 ──
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/staking/refund-all') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const result = stakingService.refundAllStakes();
-        return send(res, 200, { ok: true, ...result });
-      }
-
       // ── 矿机激活开关（关闭时用户不可激活矿机）──
       if (request.method === 'POST' && pathname === '/api/admin/a-token/activation/mode') {
         if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
@@ -207,7 +194,7 @@ export function createATokenAdminApi({
         return send(res, 200, { ok:true, activationMeta });
       }
 
-      // ── AIX 提现开关（关闭时用户不可发起 AIX 链上提现）──
+      // ── SVX 提现开关（关闭时用户不可发起 SVX 链上提现）──
       if (request.method === 'POST' && pathname === '/api/admin/a-token/withdraw/mode') {
         if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
         const body = await readBody(request);
@@ -314,6 +301,73 @@ export function createATokenAdminApi({
         return send(res, 200, { ok: true, processed });
       }
 
+      // ── 盲盒概率档位配置（存 service_settings: blindbox_probability）──
+      // GET：当前配置 + 实际生效来源（config / uniform 兜底）+ 最近开盒分布
+      if (pathname === '/api/admin/a-token/blindbox/config' && request.method === 'GET') {
+        if (!blindBoxService) return send(res, 503, { error:'盲盒未启用', code:'BLINDBOX_DISABLED' });
+        return send(res, 200, { ok:true, ...blindBoxService.adminSnapshot() });
+      }
+      // POST：{ tiers: [{ coins, weight }] }，校验失败返回 400 + 逐条原因
+      if (request.method === 'POST' && pathname === '/api/admin/a-token/blindbox/config') {
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
+        if (!blindBoxService) return send(res, 503, { error:'盲盒未启用', code:'BLINDBOX_DISABLED' });
+        const body = await readBody(request).catch(() => ({}));
+        try {
+          blindBoxService.saveProbabilityConfig(body?.tiers);
+          return send(res, 200, { ok:true, ...blindBoxService.adminSnapshot() });
+        } catch (error) {
+          return send(res, 400, {
+            error: error?.message || String(error),
+            code: error?.code || 'BLINDBOX_CONFIG_INVALID',
+            errors: Array.isArray(error?.errors) ? error.errors : [error?.message || String(error)],
+          });
+        }
+      }
+
+      // 合伙人档位：1000 USDT 档默认关闭，可在此开关；档位定义不删除
+      if (pathname === '/api/admin/a-token/shareholder/config' && request.method === 'GET') {
+        const db = walletService.database;
+        let t1000Enabled = false;
+        try { t1000Enabled = JSON.parse(db.getSetting(SHAREHOLDER_TIER_1000_SETTING_KEY) || 'false') === true; } catch { t1000Enabled = false; }
+        return send(res, 200, {
+          ok: true,
+          t1000Enabled,
+          tiers: SHAREHOLDER_TIERS.map(tier => ({
+            key: tier.key, label: tier.label, priceUsdt: tier.priceUsdt, dividendPct: tier.dividendPct,
+            enabled: tier.key === 't500' ? true : t1000Enabled,
+          })),
+        });
+      }
+      if (request.method === 'POST' && pathname === '/api/admin/a-token/shareholder/config') {
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        const enabled = body?.t1000Enabled === true || body?.t1000Enabled === '1' || body?.t1000Enabled === 1;
+        walletService.database.saveSetting(SHAREHOLDER_TIER_1000_SETTING_KEY, JSON.stringify(enabled));
+        return send(res, 200, { ok: true, t1000Enabled: enabled });
+      }
+
+      // ── 自由交易手动开关（service_settings: free_trading_enabled，默认关闭）──
+      if (pathname === '/api/admin/a-token/free-trading/config' && request.method === 'GET') {
+        return send(res, 200, { ok:true, enabled: aTokenService.isFreeTradingEnabled() });
+      }
+      if (request.method === 'POST' && pathname === '/api/admin/a-token/free-trading/config') {
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        const enabled = aTokenService.setFreeTradingEnabled(body?.enabled);
+        const record = { actor: operatorSession?.username || 'admin', enabled, at: Date.now() };
+        try {
+          walletService.database.db.prepare(
+            'INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)',
+          ).run(
+            `free_trading_${record.at}_${Math.random().toString(36).slice(2, 8)}`,
+            null, 'a_token_free_trading_switch', record.at, JSON.stringify(record),
+          );
+        } catch (error) {
+          console.warn('[a-token-admin] free trading audit failed', error?.message || error);
+        }
+        return send(res, 200, { ok:true, enabled });
+      }
+
       // 团队激活查询：?address=0x...&exclude=0x...,0x...
       // 统计该地址整棵下线（团队）的 mini120/pro1500 激活数，并返回按直推拆分的明细，
       // 便于运维自行选择排除某个直推（排除其本人及其整棵子树）后查看净数。
@@ -332,6 +386,107 @@ export function createATokenAdminApi({
           address: u.address, USDT: u.USDT, A: u.balances?.A ?? u.A ?? '0', updatedAt: u.updatedAt,
         }));
         return send(res, 200, { summary: dashboard.summary, users });
+      }
+
+      // ── 提现手续费按日累计与批量加 LP ─────────────────────────────────────
+      // GET /api/admin/a-token/lp-pools?status=open|settled&limit=200 → 按日期/币种累计池
+      if (pathname === '/api/admin/a-token/lp-pools' && request.method === 'GET') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        const status = String(searchParams?.get('status') || '').trim();
+        const limit = Math.max(1, Math.min(1000, Number(searchParams?.get('limit') || 200)));
+        return send(res, 200, {
+          ok: true,
+          config: aTokenLpJobService.readiness(),
+          stats: aTokenLpJobService.stats(),
+          pools: aTokenLpJobService.listPools({ status, limit }),
+          accruals: aTokenLpJobService.listAccruals({ limit }),
+        });
+      }
+      // POST /api/admin/a-token/lp-pools/settle { date?, asset? } → 手动立即结算（只允许已结束业务日）
+      if (pathname === '/api/admin/a-token/lp-pools/settle' && request.method === 'POST') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 10, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        try {
+          const jobs = aTokenLpJobService.settleAll({
+            date: String(body.date || '').trim(),
+            asset: String(body.asset || '').trim(),
+          });
+          return send(res, 200, { ok: true, jobs });
+        } catch (error) {
+          return send(res, Number(error?.statusCode) || 400, {
+            error: error?.message || String(error), code: error?.code || 'LP_SETTLE_FAILED',
+          });
+        }
+      }
+      // ── 提现手续费自动加 LP 任务（链下入队 → 上链 → 回写）────────────────
+      // ?status=pending|processing|sent|confirmed|failed|cancelled&limit=200
+      if (pathname === '/api/admin/a-token/lp-jobs' && request.method === 'GET') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        const status = String(searchParams?.get('status') || '').trim();
+        const limit = Math.max(1, Math.min(1000, Number(searchParams?.get('limit') || 200)));
+        return send(res, 200, {
+          ok: true,
+          config: aTokenLpJobService.readiness(),
+          stats: aTokenLpJobService.stats(),
+          items: aTokenLpJobService.listJobs({ status, limit }),
+        });
+      }
+      // 生成单条上链指令：?id=lpjob_xxx | withdrawalId=xxx | poolDate=YYYY-MM-DD&asset=USDT
+      if (pathname === '/api/admin/a-token/lp-jobs/instruction' && request.method === 'GET') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        const id = String(searchParams?.get('id') || '').trim();
+        const withdrawalId = String(searchParams?.get('withdrawalId') || '').trim();
+        const poolDate = String(searchParams?.get('poolDate') || '').trim();
+        const asset = String(searchParams?.get('asset') || 'USDT').trim();
+        const job = id
+          ? aTokenLpJobService.getJob(id)
+          : (withdrawalId ? aTokenLpJobService.listJobs({ status:'', limit:5000 }).find(item => item.withdrawalId === withdrawalId)
+            : (poolDate ? aTokenLpJobService.listJobs({ status:'', limit:5000 }).find(item => item.poolDate === poolDate && item.asset === asset) : null));
+        if (!job) return send(res, 404, { error:'加池任务不存在', code:'LP_JOB_NOT_FOUND' });
+        return send(res, 200, { ok: true, job, instruction: aTokenLpJobService.buildInstruction(job) });
+      }
+      // 回写：{ jobId|withdrawalId|txHash, status, txHash, usdtUsed, svxUsed, lpMinted, priceUsdtPerSvx1e18, error, note }
+      if (pathname === '/api/admin/a-token/lp-jobs/writeback' && request.method === 'POST') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 20, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        try {
+          return send(res, 200, { ok: true, job: aTokenLpJobService.writeback(body) });
+        } catch (error) {
+          return send(res, 400, { error: error?.message || String(error), code: 'LP_JOB_WRITEBACK_INVALID' });
+        }
+      }
+      // 取消：{ jobId|withdrawalId, reason }
+      if (pathname === '/api/admin/a-token/lp-jobs/cancel' && request.method === 'POST') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 20, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        const job = body.jobId
+          ? aTokenLpJobService.getJob(String(body.jobId))
+          : aTokenLpJobService.listJobs({ status:'', limit:5000 }).find(item => item.withdrawalId === String(body.withdrawalId || ''));
+        if (!job) return send(res, 404, { error:'加池任务不存在', code:'LP_JOB_NOT_FOUND' });
+        try {
+          const cancelled = aTokenLpJobService.cancelJob(job.id, String(body.reason || 'admin_cancelled').slice(0, 120));
+          return send(res, 200, { ok: true, job: cancelled });
+        } catch (error) {
+          return send(res, Number(error?.statusCode) || 409, {
+            error: error?.message || String(error), code: error?.code || 'LP_JOB_CANCEL_FAILED', job,
+          });
+        }
+      }
+      // 手动触发执行（仅在 PLATFORM_AUTO_LP_ENABLE_EXECUTOR=1 时可用）
+      if (pathname === '/api/admin/a-token/lp-jobs/execute' && request.method === 'POST') {
+        if (!aTokenLpJobService) return send(res, 503, { error:'加 LP 任务服务未启用', code:'LP_JOB_SERVICE_DISABLED' });
+        if (!aTokenLpJobService.config.executorEnabled) {
+          return send(res, 503, { error:'执行器未开启，请设置 PLATFORM_AUTO_LP_ENABLE_EXECUTOR=1', code:'LP_EXECUTOR_DISABLED' });
+        }
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 10, 60_000)) return true;
+        const body = await readBody(request).catch(() => ({}));
+        const job = aTokenLpJobService.getJob(String(body.jobId || ''));
+        if (!job) return send(res, 404, { error:'加池任务不存在', code:'LP_JOB_NOT_FOUND' });
+        const result = await aTokenLpJobService.executeJob(job.id);
+        return send(res, 200, { ok: true, ...result });
       }
 
       send(res, 404, { error:'后台接口不存在', code:'NOT_FOUND' });

@@ -17,7 +17,7 @@ try {
   assert.equal(Object.hasOwn(overview, 'users'), false);
   assert.equal(full.users.length, USER_COUNT);
   assert.equal(full.summary.realUsers, USER_COUNT - 2);
-  assert.equal(full.users.filter(user => user.isRealUser).length, USER_COUNT - 1, 'AIX-only list semantics are preserved');
+  assert.equal(full.users.filter(user => user.isRealUser).length, USER_COUNT - 1, 'SVX-only list semantics are preserved');
   assert.equal(full.summary.totalDepositedUsdt, '171.000171');
   assert.equal(full.summary.totalPlatformBalanceUsdt, '26089502.089476');
   assert.equal(full.summary.pendingDeposits, 1);
