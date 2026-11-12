@@ -213,6 +213,23 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 .atrade-terminal .aentry-title { margin-bottom:16px; font-size:14px; }
 .atrade-terminal .aentry-switch button { min-height:38px; border-radius:8px; }
 .atrade-terminal .aentry-type { margin-top:13px; margin-bottom:10px; }
+/* SVX 买入去向：两项用途直接写在选项里，选中态用不同主色和勾选标记，避免误买。 */
+#tab-a-token-trade .aentry-zone-heading { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:14px 12px 8px; color:#243746; font-size:12px; }
+#tab-a-token-trade .aentry-zone-heading[hidden] { display:none; }
+#tab-a-token-trade .aentry-zone-heading strong { font-weight:750; }
+#tab-a-token-trade .aentry-zone-heading small { color:#71808f; font-size:10px; font-weight:400; }
+#tab-a-token-trade .atrade-terminal .aentry-type { gap:10px; margin:0 12px 12px; }
+#tab-a-token-trade .atrade-terminal .aentry-type button { display:flex; align-items:center; justify-content:space-between; gap:8px; height:auto; min-height:66px; padding:9px 11px; text-align:left; border:2px solid #ccd6df; border-radius:10px; background:#f8fafc; color:#243746; box-shadow:none; }
+#tab-a-token-trade .atrade-terminal .aentry-type button:hover { border-color:#94a6b5; background:#f2f6f9; }
+#tab-a-token-trade .aentry-zone-copy { min-width:0; }
+#tab-a-token-trade .aentry-zone-copy strong { display:block; font-size:13px; line-height:1.4; font-weight:750; }
+#tab-a-token-trade .aentry-zone-copy small { display:block; margin-top:3px; color:#687786; font-size:10px; line-height:1.35; }
+#tab-a-token-trade .aentry-zone-tick { display:grid; place-items:center; width:18px; height:18px; flex:0 0 18px; border:1px solid #b8c5d0; border-radius:50%; color:transparent; font-size:12px; font-weight:800; line-height:1; }
+#tab-a-token-trade .atrade-terminal .aentry-type button[data-zone="alpha"].active { border-color:#159b78; background:#e5f7ef; color:#086148; box-shadow:0 0 0 2px #159b7814; }
+#tab-a-token-trade .atrade-terminal .aentry-type button[data-zone="alpha"].active .aentry-zone-tick { border-color:#159b78; background:#159b78; color:#fff; }
+#tab-a-token-trade .atrade-terminal .aentry-type button[data-zone="beta"].active { border-color:#c67a11; background:#fff3dc; color:#805000; box-shadow:0 0 0 2px #c67a1114; }
+#tab-a-token-trade .atrade-terminal .aentry-type button[data-zone="beta"].active .aentry-zone-tick { border-color:#c67a11; background:#c67a11; color:#fff; }
+#tab-a-token-trade .atrade-terminal .aentry-type button.active .aentry-zone-copy small { color:inherit; opacity:.78; }
 .atrade-terminal .aentry-field { min-height:44px; border-color:var(--border); background:#fafbfe; border-radius:8px; }
 .atrade-terminal .aentry-slider { border:0; padding:0; background:none; }
 .atrade-terminal .aentry .btn-copy { border:1px solid var(--border2); border-radius:7px; padding:6px 10px; margin-bottom:8px; font-size:10px; color:var(--mut); background:#f6f7fb; }

@@ -264,9 +264,10 @@
         <button type="button" data-side="buy" class="active buy" onclick="window.atradeSide('buy')">买入 SVX</button>
         <button type="button" data-side="sell" class="sell" onclick="window.atradeSide('sell')">卖出 SVX</button>
       </div>
+      <div class="aentry-zone-heading" ${currentSide === 'buy' ? '' : 'hidden'}><strong>选择买入去向</strong><small>用途不同 · 不可互转</small></div>
       <div class="aentry-type" id="atrade-zone-switch" ${currentSide === 'buy' ? '' : 'hidden'} aria-label="买入分区">
-        <button type="button" data-zone="alpha" class="${currentZone === 'alpha' ? 'active' : ''}" onclick="window.atradeZone('alpha')">蓄能额度</button>
-        <button type="button" data-zone="beta" class="${currentZone === 'beta' ? 'active' : ''}" onclick="window.atradeZone('beta')">驱动额度</button>
+        <button type="button" data-zone="alpha" class="${currentZone === 'alpha' ? 'active' : ''}" aria-pressed="${currentZone === 'alpha'}" onclick="window.atradeZone('alpha')"><span class="aentry-zone-copy"><strong>蓄能额度</strong><small>矿池 / 能量专用</small></span><span class="aentry-zone-tick" aria-hidden="true">✓</span></button>
+        <button type="button" data-zone="beta" class="${currentZone === 'beta' ? 'active' : ''}" aria-pressed="${currentZone === 'beta'}" onclick="window.atradeZone('beta')"><span class="aentry-zone-copy"><strong>驱动额度</strong><small>协议池 / 涡轮专用</small></span><span class="aentry-zone-tick" aria-hidden="true">✓</span></button>
       </div>
       <label class="aentry-avail" title="点击填满数量"><span id="atrade-balance-label">${currentSide === 'buy' ? '可用' : '流通额度'}</span><b id="atrade-balance-val" style="cursor:pointer" onclick="window.atradeSliderFill(100)">${showBalance(currentSide)}</b></label>
 
@@ -429,6 +430,8 @@
     const btn = document.getElementById('atrade-order-btn');
     const zoneSwitch = document.getElementById('atrade-zone-switch');
     if (zoneSwitch) zoneSwitch.hidden = currentSide !== 'buy';
+    const zoneHeading = document.querySelector('.aentry-zone-heading');
+    if (zoneHeading) zoneHeading.hidden = currentSide !== 'buy';
     if (balVal)   balVal.textContent   = currentSide === 'buy' ? fmtUsdt(balUsdt) : fmtA(quotaAvail) + ' SVX';
     const balLabel = document.getElementById('atrade-balance-label');
     if (balLabel) balLabel.textContent = currentSide === 'buy' ? '可用' : '流通额度';
@@ -475,7 +478,9 @@
     quoteRequestId += 1;
     clearTimeout(quoteTimer);
     document.querySelectorAll('#atrade-zone-switch [data-zone]').forEach(b => {
-      b.classList.toggle('active', b.dataset.zone === currentZone);
+      const selected = b.dataset.zone === currentZone;
+      b.classList.toggle('active', selected);
+      b.setAttribute('aria-pressed', String(selected));
     });
     const inpLabel = document.getElementById('atrade-input-label');
     if (inpLabel && currentSide === 'buy') {
