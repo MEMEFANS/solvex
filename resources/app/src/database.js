@@ -26,7 +26,7 @@ export function openDatabase(dataRoot) {
   const db = new DatabaseSync(file);
   db.exec(`
     PRAGMA journal_mode = WAL;
-    PRAGMA synchronous = FULL;
+    PRAGMA synchronous = NORMAL;
     PRAGMA foreign_keys = ON;
     PRAGMA busy_timeout = 5000;
     PRAGMA temp_store = MEMORY;

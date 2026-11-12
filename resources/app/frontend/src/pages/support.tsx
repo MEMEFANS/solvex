@@ -29,7 +29,7 @@ export default function SupportPage() {
     queryKey: ['support-session', identity],
     queryFn: ({ signal }) => api<SupportSession>('support/session', { signal }),
     enabled: wallet.authenticated,
-    refetchInterval: 4000,
+    refetchInterval: 10000,
   });
   const session = query.data;
   const messages = session?.messages || [];

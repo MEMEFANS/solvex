@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, CalendarClock, Check, RotateCcw, Sparkles } from 'lucide-react';
 import { api, post } from '@/lib/api';
 import { date, formatDecimal, mulDecimal, toUnits } from '@/lib/utils';
-import { buyBlindboxOnchain } from '@/lib/wallet';
+import { buyBlindboxOnchain } from '@/lib/wallet-onchain';
 import { useWallet } from '@/hooks/use-wallet';
 import { BlindBoxArt, type BoxPhase } from '@/components/blindbox-art';
 import { Button } from '@/components/ui/button';

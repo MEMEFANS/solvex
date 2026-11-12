@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowUpRight, Award, ChevronDown, Copy, Network, RefreshCw, Users } from 'lucide-react';
 import { toast } from 'sonner';
@@ -13,7 +13,8 @@ import { api, post, walletIdentity } from '@/lib/api';
 import { date, formatDecimal, percent, short, toUnits, units } from '@/lib/utils';
 import { loadLegacyStyles } from '@/lib/runtime';
 import type { Team, Referral } from '@/types';
-import PendingPage from './pending';
+// 团队收益页只在对应 tab 用到，懒加载避免拖慢团队页首屏
+const PendingPage = lazy(() => import('./pending'));
 const tabs: Record<string, string> = { overview:'团队概览', members:'团队成员', rewards:'团队收益', upgrade:'升级舱', invite:'邀请好友', referrals:'交易返佣' };
 function ReferralRewards() {
   const wallet = useWallet(), [error, setError] = useState<Error | null>(null);
@@ -42,7 +43,7 @@ export default function TeamPage() {
   const link = referral.data?.code ? new URL(referral.data.link || '/?ref=' + encodeURIComponent(referral.data.code), location.origin).href : '';
   const render = () => {
     if (!wallet.authenticated) return <Gate />;
-    if (tab === 'rewards') return <PendingPage teamOnly />;
+    if (tab === 'rewards') return <Suspense fallback={<Loading />}><PendingPage teamOnly /></Suspense>;
     if (tab === 'referrals') return <ReferralRewards />;
     if (tab === 'invite') return referral.error ? <ErrorState error={referral.error} retry={() => void referral.refetch()} /> : !referral.data ? <Loading /> : <div className="rx-invite-grid"><Card className="rx-invite-hero"><Network size={40} strokeWidth={1} /><span className="rx-kicker">GROW TOGETHER</span><h2>与你的团队<br />一起向前。</h2><p>分享专属邀请链接，连接更多伙伴。</p><div className="rx-invite-code">{referral.data.code || '—'}</div><Button variant="outline" disabled={!referral.data.code} onClick={() => void copy(referral.data!.code)}><Copy />复制邀请码</Button></Card><Card><CardHeader><CardTitle>邀请好友</CardTitle><Users size={18} /></CardHeader><CardContent><p className="rx-note">我的上级邀请码：<code>{t ? (t.directReferrerCode || '未绑定') : '加载中'}</code></p><label className="rx-field-label" htmlFor="invite-link">我的邀请链接</label><textarea className="rx-invite-link" id="invite-link" readOnly value={link} /><Button className="rx-full" disabled={!link} onClick={() => void copy(link)}><Copy />复制邀请链接</Button><div className="rx-info-block"><h3>推荐奖励</h3><p>矿池直推奖励按下级利息的 10% 计算。持有有效矿池才享有动态收益，能量释放不产生利息推广奖励。</p><p>团队级差取自己的等级比例减直接下级比例；同级不奖励并停止向上分配。</p></div></CardContent></Card></div>;
     if (tab === 'upgrade') {
