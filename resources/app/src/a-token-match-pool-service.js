@@ -77,7 +77,7 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
         usdtIn: fmtU(dup.usdtUnits), feeUsdt: fmtU(feeUnits),
         totalUsdt: fmtU(BigInt(dup.usdtUnits || '0') + feeUnits),
         turboOut: fmtA(dup.turboUnits), priceUsdt: fmtU(dup.priceUnits),
-        turboBalance: fmtA(db.getATokenTurboQuota(wallet).units), purchaseId: dup.id, idempotent,
+        turboBalance: fmtA(db.getATokenZoneBalance(wallet, 'beta').units), purchaseId: dup.id, idempotent,
       };
     };
     if (reqId) {
@@ -118,8 +118,10 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       }
     }
     // 买入 0 手续费：不再产生 buy_fee 记账
-    db.addATokenTurboQuota(wallet, turbo);
-    at.creditA(wallet, turbo);   // 买驱动额度即买到对应 SVX 币，币同步到账（驱动额度 1:1）
+    db.creditATokenZone({
+      wallet, zone: 'beta', units: turbo.toString(), bizType: 'turbo_buy', refId: purchaseId, createdAt: clock(),
+      payload: { usdtUnits: usdt.toString(), priceUnits: price.toString() },
+    });
     // 2026-11-02 一键购买驱动额度也累计进交易大厅 24h 成交量（SVX 量 + USDT 额）
     try { at.addVolume(turbo, usdt); }
     catch (e) { console.error(`[超速驱动协议] ${wallet} 一键购买成交量累加失败:`, e?.message || e); }
@@ -129,7 +131,7 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       totalUsdt: fmtU(total),
       turboOut: fmtA(turbo),
       priceUsdt: fmtU(price),
-      turboBalance: fmtA(db.getATokenTurboQuota(wallet).units),
+      turboBalance: fmtA(db.getATokenZoneBalance(wallet, 'beta').units),
       purchaseId,
     };
   }
@@ -173,7 +175,7 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
         aixIn: fmtA(dup.turboUnits), usdtIn: fmtU(dup.usdtUnits), feeUsdt: fmtU(feeUnits),
         totalUsdt: fmtU(BigInt(dup.usdtUnits || '0') + feeUnits),
         turboOut: fmtA(dup.turboUnits), priceUsdt: fmtU(dup.priceUnits),
-        turboBalance: fmtA(db.getATokenTurboQuota(wallet).units), purchaseId: dup.id, idempotent,
+        turboBalance: fmtA(db.getATokenZoneBalance(wallet, 'beta').units), purchaseId: dup.id, idempotent,
       };
     };
     if (reqId) {
@@ -211,8 +213,10 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       }
     }
     // 买入 0 手续费：不再产生 buy_fee 记账
-    db.addATokenTurboQuota(wallet, c.a);
-    at.creditA(wallet, c.a);   // 买驱动额度即买到对应 SVX 币，币同步到账（驱动额度 1:1）
+    db.creditATokenZone({
+      wallet, zone: 'beta', units: c.a.toString(), bizType: 'turbo_buy', refId: purchaseId, createdAt: clock(),
+      payload: { usdtUnits: c.usdt.toString(), priceUnits: c.price.toString() },
+    });
     return {
       aixIn: c.aixStr,
       usdtIn: c.usdtStr,
@@ -220,7 +224,7 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       totalUsdt: c.totalStr,
       turboOut: c.aixStr,
       priceUsdt: c.priceStr,
-      turboBalance: fmtA(db.getATokenTurboQuota(wallet).units),
+      turboBalance: fmtA(db.getATokenZoneBalance(wallet, 'beta').units),
       purchaseId,
     };
   }
@@ -236,35 +240,24 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       return { ...presentEntry(existing), idempotent: true };
     }
     if (a < MIN_ENTER_A) throw new Error(`超速驱动协议最低 ${fmtA(MIN_ENTER_A)} SVX 参与`);
-    // 蓄能额度（原可卖额度账本）可用 = released - used
-    const matchQuota = db.getATokenSellQuota(wallet);
-    const matchAvailable = BigInt(matchQuota.releasedUnits) - BigInt(matchQuota.usedUnits);
-    if (matchAvailable < a) {
-      const avail = matchAvailable > 0n ? matchAvailable : 0n;
-      throw new Error(`蓄能额度不足：当前可用 ${fmtA(avail)} SVX（质押释放产出计入蓄能额度）`);
+    // 蓄能额度 = 甲区（alpha）余额，驱动额度 = 乙区（beta）余额（2026-11-13：统一按分区余额记账）
+    const zones = db.listATokenZoneBalances(wallet);
+    const alphaAvail = BigInt(zones.alpha || '0');
+    const betaAvail = BigInt(zones.beta || '0');
+    if (alphaAvail < a) {
+      throw new Error(`蓄能额度不足：当前可用 ${fmtA(alphaAvail)} SVX（蓄能额度即甲区余额）`);
     }
-    const turbo = BigInt(db.getATokenTurboQuota(wallet).units);
-    if (turbo < a) {
-      throw new Error(`驱动额度不足：需 1:1 配比 ${fmtA(a)} SVX 驱动额度，当前 ${fmtA(turbo > 0n ? turbo : 0n)} SVX，可用 USDT 购买或在 SVX 交易大厅买入获得`);
-    }
-    // 进池同时扣掉等额 SVX 币（驱动额度对应的就是买到的币），到期按 2 倍发币
-    const coins = at.balanceA(wallet);
-    if (coins < a) {
-      throw new Error(`SVX 币不足：进池需锁定 ${fmtA(a)} SVX（当前 ${fmtA(coins > 0n ? coins : 0n)}），可用 USDT 购买驱动额度或在 SVX 交易大厅买入`);
+    if (betaAvail < a) {
+      throw new Error(`驱动额度不足：需 1:1 配比 ${fmtA(a)} SVX 驱动额度，当前 ${fmtA(betaAvail)} SVX，可用 USDT 购买驱动额度`);
     }
     const now = clock();
     const latest = db.listATokenMatchPoolEntries(wallet, 1)[0];
     if (latest && Number(latest.createdAt) >= settlementDayStart(now)) throw new Error('超速驱动协议每日仅可使用一次，UTC 00:00（北京 08:00）重置');
     const state = db.touchATokenMatchPoolState(wallet, now);   // 首次使用落锚，之后每日 +24h
     const durationHours = durationHoursFor(state.firstPoolAt, now);
-    at.debitA(wallet, a);                                      // 进池扣币
-    try {
-      db.consumeATokenSellQuota(wallet, a);                    // 蓄能额度消耗（不可撤销）
-      db.consumeATokenTurboQuota(wallet, a);                   // 驱动额度消耗
-    } catch (e) {
-      try { at.creditA(wallet, a); } catch (e2) { console.error(`[超速驱动协议] ${wallet} 进池回退币失败:`, e2?.message || e2); }
-      throw e;
-    }
+    // 进池从两个分区各扣等量 SVX（共 2a 锁定），到期发 2a 币 + 2a 流通额度
+    db.debitATokenZone({ wallet, zone: 'alpha', units: a.toString(), bizType: 'match_pool', refId: entryId, createdAt: now });
+    db.debitATokenZone({ wallet, zone: 'beta', units: a.toString(), bizType: 'match_pool', refId: entryId, createdAt: now });
     const entry = db.insertATokenMatchPoolEntry({
       id: entryId, wallet,
       matchUnits: a.toString(), turboUnits: a.toString(),
@@ -323,9 +316,9 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
       if (String(entry.wallet).toLowerCase() !== wallet) continue;
       releaseOne(entry, now);
     }
-    const matchQuota = db.getATokenSellQuota(wallet);
-    const matchReleased = BigInt(matchQuota.releasedUnits);
-    const matchUsed = BigInt(matchQuota.usedUnits);
+    const zones = db.listATokenZoneBalances(wallet);
+    const alphaUnits = BigInt(zones.alpha || '0');
+    const betaUnits = BigInt(zones.beta || '0');
     const usableQuota = db.getATokenUsableQuota(wallet);
     const usableReleased = BigInt(usableQuota.releasedUnits);
     const usableUsed = BigInt(usableQuota.usedUnits);
@@ -333,11 +326,11 @@ export function createATokenMatchPoolService({ aTokenService, database, sharehol
     const started = state.firstPoolAt > 0;
     return {
       matchQuota: {
-        released: fmtA(matchReleased),
-        used: fmtA(matchUsed),
-        available: fmtA(matchReleased > matchUsed ? matchReleased - matchUsed : 0n),
+        released: fmtA(alphaUnits),
+        used: '0',
+        available: fmtA(alphaUnits),
       },
-      turboQuota: fmtA(db.getATokenTurboQuota(wallet).units),
+      turboQuota: fmtA(betaUnits),
       usableQuota: {
         released: fmtA(usableReleased),
         used: fmtA(usableUsed),

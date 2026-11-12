@@ -66,8 +66,9 @@ try {
   assert.equal(at.balanceA(user), A(10));
 
   const driver = '0x' + '2'.repeat(40);
-  wallet.ensureUser(driver); at.creditA(driver, A(1000));
-  db.addATokenSellQuota(driver, A(1000)); db.addATokenTurboQuota(driver, A(1000));
+  wallet.ensureUser(driver);
+  db.creditATokenZone({ wallet: driver, zone: 'alpha', units: A(1000).toString(), bizType: 'test', refId: 'drive-alpha' });
+  db.creditATokenZone({ wallet: driver, zone: 'beta', units: A(1000).toString(), bizType: 'test', refId: 'drive-beta' });
   const drive = createATokenMatchPoolService({ database: db, aTokenService: at, clock });
   const entry = drive.enterPool({ wallet: driver, amount: '100', requestId: 'drive-replay' });
   assert.equal(drive.enterPool({ wallet: driver, amount: '100', requestId: 'drive-replay' }).id, entry.id);
@@ -75,7 +76,7 @@ try {
   assert.throws(() => drive.enterPool({ wallet: driver, amount: '100', requestId: 'drive-new' }), /每日仅/);
   now += 86400000;
   assert.equal(drive.enterPool({ wallet: driver, amount: '100', requestId: 'drive-replay' }).id, entry.id);
-  assert.equal(at.balanceA(driver), A(900), '跨日重放也不能再次扣款');
+  assert.equal(BigInt(db.getATokenZoneBalance(driver, 'alpha').units), A(900), '跨日重放也不能再次扣款');
   const expiring = pending.createReward({ wallet: user, bizType: 'team', bizId: 'expiry', periodKey: 'd1', amountUnits: A(5), availableAt: boundary });
   now = boundary + 86400000;
   assert.throws(() => pending.claim(user, expiring.id), /过期/);
