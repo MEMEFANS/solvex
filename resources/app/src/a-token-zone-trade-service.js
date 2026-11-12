@@ -25,7 +25,8 @@ const makeId = prefix => `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 const fmtA = units => { try { return formatUnits(BigInt(units || '0'), A_TOKEN_DECIMALS); } catch { return '0'; } };
 const fmtU = units => { try { return formatUnits(BigInt(units || '0'), USDT_DECIMALS); } catch { return '0'; } };
 
-const ZONE_LABELS = { alpha:'甲区', beta:'乙区', market:'自由交易（乙区）' };
+// 对外文案与页面一致：alpha=蓄能额度、beta=驱动额度（旧文档里的「甲区/乙区」仅作内部叫法）。
+const ZONE_LABELS = { alpha:'蓄能额度', beta:'驱动额度', market:'自由交易（驱动额度）' };
 
 export function createATokenZoneTradeService({ aTokenService, database, shareholderService, clock = () => Date.now() }) {
   const at = aTokenService;

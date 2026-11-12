@@ -473,8 +473,7 @@ export function createATokenApi({
         catch (e) { return sendError(res, e); }
         try {
           // 同上：签名消息绑定用户输入的金额（不随价格 tick 变化），旧消息保留兼容。
-          // 分区文案有两套：报价里的 zoneLabel 是「甲区/乙区」，前端展示文案是「蓄能额度/驱动额度」，
-          // 两套都接受（文字不一致会验签失败，误报「钱包签名与当前账户不一致」）。
+          // 分区文案统一为页面口径「蓄能额度/驱动额度」，旧文档的「甲区/乙区」不再对外使用。
           const timestamp = String(body.timestamp ?? '');
           const signature = String(body.signature ?? '');
           const uiLabel = { alpha: '蓄能额度', beta: '驱动额度', market: '自由交易（驱动额度）' }[zone] || q.zoneLabel;
