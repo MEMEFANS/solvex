@@ -18,9 +18,9 @@ const AiManagedPage = lazy(() => import('@/pages/ai-managed'));
 const PartnerPlanPage = lazy(() => import('@/pages/partner-plan'));
 const items = [
   { page:'earn', Icon:Pickaxe }, { page:'mall', Icon:ShoppingBag }, { page:'trade', Icon:BarChart3 },
-  { page:'community-chat', Icon:MessageCircle }, { page:'a-token-trade', Icon:Gem }, { page:'leaderboard', Icon:Trophy },
+  { page:'community-chat', Icon:MessageCircle }, { page:'a-token-trade', Icon:Gem }, { page:'partner-plan', Icon:Handshake },
   { page:'referrals', Icon:Users }, { page:'account', Icon:Wallet }, { page:'ai-managed', Icon:Bot }, { page:'support', Icon:Headphones },
-  { page:'partner-plan', Icon:Handshake },
+  { page:'leaderboard', Icon:Trophy },
 ];
 const languageMarkup = { __html:'<button type="button" id="lang-toggle" aria-label="切换语言" title="切换语言">🌐</button>' };
 const walletMarkup = { __html:'<div class="wallet-control"><button type="button" id="wallet-connect-btn" class="wallet-connect" aria-haspopup="menu" aria-expanded="false" onclick="handleWalletButton(this)">连接钱包</button><div id="wallet-account-menu" class="wallet-account-menu" role="menu" hidden><button id="wallet-menu-auth" type="button" role="menuitem" class="primary" onclick="verifyWalletFromMenu(this)">身份验证</button><button type="button" role="menuitem" onclick="openWalletAccount()">钱包资金</button><button type="button" role="menuitem" class="danger" onclick="disconnectWallet()">断开钱包</button></div></div>' };
