@@ -967,6 +967,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         // 按查看者的展示统计规则扣除指定激活，不修改矿机记录。
         minerCount: Math.max(0, (database.countATokenMinersByWallet?.(item.wallet) || 0) - hiddenMinerCountFor(item.wallet, address)),
         directCount: hisDirectCount + dAcc.dDirect,
+        // 有效用户口径：当前持有有效矿池（active 且未到期）
+        validUser: isEligibleRecipient(item.wallet),
       };
     });
     const directMinerUsers = directs.filter((d) => d.minerCount > 0).length;
@@ -998,6 +1000,10 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     downlines.delete(k(address));
     let teamMinerUsers = 0;
     for (const w of downlines) { if (minerWallets.has(w)) teamMinerUsers += 1; }
+    // 有效用户：持有有效矿池（active 且未到期）的直推 / 团队成员
+    const directValidUsers = directs.filter(d => d.validUser).length;
+    let teamValidUsers = 0;
+    for (const w of downlines) { if (isEligibleRecipient(w)) teamValidUsers += 1; }
     let realTeamMini = 0, realTeamPro = 0;
     for (const w of downlines) {
       if (miniMinerWallets.has(w)) realTeamMini += 1;
@@ -1076,6 +1082,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       teamPro: Math.max(0, realTeamPro + statsAcc.dTeamPro + ownDirectPro - hiddenTeam.pro),
       teamMinerUsers: Math.max(0, teamMinerUsers + statsAcc.dTeamMini + statsAcc.dTeamPro + ownDirectMini + ownDirectPro - hiddenTeam.users),
       teamCount: downlines.size + statsAcc.dTeam,
+      directValidUsers,
+      teamValidUsers,
       statsOverridden: statsAcc.own,
       teamHoldA: formatUnits(teamHoldUnits, A_TOKEN_DECIMALS),
       teamHoldUsers,

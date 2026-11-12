@@ -80,6 +80,9 @@ export default function AssetsPage() {
   // 导致总资产估值、现货/合约/策略市值全部为 0（2026-11-12 修复）
   const platformQuery = useQuery({ queryKey: ['platform-profile', identity], queryFn: () => api<PlatformProfile>('platform/profile'), enabled: wallet.authenticated });
   const aTokenProfileQuery = useQuery({ queryKey: ['a-token-profile', identity], queryFn: () => api<PlatformProfile>('a-token/profile'), enabled: wallet.authenticated });
+  // 合伙人身份（股东计划已激活）用于资产页徽章
+  const shareholderQuery = useQuery({ queryKey: ['ecosystem', 'shareholder', wallet.address, wallet.revision], queryFn: ({ signal }) => api<{ active?: boolean }>('a-token/shareholder', { signal }), enabled: wallet.authenticated, refetchInterval: 60000 });
+  const isPartner = Boolean(shareholderQuery.data?.active);
   const poolQuery = useQuery({ queryKey: ['svx-pool-price'], queryFn: () => api<{ priceUsdt?: string }>('a-token/pool', {}, false), staleTime: 60000 });
   const revenueQuery = useQuery({ queryKey: ['svx-revenue', identity], queryFn: () => api<RevenueReport>('a-token/revenue?limit=200'), enabled: wallet.authenticated && view === 'revenue' });
   const walletProfile = walletQuery.data, platform = platformQuery.data, balances = walletProfile?.balances;
@@ -141,7 +144,7 @@ export default function AssetsPage() {
     <div id="assets-dashboard-view">
       <section className="assets-overview">
         <div className="assets-total">
-          <span className="assets-label">总资产估值</span>
+          <span className="assets-label">总资产估值{isPartner && <span className="assets-partner-badge">合伙人</span>}</span>
           <strong><span>{loading ? '—' : money(totalEquity)}</span> <small>USDT</small></strong>
           <span className="assets-subvalue">≈ ${loading ? '—' : money(totalEquity)}</span>
           <div className="assets-quick-actions">

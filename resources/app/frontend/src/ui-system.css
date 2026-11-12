@@ -11,6 +11,36 @@ body.solvex-react {
   background: #f4f6fb;
   background-attachment: fixed;
 }
+
+/* Second pass: a lower-luminance mist palette for users sensitive to bright
+   white surfaces. Keep semantic colors and dark feature panels unchanged. */
+body.solvex-react { background:#e7e9ee; }
+.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f1f2f4 0,#eceef1 100%); border-right-color:#d7dbe1; }
+.solvex-react .rx-topbar { background:#eef0f2f2; border-bottom-color:#d6d9df; }
+.solvex-react .ui-card { background:#f5f6f7; border-color:#d7dbe1; box-shadow:0 3px 16px #3f465218; }
+.solvex-react .ui-card,
+.solvex-react .rx-partner-plan .pp-tier-card,
+.solvex-react .rx-partner-plan .pp-qualification-card,
+.solvex-react .rx-partner-plan .pp-records-card { background:#f5f6f7 !important; }
+.solvex-react .rx-sidebar-help { background:linear-gradient(135deg,#e4e5e9,#dfe1e6); border-color:#d3d6dc; }
+.solvex-react .ui-button.border { background:#eef0f2; border-color:#d2d6dd; }
+.solvex-react .ui-tab[data-state=active] { background:#f1f2f4; }
+
+/* Gentle light palette: soften the white canvas and saturated violet contrast
+   while keeping text and primary actions readable. */
+body.solvex-react { background:#eef0f4; color:#303746; }
+body.solvex-react::before { background-image:radial-gradient(circle at 1px 1px,#7569a00a 1px,transparent 0); }
+.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f8f9fa 0,#f4f5f7 100%); border-right-color:#e0e3e8; }
+.solvex-react .rx-topbar { background:#f6f7f8e8; border-bottom-color:#dfe2e7; }
+.solvex-react .ui-card { background:#fafbfc; border-color:#dfe3e8; box-shadow:0 3px 16px #3f46520b; }
+.solvex-react .ui-tabs { background:#e7e9ed; border-color:#dfe2e7; }
+.solvex-react .ui-tab[data-state=active] { color:#5c5684; background:#f9fafb; }
+.solvex-react .ui-button.bg-primary { background:linear-gradient(110deg,#6f66b4,#5d78b2); box-shadow:0 5px 14px #6873a329; }
+.solvex-react .ui-button.bg-primary:hover { background:linear-gradient(110deg,#665ca7,#5570a8); }
+.solvex-react .rx-nav button.is-active { color:#514c78; background:linear-gradient(100deg,#eeedf8,#f4f3fa); box-shadow:inset 0 0 0 1px #deddec; }
+.solvex-react .rx-nav button:hover { background:#eeeff3; color:#5f5a88; }
+.solvex-react .rx-wallet #wallet-connect-btn,.solvex-react .rx-wallet #wallet-connect-btn.connected { color:#5a5874; background:#f1f2f4; border-color:#dfe2e7; }
+.solvex-react .rx-wallet #wallet-connect-btn:hover { background:#e9ebef; border-color:#cfd4dc; color:#514e6f; }
 body.solvex-react::before {
   content: "";
   position: fixed;
@@ -838,6 +868,8 @@ body.solvex-react::before {
 .solvex-react .assets-header > div { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
 .solvex-react .assets-header > div > div:first-child { width: 100%; }
 .solvex-react .assets-label { font-size: 10.5px; font-weight: 650; letter-spacing: 1.5px; text-transform: uppercase; color: #7b6aa8; }
+/* 合伙人徽章：股东计划已激活时显示在「总资产估值」旁 */
+.solvex-react .assets-partner-badge { display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; letter-spacing: .5px; text-transform: none; color: #3a2200; background: linear-gradient(135deg, #ffe08a, #f0a12e); box-shadow: 0 0 10px rgba(240, 161, 46, .45); vertical-align: middle; }
 .solvex-react .assets-overview .assets-total strong,
 .solvex-react .assets-overview .assets-total strong span {
   font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
@@ -1551,3 +1583,12 @@ body.solvex-react::before {
   .solvex-react .rx-position-principal > strong { font-size: 20px; }
   .solvex-react .rx-pool-live { gap: 12px; }
 }
+
+/* Final mist override: keep the softer surfaces after page-specific rules. */
+body.solvex-react { background:#e7e9ee; }
+.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f1f2f4 0,#eceef1 100%); border-right-color:#d7dbe1; }
+.solvex-react .rx-topbar { background:#eef0f2f2; border-bottom-color:#d6d9df; }
+.solvex-react .ui-card { background:#f5f6f7; border-color:#d7dbe1; box-shadow:0 3px 16px #3f465218; }
+.solvex-react .rx-sidebar-help { background:linear-gradient(135deg,#e4e5e9,#dfe1e6); border-color:#d3d6dc; }
+.solvex-react .ui-button.border { background:#eef0f2; border-color:#d2d6dd; }
+.solvex-react .ui-tab[data-state=active] { background:#f1f2f4; }
