@@ -183,6 +183,8 @@ const SPA_HASH_ROUTES = new Set([
   'earn', 'mall', 'trade', 'a-token-trade', 'leaderboard', 'referrals', 'account',
   'support', 'community-chat', 'portfolio', 'vaults', 'staking', 'ledger', 'ai', 'ai-managed',
 ]);
+// 对外分享短链：/box → 盲盒页（直达 #/earn/blindbox 页签）
+const SPA_PATH_ALIASES = { box: '/#/earn/blindbox' };
 
 const MIME = {
   '.html': 'text/html; charset=utf-8',
@@ -1777,6 +1779,11 @@ export const server = http.createServer(async (request, res) => {
 
     // 站内页面走 hash 路由（/#/earn）。直接访问 /earn 这类路径时 302 到对应 hash，
     // 避免用户看到 {"error":"not found"}；仅限已知页面名，未知路径仍返回 404。
+    // SPA_PATH_ALIASES：对外分享用的最短短链，直达深层页签（2026-11-12 用户确认）。
+    if (!path.extname(file) && !file.includes('/') && SPA_PATH_ALIASES[file]) {
+      res.writeHead(302, { Location: SPA_PATH_ALIASES[file], 'Cache-Control': 'no-store' });
+      return res.end();
+    }
     if (!path.extname(file) && !file.includes('/') && SPA_HASH_ROUTES.has(file)) {
       res.writeHead(302, { Location: `/#/${file}`, 'Cache-Control': 'no-store' });
       return res.end();
