@@ -86,6 +86,15 @@ export function createCommunityGroupService({database, walletService, teamServic
       .run(normalizeGroupAvatar(raw), group.number);
     return view(get(group.number), wallet);
   }
+  // 群名称：仅群管理员可改，长度与建群规则一致（1-40 字）
+  function setName(number, wallet, raw) {
+    const group = access(number, wallet);
+    if (!isAdmin(group, wallet)) fail('只有群管理员可以修改群名称');
+    const title = String(raw || '').trim();
+    if (!title || title.length > 40) fail('群名称需为1至40个字');
+    db.prepare('UPDATE community_groups SET name=? WHERE number=?').run(title, group.number);
+    return view(get(group.number), wallet);
+  }
   function getAvatar(number) {
     const group = get(number);
     const match = String(group?.avatar || '').match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
@@ -171,5 +180,5 @@ export function createCommunityGroupService({database, walletService, teamServic
     }
     return {...cache.get(n),group:view(group,wallet)};
   }
-  return {list,create,join,scoped,moderate,setAvatar,getAvatar};
+  return {list,create,join,scoped,moderate,setAvatar,getAvatar,setName};
 }

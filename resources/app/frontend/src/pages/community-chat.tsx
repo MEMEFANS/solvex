@@ -163,6 +163,8 @@ export default function CommunityPage() {
   const [muteForm, setMuteForm] = useState({ hours: '1', reason: '' });
   const [muteBusy, setMuteBusy] = useState(false);
   const [groupAvatarBusy, setGroupAvatarBusy] = useState(false);
+  const [groupNameDraft, setGroupNameDraft] = useState('');
+  const [groupNameBusy, setGroupNameBusy] = useState(false);
 
   const groupRef = useRef(group);
   const overviewRef = useRef<CommunitySession | null>(null);
@@ -515,6 +517,7 @@ export default function CommunityPage() {
   function openAction(next: GroupAction) {
     setAction(next); setActionError('');
     setActionForm({ number: '', invite: '', name: '', nickname: overviewRef.current?.me?.nickname || '', avatar: '' });
+    setGroupNameDraft(overviewRef.current?.group?.name || '');
   }
 
   async function selectAvatar(file?: File) {
@@ -526,7 +529,21 @@ export default function CommunityPage() {
     } catch (caught) { setActionError(caught instanceof Error ? caught.message : '图片处理失败，请重新选择'); }
     finally { setActionBusy(false); }
   }
-  // 群头像：仅群管理员可换，上传后立即生效（总群默认使用代币 LOGO）
+  // 群名称：仅群管理员可改
+  async function saveGroupName() {
+    const name = groupNameDraft.trim();
+    if (!name) { setActionError('群名称不能为空'); return; }
+    if (name === groupName) return;
+    setGroupNameBusy(true); setActionError('');
+    try {
+      await ensureSession();
+      const result = await api<{ group: CommunityGroup }>(path('groups/name'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+      setOverview(current => current ? { ...current, group: { ...(current.group || {}), ...result.group } } : current);
+      toast.success('群名称已更新');
+      void loadGroups();
+    } catch (caught) { setActionError(caught instanceof Error ? caught.message : '群名称修改失败，请稍后重试'); }
+    finally { setGroupNameBusy(false); }
+  }
   async function selectGroupAvatar(file?: File) {
     if (!file) return;
     setGroupAvatarBusy(true); setActionError('');
@@ -644,6 +661,7 @@ export default function CommunityPage() {
     {action === 'join' ? <><label>群号<input autoFocus required maxLength={24} placeholder="请输入群号" value={actionForm.number} onChange={e => setActionForm({ ...actionForm, number: e.target.value })} /></label><label>邀请码 <small>非总群必填</small><input maxLength={100} placeholder="加入总群可留空" value={actionForm.invite} onChange={e => setActionForm({ ...actionForm, invite: e.target.value })} /></label></> : action === 'create' ? <label>群名称<input autoFocus required maxLength={24} value={actionForm.name} onChange={e => setActionForm({ ...actionForm, name: e.target.value })} /></label> : <>
       <div className="sx-settings-avatar"><CommunityAvatar className="sx-settings-avatar-preview" nickname={actionForm.nickname} src={actionForm.avatar || overview?.me?.avatar} /><div className="sx-settings-avatar-copy"><strong>我的头像</strong><small>支持 JPG、PNG、WebP，自动居中裁剪</small><button type="button" className="sx-chat-secondary" disabled={actionBusy} onClick={() => avatarInputRef.current?.click()}>修改头像</button></div><input ref={avatarInputRef} className="sx-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectAvatar(file); }} /></div>
       {isAdmin && <div className="sx-settings-avatar"><CommunityAvatar className="sx-settings-avatar-preview" nickname={groupName} src={overview?.group?.avatar} /><div className="sx-settings-avatar-copy"><strong>群头像</strong><small>管理员可更换，总群默认使用代币 LOGO</small><button type="button" className="sx-chat-secondary" disabled={groupAvatarBusy} onClick={() => groupAvatarInputRef.current?.click()}>{groupAvatarBusy ? '上传中…' : '修改群头像'}</button></div><input ref={groupAvatarInputRef} className="sx-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectGroupAvatar(file); }} /></div>}
+      {isAdmin && <div className="sx-group-name-edit"><label>群名称<input maxLength={40} placeholder="1-40 个字" value={groupNameDraft} onChange={event => setGroupNameDraft(event.target.value)} /></label><button type="button" className="sx-chat-secondary" disabled={groupNameBusy || !groupNameDraft.trim() || groupNameDraft.trim() === groupName} onClick={() => void saveGroupName()}>{groupNameBusy ? '保存中…' : '保存群名称'}</button></div>}
       <label>群昵称<input autoFocus required maxLength={24} value={actionForm.nickname} onChange={e => setActionForm({ ...actionForm, nickname: e.target.value })} /></label>
       {isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '开启全员禁言'}</button><span>{mutedAll ? '全员禁言中，仅群管理员可发言' : '群管理：开启后全群仅管理员可发言；单人禁言在「群成员」里操作，可选 1 小时 ~ 30 天'}</span></div>}
     </>}

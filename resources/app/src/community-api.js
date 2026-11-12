@@ -98,6 +98,11 @@ export function createCommunityApi({
         guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,400_000);
         return send(res,200,{group:groupService.setAvatar(params.get('group')||'100001',actor,payload.avatar)});
       }
+      // POST /api/community/groups/name?group=100001 { name } — 仅群管理员
+      if (groupService && request.method === 'POST' && pathname === '/api/community/groups/name') {
+        guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,8_000);
+        return send(res,200,{group:groupService.setName(params.get('group')||'100001',actor,payload.name)});
+      }
       const scoped=groupService?.scoped(params.get('group')||'100001',address);
       const service=scoped?.service||baseService, redPacketService=scoped?.redPacketService||basePackets;
       if(groupService && request.method==='POST' && pathname.startsWith('/api/community/admin/')) {
