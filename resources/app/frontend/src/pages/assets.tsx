@@ -104,9 +104,9 @@ export default function AssetsPage() {
     // SVX 三种额度统一用 SVX 池价估值（A-ALPHA / A-BETA 不在行情表里）
     const svxPrice = platform?.marketPrices?.A || markPrice || '0';
     const price = isUsdt ? '1' : (symbol.startsWith('A') ? svxPrice : (platform?.marketPrices?.[symbol] || '0'));
-    // 估值兜底：价格缺失时按 0 计算，避免整行显示成「—」
+    // 估值兜底：价格缺失时按 0 计算，避免整行显示成「—」；返回值保持原始数字串，交给 money() 统一格式化
     const valued = mulDecimal(available || '0', price || '0');
-    const valuation = valued === '—' ? formatDecimal(Number(available || 0) * Number(price || 0), 2) : formatDecimal(valued, 2);
+    const valuation = valued === '—' ? String(Number(available || 0) * Number(price || 0) || 0) : valued;
     return { symbol, available: formatDecimal(available, 2), frozen: formatDecimal(frozen, 2), total: formatDecimal(available, 2), valuation };
   }), [symbols, platform, balances, markPrice, aTokenProfileQuery.data]);
   const totalEquity = platform?.account?.totalEquity || mulDecimal(balances?.A || '0', platform?.marketPrices?.A || markPrice);
@@ -177,7 +177,7 @@ export default function AssetsPage() {
             <table className="assets-table no-mobile-stack"><thead><tr><th>币种</th><th>总额</th><th>可用</th><th>冻结</th><th>USDT 估值</th><th>操作</th></tr></thead><tbody>
               {visibleRows.map(item => {
                 return <tr key={item.symbol}>
-                  <td><div className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><span className="assets-coin-fallback">{disp(item.symbol).slice(0, 1)}</span><img src={logo(item.symbol)} alt={disp(item.symbol)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b><small>{NAMES[item.symbol] || disp(item.symbol)}</small>{item.symbol === 'A' && <small style={{ display:'block', color:'#5f2bd9', fontSize:11, marginTop:2 }}>流通额度 {sellQuota ? formatDecimal(sellQuota, 2) : '—'}</small>}</span></div></td>
+                  <td><div className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><span className="assets-coin-fallback">{disp(item.symbol).slice(0, 1)}</span><img src={logo(item.symbol)} alt={disp(item.symbol)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b>{item.symbol === 'A' && <small style={{ display:'block', color:'#5f2bd9', fontSize:11, marginTop:2 }}>流通额度 {sellQuota ? formatDecimal(sellQuota, 2) : '—'}</small>}</span></div></td>
                   <td><span className="assets-total-amount">{item.total}</span><small className="assets-mobile-valuation">≈ {money(item.valuation)} USDT</small></td>
                   <td>{item.available}</td><td>{item.frozen}</td><td>{money(item.valuation)}</td>
                   <td className="assets-row-actions">
@@ -190,7 +190,7 @@ export default function AssetsPage() {
           </div>
           <div className="assets-mobile-list" aria-label="币种资产">
             {visibleRows.map(item => <details className="assets-mobile-coin" key={item.symbol}>
-              <summary><span className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><img src={logo(item.symbol)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b><small>{item.symbol === 'A' ? 'Solvex' : NAMES[item.symbol] || item.symbol}</small></span></span><span className="assets-mobile-value"><strong>{item.total}</strong><small>≈ {money(item.valuation)} USDT</small></span><span className="assets-coin-chevron" aria-hidden="true">⌄</span></summary>
+              <summary><span className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><img src={logo(item.symbol)} alt="" loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b></span></span><span className="assets-mobile-value"><strong>{item.total}</strong><small>≈ {money(item.valuation)} USDT</small></span><span className="assets-coin-chevron" aria-hidden="true">⌄</span></summary>
               <div className="assets-mobile-coin-details"><dl><div><dt>可用余额</dt><dd>{item.available} {disp(item.symbol)}</dd></div><div><dt>冻结金额</dt><dd>{item.frozen} {disp(item.symbol)}</dd></div>{item.symbol === 'A' && <div><dt>流通额度</dt><dd>{sellQuota ? formatDecimal(sellQuota, 2) : '—'} SVX</dd></div>}</dl><div className="assets-mobile-coin-actions">{renderActions(item.symbol)}</div></div>
             </details>)}
             {!visibleRows.length && <p className="account-empty">{loading ? '正在读取资产' : '没有符合条件的资产'}</p>}
