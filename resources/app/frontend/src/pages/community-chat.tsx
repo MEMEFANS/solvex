@@ -78,15 +78,15 @@ function resizeAvatar(file: File): Promise<string> {
   });
 }
 
-function MessageRow({ message, isAdmin, onDelete }: { message: CommunityMessage; isAdmin: boolean; onDelete: () => void }) {
+function MessageRow({ message, isAdmin, onDelete, compact = false }: { message: CommunityMessage; isAdmin: boolean; onDelete: () => void; compact?: boolean }) {
   const mine = isMine(message.address);
-  return <div className={'sx-message' + (mine ? ' is-mine' : '') + (message.deleted ? ' is-deleted' : '')}>
-    <CommunityAvatar nickname={message.nickname} src={message.avatar} />
+  return <div className={'sx-message' + (mine ? ' is-mine' : '') + (message.deleted ? ' is-deleted' : '') + (compact ? ' is-compact' : '')}>
+    {compact ? <span className="sx-avatar-gap" aria-hidden="true" /> : <CommunityAvatar nickname={message.nickname} src={message.avatar} />}
     <div className="sx-message-main">
-      <div className="sx-message-meta">
+      {!compact && <div className="sx-message-meta">
         <span>{message.nickname || shortAddress(message.address)}</span>
         {isAdmin && message.id > 0 && <button type="button" onClick={onDelete}>删除</button>}
-      </div>
+      </div>}
       <div className="sx-message-bubble">{message.deleted ? '该消息已被管理员删除' : String(message.body ?? '')}</div>
       {mine && <small className="sx-message-delivery">{message.pending ? <><LoaderCircle size={11} className="sx-spin" />发送中</> : <><Check size={11} />已发送</>}</small>}
     </div>
@@ -620,7 +620,7 @@ export default function CommunityPage() {
   const visibleGroups = groups.filter(item => `${item.name} ${item.number}`.toLowerCase().includes(groupSearch.toLowerCase()));
   const actionTitle = action === 'join' ? '加入群聊' : action === 'create' ? '创建私人群' : '设置';
 
-  return <div className="rx-page"><div className="sx-chat">
+  return <div className="rx-page sx-chat-page"><div className="sx-chat">
     <div className="sx-chat-window">
       <aside className="sx-group-rail" aria-label="群聊列表">
         <div className="sx-mobile-group-control"><label><span>切换群聊</span><select aria-label="切换群聊" value={group} onChange={event => setGroup(event.target.value)}>{groups.map(item => <option key={item.number} value={item.number}>{item.name} · {item.number}</option>)}</select></label><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={19} /></button>{canCreate && <button type="button" className="sx-chat-secondary" onClick={() => openAction('create')}>建群</button>}</div>
@@ -643,12 +643,20 @@ export default function CommunityPage() {
             {error ? <div className="sx-chat-empty" role="alert"><MessageCircle size={36} /><strong>暂时无法进入群聊</strong><p>{error}</p><button type="button" className="sx-chat-secondary" onClick={() => openAction('join')}>通过群号加入</button></div>
               : !overview ? <div className="sx-chat-empty"><LoaderCircle size={26} className="sx-spin" /><p>正在加载消息…</p></div>
               : !messages.length ? <div className="sx-chat-empty"><div className="sx-empty-icon"><MessageCircle size={30} /></div><strong>从一句你好开始</strong><p>这里还很安静，来和大家打个招呼吧。</p></div>
-              : messages.map((message, index) => <Fragment key={message.id}>
-                {(!index || Number(message.createdAt) - Number(messages[index - 1].createdAt) > 300_000) && <div className="sx-message-time">{fmtTime(message.createdAt)}</div>}
-                {message.kind === 'red_packet' && message.packet && !message.deleted
-                  ? <PacketRow message={message} onOpen={() => openPacket(message)} />
-                  : <MessageRow message={message} isAdmin={Boolean(overview.isAdmin)} onDelete={() => void deleteMessage(message.id)} />}
-              </Fragment>)}
+              : messages.map((message, index) => {
+                const previous = index ? messages[index - 1] : undefined;
+                // 同一人 3 分钟内的连续文字消息合并展示（隐藏重复头像与昵称），贴近常见群聊
+                const compact = previous && message.kind === 'text' && previous.kind === 'text'
+                  && !message.deleted && !previous.deleted
+                  && String(previous.address || '').toLowerCase() === String(message.address || '').toLowerCase()
+                  && Number(message.createdAt) - Number(previous.createdAt) < 180_000;
+                return <Fragment key={message.id}>
+                  {(!index || Number(message.createdAt) - Number(messages[index - 1].createdAt) > 300_000) && <div className="sx-message-time">{fmtTime(message.createdAt)}</div>}
+                  {message.kind === 'red_packet' && message.packet && !message.deleted
+                    ? <PacketRow message={message} onOpen={() => openPacket(message)} />
+                    : <MessageRow message={message} isAdmin={Boolean(overview.isAdmin)} onDelete={() => void deleteMessage(message.id)} compact={compact} />}
+                </Fragment>;
+              })}
           </div>
           {unread > 0 && <button type="button" className="sx-unread" onClick={() => { scrollToBottom(); clearUnread(); queueMarkRead(); }}><ArrowDown size={14} />{unread} 条新消息</button>}
         </div>
