@@ -24,9 +24,10 @@ export function MiningScene({ authenticated, counts, activeCount, loading, error
   const [paused, setPaused] = useState(false);
   const [visible, setVisible] = useState(true);
   const [selected, setSelected] = useState<Tier | null>(null);
-  const preview = !authenticated || (!loading && !error && activeCount === 0);
-  const mode = loading ? 'loading' : error ? 'error' : preview ? 'preview' : 'active';
-  const hasWorkers = !loading && !error && (preview || Object.values(counts).some(count => count > 0));
+  // 2026-11-12 用户确认：不再展示无持仓时的演示动画（原“动画预览”模式整体移除），
+  // 只有真实持仓的矿区才有矿工进场，空矿区保持静态并显示“待开通”。
+  const mode = loading ? 'loading' : error ? 'error' : activeCount > 0 ? 'active' : 'idle';
+  const hasWorkers = !loading && !error && Object.values(counts).some(count => count > 0);
 
   useEffect(() => {
     let inView = true;
@@ -45,7 +46,7 @@ export function MiningScene({ authenticated, counts, activeCount, loading, error
     <header className="rx-cavern-heading">
       <div className="rx-cavern-title"><span className="rx-cavern-icon"><Pickaxe size={20} /></span><div><h2>地下矿场</h2><p>铜 · 银 · 金，探索你的矿藏</p></div></div>
       <div className="rx-cavern-tools">
-        <span className={'rx-cavern-state is-' + mode}><i />{loading ? '同步矿池状态' : error ? '状态暂不可用' : preview ? '动画预览' : activeCount + ' 份矿池运行中'}</span>
+        <span className={'rx-cavern-state is-' + mode}><i />{loading ? '同步矿池状态' : error ? '状态暂不可用' : activeCount + ' 份矿池运行中'}</span>
         {hasWorkers && <button type="button" className="rx-cavern-toggle" onClick={() => setPaused(value => !value)} aria-pressed={paused} aria-label={paused ? '播放矿工动画' : '暂停矿工动画'} title={paused ? '播放动画' : '暂停动画'}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>}
       </div>
     </header>
@@ -54,18 +55,18 @@ export function MiningScene({ authenticated, counts, activeCount, loading, error
         <img className="rx-cavern-background" src="/assets/mining/toy-cavern-v2.webp" width={2048} height={1152} alt="紫蓝晶石点亮连通的地下洞穴，铜矿、银矿、金矿沿矿车轨道依次分布" decoding="async" fetchPriority="high" draggable={false} />
         <span className="rx-cavern-motes" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
         {regions.map(region => {
-          const working = hasWorkers && (preview || counts[region.tier] > 0);
+          const working = hasWorkers && counts[region.tier] > 0;
           const position = { '--miner-x': region.x, '--miner-y': region.y, '--impact-x': region.impactX, '--impact-y': region.impactY, '--miner-delay': region.delay } as CSSProperties;
           return <div key={region.tier} className={'rx-cavern-region is-' + region.tier} data-mine-tier={region.tier} data-working={working} data-selected={selected === region.tier} style={position}>
-            {working && <><span className="rx-cavern-shadow" aria-hidden="true" /><span className="rx-cavern-worker" role="img" aria-label={region.title + (preview ? '演示矿工挥镐挖矿' : '矿工挥镐挖矿')} /><span className="rx-cavern-impact" aria-hidden="true"><i /><i /><i /><i /><b /></span></>}
-            <div className="rx-cavern-label"><i /><strong>{region.title}</strong><span>{loading ? '同步中' : error ? '状态未知' : preview ? '动画预览' : counts[region.tier] ? counts[region.tier] + ' 份运行中' : '待开通'}</span></div>
+            {working && <><span className="rx-cavern-shadow" aria-hidden="true" /><span className="rx-cavern-worker" role="img" aria-label={region.title + '矿工挥镐挖矿'} /><span className="rx-cavern-impact" aria-hidden="true"><i /><i /><i /><i /><b /></span></>}
+            <div className="rx-cavern-label"><i /><strong>{region.title}</strong><span>{loading ? '同步中' : error ? '状态未知' : counts[region.tier] ? counts[region.tier] + ' 份运行中' : '待开通'}</span></div>
           </div>;
         })}
       </div>
     </div>
-    <nav className="rx-cavern-zones" aria-label="选择矿区">{regions.map(region => <button key={region.tier} type="button" data-tone={region.tier} aria-pressed={selected === region.tier} onClick={() => setSelected(region.tier)}><span className="rx-cavern-zone-gem" aria-hidden="true" /><span><strong>{region.title}区</strong><small>{loading ? '同步中' : error ? '状态未知' : preview ? '预览矿工' : counts[region.tier] ? counts[region.tier] + ' 份运行中' : '等待开通'}</small></span><ArrowUpRight size={15} /></button>)}</nav>
+    <nav className="rx-cavern-zones" aria-label="选择矿区">{regions.map(region => <button key={region.tier} type="button" data-tone={region.tier} aria-pressed={selected === region.tier} onClick={() => setSelected(region.tier)}><span className="rx-cavern-zone-gem" aria-hidden="true" /><span><strong>{region.title}区</strong><small>{loading ? '同步中' : error ? '状态未知' : counts[region.tier] ? counts[region.tier] + ' 份运行中' : '等待开通'}</small></span><ArrowUpRight size={15} /></button>)}</nav>
     <footer className="rx-cavern-footer">
-      <p>{preview ? '当前为动画预览，投入矿池后矿工按档位入场。' : error ? '暂时无法读取持仓，请重试同步。' : loading ? '正在读取矿池持仓…' : '矿工按有效持仓进场，每个矿区一名。'}<small>场景仅供展示，收益以账单为准。</small></p>
+      <p>{error ? '暂时无法读取持仓，请重试同步。' : loading ? '正在读取矿池持仓…' : '矿工按有效持仓进场，每个矿区一名。'}<small>场景仅供展示，收益以账单为准。</small></p>
       {!authenticated && <Button variant="outline" onClick={onConnect}>连接钱包 <ArrowUpRight size={15} /></Button>}
     </footer>
   </section>;
