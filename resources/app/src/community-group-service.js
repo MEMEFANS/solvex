@@ -27,20 +27,23 @@ export function createCommunityGroupService({database, walletService, teamServic
   const add=db.prepare('INSERT OR IGNORE INTO community_groups(number,name,kind,owner,invite,created_at) VALUES(?,?,?,?,?,?)');
   for (const [n,name,kind] of [[MAIN,'总群','public'],['100002','商学院','public'],['100003','股东群','shareholder'],['100004','工作室群','studio']])
     add.run(n,name,kind,'','',clock());
+  // 只有总群免邀请；其余群（含预置的商学院/股东群/工作室群）都要群号 + 邀请码，
+  // 预置群原先没有邀请码，这里补发一个，由后台管理员在群信息里查看并分发。
+  for (const row of db.prepare("SELECT number FROM community_groups WHERE number<>? AND invite=''").all(MAIN))
+    db.prepare('UPDATE community_groups SET invite=? WHERE number=?').run(randomBytes(9).toString('hex'),row.number);
   const get=number=>db.prepare('SELECT * FROM community_groups WHERE number=?').get(String(number||MAIN));
   const membership=(number,wallet)=>db.prepare('SELECT * FROM community_group_members WHERE group_number=? AND wallet=?').get(number,key(wallet));
   const isAdmin=(group,wallet)=>Boolean(wallet)&&(key(group.owner)===key(wallet)||adminService?.isAdmin(wallet));
+  // 总群对所有人开放；其他群一律需要群号 + 邀请码（管理员与自己已加入的群除外）。
   function entitled(group,wallet) {
-    if (isAdmin(group,wallet)||group.kind==='public') return true;
+    if (isAdmin(group,wallet)||group.number===MAIN) return true;
     if (!wallet) return false;
-    if (group.kind==='shareholder') return Boolean(database.getActiveATokenShareholderMember(wallet));
-    if (group.kind==='studio') return database.listATokenStakes(wallet).some(s=>s.planId==='energy'&&s.status==='active');
     return membership(group.number,wallet)?.status==='active';
   }
   function access(number,wallet) {
     const group=get(number); if(!group) fail('群号不存在');
     if (wallet && (database.getCommunityMember(wallet)?.status==='kicked'||membership(group.number,wallet)?.status==='kicked')) fail('你已被移出该群');
-    if (!entitled(group,wallet)) fail(group.kind==='private'?'私人群需要有效邀请后加入':'当前账号不符合该群加入条件');
+    if (!entitled(group,wallet)) fail(group.number===MAIN?'当前账号无法进入总群':'该群需要群号和邀请码才能加入');
     if(wallet) {
       database.ensureCommunityMember(wallet,`成员 ${key(wallet).slice(0,6)}…${key(wallet).slice(-4)}`,clock());
       db.prepare('INSERT OR IGNORE INTO community_group_members(group_number,wallet) VALUES(?,?)').run(group.number,key(wallet));
@@ -65,7 +68,9 @@ export function createCommunityGroupService({database, walletService, teamServic
   }
   function joinInside(wallet,{number,invite}) {
     const group=get(number);if(!group)fail('群号不存在');
-    if(group.kind==='private'&&!entitled(group,wallet)) {
+    // 总群直接进入；其他群一律校验邀请码。
+    if(group.number!==MAIN&&!entitled(group,wallet)) {
+      if(!group.invite)fail('该群暂未开放邀请，请联系群管理员');
       if(!invite||String(invite)!==group.invite)fail('群邀请码无效');
       if(membership(group.number,wallet)?.status==='kicked')fail('你已被移出该群');
       db.prepare('INSERT OR IGNORE INTO community_group_members(group_number,wallet) VALUES(?,?)').run(group.number,key(wallet));
