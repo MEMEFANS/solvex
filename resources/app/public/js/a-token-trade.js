@@ -1,4 +1,4 @@
-﻿﻿(() => {
+﻿﻿﻿﻿(() => {
   const P = Portal;
   let poolStats = null;
   let profile = null;
@@ -50,8 +50,9 @@
   };
   const fmtA = (v) => { const n = Number(v); return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '0'; };
   const fmtUsdt = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'; };
-  // 委托价 / 成交价：SVX 价格在 4 位小数上波动，2 位小数会看不出来（如 0.1045 显示成 $0.10）
-  const fmtPrice4 = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(4)}` : '—'; };
+  // 委托价 / 成交价：SVX 池价带 7-8 位小数（如 0.10001927），只显示 4 位会被截成 $0.1000，
+  // 用户按 $0.1 心算会以为 100U 应得 1000 SVX，与实际（按真实池价约 999.8）不符。统一显示 6 位。
+  const fmtPrice4 = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(6)}` : '—'; };
   function showOk(msg) { if (typeof showToast === 'function') showToast(msg, 'ok'); else alert(msg); }
   function showErr(msg) { if (typeof showToast === 'function') showToast(msg, 'error'); else alert(msg); }
   function friendlyError(e, fallback) {
@@ -225,8 +226,8 @@
         <div class="num ${cls}">$${priceStr}<small style="font-size:13px;color:var(--mut);margin-left:8px;font-weight:500">USDT</small></div>
         <div class="sub">
           <span class="change-pill price-change ${cls}">${up ? '+' : ''}${changePct.toFixed(2)}%</span>
-          <span class="price-range-item">24h 最高 <b style="color:var(--txt)">$${high24h.toFixed(4)}</b></span>
-          <span class="price-range-item">24h 最低 <b style="color:var(--txt)">$${low24h.toFixed(4)}</b></span>
+          <span class="price-range-item">24h 最高 <b style="color:var(--txt)">$${high24h.toFixed(6)}</b></span>
+          <span class="price-range-item">24h 最低 <b style="color:var(--txt)">$${low24h.toFixed(6)}</b></span>
         </div>
       </div>
       <div class="svx-market-details"><div class="atrade-spot-meta">
@@ -258,7 +259,7 @@
     return `<dialog id="svx-order-sheet" class="svx-order-sheet" aria-labelledby="svx-order-title" ${orderMedia.matches ? '' : 'open'}>
       <header class="svx-order-sheet-head"><div><h2 id="svx-order-title">SVX 交易</h2><p>核对方向、分区与预计到账金额</p></div><button type="button" onclick="window.atradeCloseOrder()" aria-label="关闭交易面板">✕</button></header>
       <aside class="aentry">
-      <div class="aentry-title">一键交易<small>SVX / USDT · 大盘价 $${price.toFixed(4)}</small></div>
+      <div class="aentry-title">一键交易<small>SVX / USDT · 大盘价 $${price.toFixed(6)}</small></div>
       <div class="aentry-switch">
         <button type="button" data-side="buy" class="active buy" onclick="window.atradeSide('buy')">买入 SVX</button>
         <button type="button" data-side="sell" class="sell" onclick="window.atradeSide('sell')">卖出 SVX</button>
