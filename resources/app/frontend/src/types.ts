@@ -28,7 +28,7 @@ export interface Leaderboard { items?: LeaderboardRow[]; total?: number; current
 export interface SupportTicket { id: string; wallet?: string; status?: string; userUnread?: number; adminUnread?: number; lastMessageAt?: number; lastBody?: string }
 export interface SupportMessage { id?: string | number | null; ticketId?: string; sender?: string; body?: string; createdAt?: number; readAt?: number | null }
 export interface SupportSession { ticket?: SupportTicket | null; messages?: SupportMessage[] }
-export interface CommunityGroup { number: string; name?: string; kind?: string; owner?: string; isAdmin?: boolean; invite?: string }
+export interface CommunityGroup { number: string; name?: string; kind?: string; owner?: string; mutedAll?: number; isAdmin?: boolean; invite?: string }
 export interface CommunityGroupList { groups?: CommunityGroup[]; canCreate?: boolean }
 export interface CommunityMember { address?: string; nickname?: string; avatar?: string; joinedAt?: number; mutedUntil?: number; status?: string; isAdmin?: boolean }
 export interface CommunityPacket { id: string; asset?: string; algorithm?: string; greeting?: string; total?: string; shareCount?: number; remainingCount?: number; claimedTotal?: string; status?: string; createdAt?: number; expiresAt?: number; mine?: boolean; grabbed?: boolean; claimAmount?: string }

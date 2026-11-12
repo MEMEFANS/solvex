@@ -10,12 +10,15 @@ export function createCommunityGroupService({database, walletService, teamServic
   const db=database.db;
   db.exec(`CREATE TABLE IF NOT EXISTS community_groups (
     number TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL,
-    owner TEXT NOT NULL DEFAULT '', invite TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL
+    owner TEXT NOT NULL DEFAULT '', invite TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
+    muted_all INTEGER NOT NULL DEFAULT 0
   ); CREATE TABLE IF NOT EXISTS community_group_members (
     group_number TEXT NOT NULL, wallet TEXT NOT NULL COLLATE NOCASE, status TEXT NOT NULL DEFAULT 'active',
     muted_until INTEGER NOT NULL DEFAULT 0, last_read_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(group_number,wallet)
   );`);
+  if (!db.prepare('PRAGMA table_info(community_groups)').all().some(c => c.name === 'muted_all'))
+    db.exec('ALTER TABLE community_groups ADD COLUMN muted_all INTEGER NOT NULL DEFAULT 0');
   for (const table of ['community_messages','community_red_packets']) {
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name==='group_number'))
       db.exec(`ALTER TABLE ${table} ADD COLUMN group_number TEXT NOT NULL DEFAULT '${MAIN}'`);
@@ -46,6 +49,7 @@ export function createCommunityGroupService({database, walletService, teamServic
   }
   function view(group,wallet) {
     return {number:group.number,name:group.name,kind:group.kind,owner:group.owner,
+      mutedAll:Number(group.muted_all||0),
       isAdmin:isAdmin(group,wallet),invite:isAdmin(group,wallet)?group.invite:undefined};
   }
   function list(wallet) {
@@ -71,7 +75,9 @@ export function createCommunityGroupService({database, walletService, teamServic
   function join(wallet,input) { return database.transaction(()=>joinInside(wallet,input)); }
   function moderate(number,actor,action,input) {
     const group=access(number,actor);if(!isAdmin(group,actor))fail('需要群管理员权限');
-    if(action==='message-delete') {
+    if(action==='mute-all'||action==='unmute-all') {
+      db.prepare('UPDATE community_groups SET muted_all=? WHERE number=?').run(action==='mute-all'?1:0,group.number);
+    } else if(action==='message-delete') {
       const msg=db.prepare('SELECT * FROM community_messages WHERE id=? AND group_number=?').get(Number(input.id),number);
       if(!msg)fail('群消息不存在');database.softDeleteCommunityMessage(msg.id,actor,clock());
     } else {
@@ -96,7 +102,10 @@ export function createCommunityGroupService({database, walletService, teamServic
         ensureCommunityMember:(w,nick,at)=>{access(n,w);database.ensureCommunityMember(w,nick,at);return selectMember(w);},
         listCommunityMembers:(limit=200)=>db.prepare("SELECT m.* FROM community_members m JOIN community_group_members g ON g.wallet=m.address WHERE g.group_number=? AND g.status='active' AND m.status='active' ORDER BY m.joined_at DESC LIMIT ?").all(n,Math.min(500,limit)),
         countCommunityMembers:()=>Number(db.prepare("SELECT COUNT(*) n FROM community_group_members WHERE group_number=? AND status='active'").get(n).n),
-        insertCommunityMessage:input=>{const r=db.prepare("INSERT INTO community_messages(wallet,nickname,body,client_id,kind,ref_id,created_at,group_number) VALUES(?,?,?,?,?,?,?,?)").run(key(input.wallet),input.nickname,input.body,String(input.clientId||''),input.kind||'text',input.refId||'',input.createdAt,n);return db.prepare('SELECT * FROM community_messages WHERE id=?').get(Number(r.lastInsertRowid));},
+        insertCommunityMessage:input=>{
+          const current=get(n);
+          if(Number(current?.muted_all||0)&&!isAdmin(current,input.wallet))fail('全员禁言中，仅群管理员可发言');
+          const r=db.prepare("INSERT INTO community_messages(wallet,nickname,body,client_id,kind,ref_id,created_at,group_number) VALUES(?,?,?,?,?,?,?,?)").run(key(input.wallet),input.nickname,input.body,String(input.clientId||''),input.kind||'text',input.refId||'',input.createdAt,n);return db.prepare('SELECT * FROM community_messages WHERE id=?').get(Number(r.lastInsertRowid));},
         getCommunityMessage:id=>db.prepare('SELECT * FROM community_messages WHERE id=? AND group_number=?').get(Number(id),n)||null,
         getCommunityMessageByClient:(w,c)=>db.prepare('SELECT * FROM community_messages WHERE wallet=? AND client_id=? AND group_number=?').get(key(w),c,n)||null,
         getCommunityMessageByRef:(kind,id)=>db.prepare('SELECT * FROM community_messages WHERE kind=? AND ref_id=? AND group_number=?').get(kind,id,n)||null,
