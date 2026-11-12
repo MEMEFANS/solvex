@@ -79,14 +79,16 @@ export function createATokenUpgradeService({ database, walletService, aTokenServ
     };
   }
 
-  // 进入升级仓：主钱包 A 余额 → 锁仓仓位；refId 幂等，重复提交不会重复扣币。
-  function enter({ wallet, amount, refId } = {}) {
+  // 进入升级仓：按用户选择的额度扣款（主钱包 / 蓄能额度 / 驱动额度）；refId 幂等。
+  const UPGRADE_SOURCES = ['wallet_a', 'alpha', 'beta'];
+  function enter({ wallet, amount, refId, source } = {}) {
     const key = k(wallet);
     if (!key) throw new Error('请连接钱包');
     const principal = aTokenService.parseA(String(amount ?? ''), '升级仓数量');
     if (principal <= 0n) throw new Error('升级仓数量必须大于 0');
     const ref = String(refId || '').trim();
     if (!ref) throw new Error('缺少幂等键');
+    const src = UPGRADE_SOURCES.includes(String(source || '')) ? String(source) : 'wallet_a';
 
     const existing = db.getATokenUpgradePositionByRef(key, ref);
     if (existing) { assertSameAmount(existing, principal); return { idempotent: true, position: positionView(existing), overview: overview(key) }; }
@@ -95,7 +97,8 @@ export function createATokenUpgradeService({ database, walletService, aTokenServ
     return transaction(() => {
       const dup = db.getATokenUpgradePositionByRef(key, ref);
       if (dup) { assertSameAmount(dup, principal); return { idempotent: true, position: positionView(dup), overview: overview(key) }; }
-      aTokenService.debitA(key, principal);
+      if (src === 'wallet_a') aTokenService.debitA(key, principal);
+      else db.debitATokenZone({ wallet: key, zone: src, units: principal.toString(), bizType: 'upgrade_enter', refId: ref, createdAt: now, payload: { source: src } });
       const position = db.insertATokenUpgradePosition({
         id: makeId(),
         wallet: key,
@@ -103,7 +106,7 @@ export function createATokenUpgradeService({ database, walletService, aTokenServ
         status: 'active',
         refId: ref,
         enteredAt: now,
-        payload: { source: 'wallet_a', lockDays: UPGRADE_LOCK_DAYS },
+        payload: { source: src, lockDays: UPGRADE_LOCK_DAYS },
       });
       if (!position) {
         const raced = db.getATokenUpgradePositionByRef(key, ref);
@@ -159,7 +162,11 @@ export function createATokenUpgradeService({ database, walletService, aTokenServ
           returnReason: 'matured',
         });
         if (!row) return false;
-        aTokenService.creditA(row.wallet, BigInt(row.principalUnits || '0'));
+        const units = BigInt(row.principalUnits || '0');
+        // 原路退回：从哪个额度进来就退回哪个额度，避免主钱包/分区串账
+        const src = String(row.payload?.source || 'wallet_a');
+        if (src === 'alpha' || src === 'beta') db.creditATokenZone({ wallet: row.wallet, zone: src, units, bizType: 'upgrade_return', refId: row.id, createdAt: now, payload: { positionId: row.id } });
+        else aTokenService.creditA(row.wallet, units);
         // 返还本金不产生收益、不计业绩，只可能在之后进入新仓时再影响等级；这里无需额外处理等级。
         return true;
       });

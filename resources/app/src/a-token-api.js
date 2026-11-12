@@ -639,7 +639,7 @@ export function createATokenApi({
         const requestId = idempotencyKey(request);
         try {
           const result = await withAccountLock(session.address, () => upgradeService.enter({
-            wallet: session.address, amount: String(body.amount ?? ''), refId: requestId,
+            wallet: session.address, amount: String(body.amount ?? ''), refId: requestId, source: String(body.source ?? ''),
           }));
           return send(res, 200, { ok: true, ...result });
         } catch (e) { return sendError(res, e); }

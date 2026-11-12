@@ -139,6 +139,10 @@ body.solvex-react { background:var(--bg); color:var(--body); font-size:14px; }
 .rx-tier[data-tone] .rx-tier-invest:hover { background:var(--metal-btn-hover); }
 .rx-tier[data-tone] .rx-tier-invest svg { color:#fff; }
 .rx-form-balance { background:#f5f8fd; border:1px solid #cbd4e5; padding:18px; }
+/* 升级舱：扣款额度三选一 */
+.rx-source-switch { display:flex; gap:6px; margin-bottom:10px; }
+.rx-source-switch button { flex:1; padding:9px 4px; font-size:13px; border-radius:10px; border:1px solid #cbd4e5; background:#fff; color:#4a5468; cursor:pointer; }
+.rx-source-switch button.active { border-color:#7c5cd6; background:#f3eeff; color:#5b3fb5; font-weight:600; }
 .rx-form-balance>span,.rx-form-balance>strong>small { font-size:12px; }
 .rx-form-balance>strong { font-size:27px; }
 .rx-amount-form label { font-size:14px; color:#2a3245; }

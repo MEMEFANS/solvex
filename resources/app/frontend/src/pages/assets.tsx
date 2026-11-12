@@ -11,9 +11,10 @@ import { formatDecimal, formatUnits, mulDecimal, sumDecimal } from '@/lib/utils'
 import { depositUsdt, openUsdtWithdrawal } from '@/lib/wallet';
 import type { CapitalRow, PlatformProfile, RevenueReport, WalletConfig, WalletProfile } from '@/types';
 
-const NAMES: Record<string, string> = { USDT:'Tether', BTC:'Bitcoin', ETH:'Ethereum', BNB:'BNB', SOL:'Solana', XRP:'XRP', DOGE:'Dogecoin', A:'Solvex 平台原生代币' };
-const disp = (symbol: string) => symbol === 'A' ? 'SVX' : symbol;
-const logo = (symbol: string) => symbol === 'A' ? '/assets/brand/logo.svg' : `/assets/tokens/${symbol.toLowerCase()}.png?v=20261111-domain-solvex-1`;
+const NAMES: Record<string, string> = { USDT:'Tether', BTC:'Bitcoin', ETH:'Ethereum', BNB:'BNB', SOL:'Solana', XRP:'XRP', DOGE:'Dogecoin', A:'Solvex 平台原生代币', 'A-ALPHA':'SVX 蓄能额度', 'A-BETA':'SVX 驱动额度' };
+// 三种 SVX 分开显示：主钱包、蓄能额度（矿池/能量扣款）、驱动额度
+const disp = (symbol: string) => symbol === 'A' ? 'SVX' : symbol === 'A-ALPHA' ? 'SVX 蓄能额度' : symbol === 'A-BETA' ? 'SVX 驱动额度' : symbol;
+const logo = (symbol: string) => symbol.startsWith('A') ? '/assets/brand/logo.svg' : `/assets/tokens/${symbol.toLowerCase()}.png?v=20261111-domain-solvex-1`;
 const shortAddr = (value?: string) => value && value.length > 12 ? `${value.slice(0, 6)}…${value.slice(-4)}` : value || '—';
 const money = (value?: string | number) => formatDecimal(value, 2);
 const signed = (value: string) => value.startsWith('-') ? value : '+' + value;
@@ -88,16 +89,21 @@ export default function AssetsPage() {
   const symbols = useMemo(() => {
     const list = ['USDT', ...(platform?.symbols || []).filter(symbol => symbol !== 'USDT')];
     if (!list.includes('A')) list.splice(1, 0, 'A');
-    return list;
+    // 紧跟在 SVX 后追加蓄能额度 / 驱动额度两行，方便一眼看清三个口袋
+    list.splice(list.indexOf('A') + 1, 0, 'A-ALPHA', 'A-BETA');
+    return [...new Set(list)];
   }, [platform?.symbols]);
   const rows = useMemo(() => symbols.map(symbol => {
     const account = platform?.account || {};
     const isUsdt = symbol === 'USDT';
-    const available = isUsdt ? (account.availableMargin ?? balances?.USDT) : symbol === 'A' ? (balances?.A ?? platform?.spot?.A) : platform?.spot?.[symbol];
-    const frozen = isUsdt ? account.reservedUsdt : platform?.spotFrozen?.[symbol];
-    const price = isUsdt ? '1' : (platform?.marketPrices?.[symbol] || (symbol === 'A' ? markPrice : '0'));
+    const zone = symbol === 'A-ALPHA' ? 'alpha' : symbol === 'A-BETA' ? 'beta' : null;
+    const available = isUsdt ? (account.availableMargin ?? balances?.USDT)
+      : zone ? aTokenProfileQuery.data?.zones?.[zone]
+      : symbol === 'A' ? (balances?.A ?? platform?.spot?.A) : platform?.spot?.[symbol];
+    const frozen = isUsdt ? account.reservedUsdt : zone ? undefined : platform?.spotFrozen?.[symbol];
+    const price = isUsdt ? '1' : (platform?.marketPrices?.[symbol] || (symbol.startsWith('A') ? markPrice : '0'));
     return { symbol, available: formatDecimal(available, 8), frozen: formatDecimal(frozen, 8), total: formatDecimal(available, 8), valuation: mulDecimal(available || '0', price) };
-  }), [symbols, platform, balances, markPrice]);
+  }), [symbols, platform, balances, markPrice, aTokenProfileQuery.data]);
   const totalEquity = platform?.account?.totalEquity || mulDecimal(balances?.A || '0', platform?.marketPrices?.A || markPrice);
   const parts = [
     { name:'可用资金', value: platform?.account?.availableMargin }, { name:'现货账户', value: platform?.account?.spotValue },
@@ -115,7 +121,9 @@ export default function AssetsPage() {
   const renderActions = (symbol: string) => <>
     {symbol === 'USDT' && <><button onClick={openFunding}>充值</button><button onClick={() => { openUsdtWithdrawal().catch(error => toast.error(error instanceof Error ? error.message : '提现模块加载失败')); }}>提现</button></>}
     {symbol === 'A' && <button onClick={() => { void window.switchTab('a-token-trade'); }}>SVX 交易</button>}
-    {symbol !== 'USDT' && symbol !== 'A' && <button onClick={() => { void window.openTradePage('spot', symbol); }}>交易</button>}
+    {symbol === 'A-ALPHA' && <button onClick={() => { void window.switchTab('earn'); }}>投入矿池</button>}
+    {symbol === 'A-BETA' && <button onClick={() => { void window.switchTab('ecosystem'); }}>驱动额度</button>}
+    {symbol !== 'USDT' && !symbol.startsWith('A') && <button onClick={() => { void window.openTradePage('spot', symbol); }}>交易</button>}
   </>;
 
   if (!wallet.authenticated) return <div className="rx-page rx-stack"><PageHeading title="我的资产" subtitle="连接钱包后查看总资产、账户分布与资金记录。" /><Gate /></div>;
