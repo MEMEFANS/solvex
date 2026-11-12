@@ -45,7 +45,7 @@ export default function RankingPage() {
               <td>{formatDecimal(row.volume30d, 2)}</td>
             </tr>)}</tbody>
           </table></div>}
-          <p className="rx-note">本榜仅统计合约跟单（AI 托管）的投入 USDT 与收益，不含现货交易、质押、矿机、推荐佣金、手续费返佣。30D ROI = 30D 跟单收益 ÷ 跟单投入 USDT。</p>
+          <p className="rx-note">本榜仅统计合约跟单（AI 托管）的投入 USDT 与收益，不含现货交易、质押、矿池、推荐佣金、手续费返佣。30D ROI = 30D 跟单收益 ÷ 跟单投入 USDT。</p>
         </CardContent>
       </Card>
     </div>}

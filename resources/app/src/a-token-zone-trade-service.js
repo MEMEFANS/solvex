@@ -91,13 +91,13 @@ export function createATokenZoneTradeService({ aTokenService, database, sharehol
     const a = at.parseA(amount, '卖出 SVX 数量');
     if (a < MIN_SELL_A) throw new Error('SVX 卖出最低 1 个起');
     const gross = at.aToUsdt(a, price);
-    const fee = gross * SELL_FEE_BPS / BPS;
-    const net = gross - fee;
+    const feeA = a * SELL_FEE_BPS / BPS;
+    const net = gross;
     return {
       side, zone, priceUsdt: priceStr,
-      aIn: fmtA(a), grossUsdt: fmtU(gross), feeUsdt: fmtU(fee), usdtOut: fmtU(net),
+      aIn: fmtA(a), grossUsdt: fmtU(gross), feeSvx: fmtA(feeA), feeUsdt: '0', usdtOut: fmtU(net),
       feeRateBps: Number(SELL_FEE_BPS), feePct: '5%',
-      hint: `按大盘价 $${priceStr}：卖出 ${fmtA(a)} SVX 得 ${fmtU(gross)} USDT，扣 5% 手续费 ${fmtU(fee)} USDT（50%用于销毁、50%进股东池），实收 ${fmtU(net)} USDT`,
+      hint: `按大盘价 $${priceStr}：卖出 ${fmtA(a)} SVX 得 ${fmtU(gross)} USDT，扣 5% 手续费 ${fmtA(feeA)} SVX（50%用于销毁、50%进股东池），实收 ${fmtU(net)} USDT`,
     };
   }
 
@@ -184,8 +184,8 @@ export function createATokenZoneTradeService({ aTokenService, database, sharehol
       throw new Error(`SVX 可用余额不足：当前 ${fmtA(at.balanceA(wallet))} SVX`);
     }
     const gross = at.aToUsdt(a, price);
-    const fee = gross * SELL_FEE_BPS / BPS;
-    const net = gross - fee;
+    const feeA = a * SELL_FEE_BPS / BPS;
+    const net = gross;
     const now = clock();
     const orderId = makeId('azo');
 
@@ -205,10 +205,10 @@ export function createATokenZoneTradeService({ aTokenService, database, sharehol
     }
     const inserted = db.insertATokenZoneOrder({
       id: orderId, wallet, side: 'sell', zone: 'beta', requestId: reqId,
-      usdtUnits: gross.toString(), aUnits: a.toString(), feeUnits: fee.toString(),
+      usdtUnits: gross.toString(), aUnits: a.toString(), feeUnits: feeA.toString(),
       status: 'filled', createdAt: now,
       payload: {
-        priceUsdtUnits: price.toString(), feeAsset: 'USDT',
+        priceUsdtUnits: price.toString(), feeAsset: 'SVX',
         netUsdtUnits: net.toString(), treasuryPaid,
       },
     });
@@ -223,11 +223,11 @@ export function createATokenZoneTradeService({ aTokenService, database, sharehol
       if (again) return replay(again, 'sell', 'beta', a);
       throw new Error('卖出请求冲突，请稍后重试');
     }
-    if (fee > 0n) {
+    if (feeA > 0n) {
       try {
         shareholderService?.recordFee({
           source: 'sell_fee', refId: `zonesell:${orderId}`, wallet,
-          usdtUnits: fee.toString(), payload: { orderId },
+          svxUnits: feeA.toString(), payload: { orderId, asset: 'A' },
         });
       } catch (e) { throw e; }
     }

@@ -7,7 +7,6 @@ import { createWalletService } from '../src/wallet-service.js';
 import { closeDatabase } from '../src/database.js';
 import { createATokenService } from '../src/a-token-service.js';
 import { createATokenTeamService } from '../src/a-token-team-service.js';
-import { createATokenMinerService } from '../src/a-token-miner-service.js';
 import { createATokenPendingService } from '../src/a-token-pending-service.js';
 import { createATokenStakingService } from '../src/a-token-staking-service.js';
 import { createATokenRevenueService } from '../src/a-token-revenue-service.js';
@@ -27,7 +26,6 @@ function fixture(run) {
   const referrals = createReferralService({database:db, walletService:wallet});
   const pending = createATokenPendingService({aTokenService:at, database:db, clock:()=>now});
   const stake = createATokenStakingService({database:db, aTokenService:at, teamService:team, pendingService:pending, clock:()=>now});
-  const miner = createATokenMinerService({database:db, aTokenService:at, teamService:team, clock:()=>now});
   const revenue = createATokenRevenueService({database:db});
   const fund = (n, amount) => { wallet.ensureUser(user(n)); if (amount) at.creditA(user(n), A(amount)); return user(n); };
   const addAlpha = (w, amount) => db.creditATokenZone({
@@ -40,7 +38,7 @@ function fixture(run) {
   });
   try {
     run({
-      root, db, at, team, stake, miner, revenue, referrals, wallet, fund, addAlpha, link, activate, pending,
+      root, db, at, team, stake, revenue, referrals, wallet, fund, addAlpha, link, activate, pending,
       now:()=>now, setNow:ts=>{ now = Number(ts); }, advance:days=>now+=days*DAY,
     });
   } finally { closeDatabase(root); fs.rmSync(root,{recursive:true,force:true}); }
@@ -114,10 +112,10 @@ fixture(({at,stake,pending,fund,addAlpha,setNow}) => {
   assert.equal(at.balanceA(child)-mid,A(8),'之后每个 UTC 结算日释放一天');
 });
 
-fixture(({db,at,team,stake,miner,pending,fund,link,addAlpha,advance,now}) => {
+fixture(({db,at,team,stake,pending,fund,link,addAlpha,advance}) => {
   const child=fund(11), parent=fund(12); link(child,parent);
   addAlpha(child,1000);
-  const s=stake.stake(child,'energy','1000'); const m=miner.createMiner(child,'mini120');
+  const s=stake.stake(child,'energy','1000');
   advance(1);
   // 结算写待领取失败：整笔事务回滚，仓位保持未结算
   const realCreate=pending.createReward;
@@ -128,40 +126,7 @@ fixture(({db,at,team,stake,miner,pending,fund,link,addAlpha,advance,now}) => {
   assert.equal(failedRow.totalEarnedUnits,'0'); assert.equal(failedRow.status,'active');
   pending.createReward=realCreate; stake.processAll();
   assert.equal(BigInt(pending.list(child,'pending')[0].amountUnits),A(10));
-  const realMiner=team.distributeMinerReward;
-  team.distributeMinerReward=()=>{throw new Error('injected miner failure');};
-  const preMiner=at.balanceA(child);
-  // 单台失败由巡检捕获并留待重试；必须回滚该台余额和流水。
-  assert.doesNotThrow(()=>miner.processAll()); assert.equal(at.balanceA(child),preMiner);
-  assert.equal(readAixIncome(db,child,'miner').length,0);
-  team.distributeMinerReward=realMiner; miner.processAll();
-  assert.equal(readAixIncome(db,child,'miner').length,1);
-  const recorded=at.balanceA(parent);
-  team.distributeMinerReward(child,A(100)/30n,m.id,now()); assert.equal(at.balanceA(parent),recorded);
   assert.equal(db.db.prepare('SELECT started_at FROM a_token_stakes WHERE id=?').get(s.id).started_at,s.startedAt);
-});
-
-fixture(({at,team,miner,fund,advance,db}) => {
-  const good=fund(16), bad=fund(17);
-  const goodMiner=miner.createMiner(good,'mini120');
-  miner.createMiner(bad,'mini120');
-  advance(1);
-  const original=team.distributeMinerReward;
-  team.distributeMinerReward=(wallet,...args)=>{
-    original(wallet,...args);
-    if(wallet===bad) throw new Error('injected later miner failure');
-  };
-  miner.processAll();
-  assert.equal(at.balanceA(good),A(100)/30n,'healthy miner credited once after batch rollback and fallback');
-  assert.equal(at.balanceA(bad),0n,'failed miner has no memory credit');
-  assert.equal(readAixIncome(db,good,'miner').length,1);
-  assert.equal(readAixIncome(db,bad,'miner').length,0);
-  assert.equal(BigInt(JSON.parse(db.db.prepare('SELECT balances_json FROM wallet_users WHERE address=? COLLATE NOCASE').get(bad).balances_json).A),0n);
-  assert.equal(BigInt(miner.present(good).find(row=>row.id===goodMiner.id).totalEarnedUnits),A(100)/30n);
-  team.distributeMinerReward=original;
-  miner.processAll();
-  assert.equal(at.balanceA(good),A(100)/30n,'retry does not duplicate healthy miner payout');
-  assert.equal(at.balanceA(bad),A(100)/30n);
 });
 
 // 多笔能量仓位独立按天释放：领取一笔不影响另一笔，累计释放封顶各自本金
@@ -188,21 +153,6 @@ fixture(({db,at,stake,pending,fund,addAlpha,setNow}) => {
   assert.equal(all.length,200,'两笔仓位各 100 天');
   assert.equal(all.reduce((sum,r)=>sum+BigInt(r.amountUnits),0n),A(2000),'累计释放 = 两笔本金，不超发');
   assert.ok(stake.present(child).every(s=>s.status==='completed'));
-});
-
-fixture(({db,revenue,miner,fund,now}) => {
-  const child=fund(31); const m=miner.createMiner(child,'mini120');
-  const t=beijingDayStart(Date.now())-DAY+1000;
-  db.transaction(()=>{
-    const insert=db.db.prepare('INSERT INTO a_token_miner_releases VALUES(?,?,?,?,?,?)');
-    for(let i=0;i<6001;i++) insert.run('legacy_'+i,m.id,child,'1000000000000000',t+i,JSON.stringify({minerId:m.id}));
-  });
-  const result=revenue.listRevenue(child,{limit:1});
-  assert.equal(result.total,'6.001'); assert.equal(result.stats.yesterday,'6.001');
-  assert.equal(result.list[0].createdAt,t+6000);
-  assert.equal(result.list[0].detail.includes('6001 笔'),true);
-  assert.equal(db.listATokenMinerReleases(child,1)[0].releasedAt,t+6000);
-  assert.equal(A(result.total),A(result.stats.miner)+A(result.stats.stake)+A(result.stats.direct)+A(result.stats.team));
 });
 
 fixture(({team,referrals,fund,link,at,db,now}) => {

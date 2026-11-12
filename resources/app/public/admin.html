@@ -48,9 +48,7 @@
         <div class="admin-sidebar-divider" aria-hidden="true"></div>
         <button type="button" data-admin-page="a-kline"><span class="admin-nav-icon">📈</span>SVX 行情调控</button>
         <button type="button" data-admin-page="a-token-balance"><span class="admin-nav-icon">💎</span>SVX 代币管理</button>
-        <button type="button" data-admin-page="a-miner"><span class="admin-nav-icon">⛏️</span>SVX 矿机管理</button>
         <button type="button" data-admin-page="blindbox"><span class="admin-nav-icon">🎲</span>盲盒概率</button>
-        <button type="button" data-admin-page="team-activations"><span class="admin-nav-icon">🔍</span>团队激活查询</button>
         <button type="button" data-admin-page="announcement"><span class="admin-nav-icon">📢</span>平台公告</button>
         <button type="button" data-admin-page="support"><span class="admin-nav-icon">💬</span>在线客服<span id="admin-support-nav-badge" class="admin-nav-badge" hidden>0</span></button>
         <button type="button" data-admin-page="mall"><span class="admin-nav-icon">🛍️</span>商城商户</button>
@@ -236,12 +234,6 @@
         </section>
       </section>
 
-      <section class="admin-page-panel" data-admin-panel="a-miner">
-        <section class="admin-content-block">
-          <header><div><h2>SVX 矿机管理</h2><p>SVX 代币矿机发放、搜索、手动产出、强制过期等后台运营操作</p></div><button class="admin-secondary-button" type="button" id="admin-a-miner-refresh">🔄 刷新</button></header>
-          <div id="admin-a-miner-root" class="admin-a-module">正在读取矿机数据...</div>
-        </section>
-      </section>
       <section class="admin-page-panel" data-admin-panel="blindbox">
         <section class="admin-content-block">
           <header><div><h2>盲盒概率配置</h2><p>每档填写「币数（100–500 的整数）」与「权重（百分比，最多两位小数）」，权重合计必须等于 100% 才能保存。当前没有有效配置时，开盒回退为 100–500 均匀随机。</p></div><button class="admin-secondary-button" type="button" id="admin-blindbox-refresh">🔄 刷新</button></header>
@@ -252,27 +244,6 @@
           <div id="admin-blindbox-dist" class="admin-a-module">——</div>
         </section>
       </section>
-      <section class="admin-page-panel" data-admin-panel="team-activations">
-        <section class="admin-content-block">
-          <header><div><h2>团队激活查询</h2><p>输入钱包地址，统计其整个团队（各级下线）的 Mini / Pro 矿机激活数量；可按直推排除后查看净数</p></div></header>
-          <div class="admin-credit-form" style="flex-direction:row;gap:8px;align-items:flex-end">
-            <label style="flex:1">钱包地址<input id="admin-team-wallet" autocomplete="off" placeholder="0x..."></label>
-            <button class="admin-secondary-button" type="button" id="admin-team-query-btn">查询</button>
-          </div>
-          <div id="admin-team-result" class="admin-inline-status"></div>
-        </section>
-        <section class="admin-content-block" id="admin-team-detail" hidden>
-          <header class="admin-list-header">
-            <div><h2>直推明细</h2><p id="admin-team-direct-count">0 个直推</p></div>
-            <button class="admin-secondary-button" type="button" id="admin-team-clear-exclude">清除排除</button>
-          </header>
-          <div class="admin-table-scroll"><table>
-            <thead><tr><th>排除</th><th>直推地址</th><th>该直推团队人数</th><th>Mini</th><th>Pro</th></tr></thead>
-            <tbody id="admin-team-direct-body"></tbody>
-          </table></div>
-        </section>
-      </section>
-
       <section class="admin-page-panel" data-admin-panel="announcement">
         <section class="admin-content-block">
           <header><div><h2>平台公告</h2><p>最多同时展示 2 条公告，各自独立开关与关闭，支持中英双语、随用户切换语言自动切换；英文留空时英文用户回退显示中文</p></div></header>

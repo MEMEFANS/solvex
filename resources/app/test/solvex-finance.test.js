@@ -41,12 +41,12 @@ try {
  assert.equal(team.getLevel(parent),2);assert.equal(team.getLevel(top),3);
  const before=at.balanceA(parent);
  team.distributeStakeReward(child,A(100),'interest_only',now);
- const rewards=pending.list(parent);assert.equal(rewards.length,2); // 10% direct + V2 10%
- assert.equal(rewards.reduce((n,r)=>n+BigInt(r.amountUnits),0n),A(20));
+ const rewards=pending.list(parent);assert.equal(rewards.length,1); // 仅直推 10%（级差只按矿池利息计提）
+ assert.equal(rewards.reduce((n,r)=>n+BigInt(r.amountUnits),0n),A(10));
  assert.equal(pending.list(grand).length,0);assert.equal(pending.list(top).length,0,'equal-level link stops higher ancestors');
  assert.equal(at.balanceA(parent),before);
  for(const r of rewards)pending.claim(parent,r.id);
- assert.equal(at.balanceA(parent),before+A(20));assert.equal(BigInt(db.getATokenSellQuota(parent).releasedUnits),A(20));
+ assert.equal(at.balanceA(parent),before+A(10));assert.equal(BigInt(db.getATokenSellQuota(parent).releasedUnits),A(10));
  team.distributeStakeReward(child,A(100),'interest_only',now);assert.equal(pending.list(parent).length,0);
  upgrade.redeem({wallet:parent,positionId:pos.id});assert.equal(team.getLevel(parent),0,'warehouse redemption drops rank immediately');
  assert.throws(()=>team.setManualLevel(parent,10),/双条件|自动计算/);
@@ -56,16 +56,14 @@ try {
 
  assert.throws(()=>trade.buy({wallet:buyer,zone:'market',usdtAmount:'10',requestId:'free_before'}),/平台流动性准备金/);
  const buy=trade.buy({wallet:buyer,zone:'beta',usdtAmount:'10',requestId:'drive_buy'});
- assert.equal(buy.aOut,'100.0');assert.equal(at.balanceUsdt(buyer),U('9989.5'));
+ assert.equal(buy.aOut,'100.0');assert.equal(at.balanceUsdt(buyer),U('9990'));
  assert.equal(BigInt(db.listATokenZoneBalances(buyer).beta),A(100),'乙区买入的币应留在乙区');
  assert.equal(BigInt(db.getATokenTurboQuota(buyer).units),0n,'乙区买入不再直接发放超速驱动驱动额度');
- trade.buy({wallet:buyer,zone:'beta',usdtAmount:'10',requestId:'drive_buy'});assert.equal(at.balanceUsdt(buyer),U('9989.5'));
+ trade.buy({wallet:buyer,zone:'beta',usdtAmount:'10',requestId:'drive_buy'});assert.equal(at.balanceUsdt(buyer),U('9990'));
  const badTrade=createATokenZoneTradeService({...options,shareholderService:{recordFee(){throw Error('injected fee failure');}}});
- assert.throws(()=>badTrade.buy({wallet:buyer,zone:'alpha',usdtAmount:'20',requestId:'rollback_buy'}),/injected/);
- assert.equal(at.balanceUsdt(buyer),U('9989.5'));assert.ok(!db.getATokenZoneOrder(buyer,'rollback_buy'));
  db.addATokenUsableQuota(buyer,A(50));
  at.creditA(buyer,A(100));   // 乙区币需经涡轮释放才进主 A，这里直接补主 A 覆盖卖出链路
- const sell=trade.sell({wallet:buyer,aixAmount:'10',requestId:'sell_once'});assert.equal(sell.netUsdt,'0.95');
+ const sell=trade.sell({wallet:buyer,aixAmount:'10',requestId:'sell_once'});assert.equal(sell.netUsdt,'1.0');
  const quotaBefore=db.getATokenUsableQuota(buyer),balanceBefore=at.balanceA(buyer),usdtBefore=at.balanceUsdt(buyer);
  assert.throws(()=>badTrade.sell({wallet:buyer,aixAmount:'10',requestId:'rollback_sell'}),/injected/);
  assert.equal(at.balanceA(buyer),balanceBefore);assert.equal(at.balanceUsdt(buyer),usdtBefore);assert.deepEqual(db.getATokenUsableQuota(buyer),quotaBefore);
@@ -75,16 +73,16 @@ try {
  assert.equal(trade.buy({wallet:buyer,zone:'market',usdtAmount:'1',requestId:'free_after'}).zone,'market');
 
  const m=shareholders.join({wallet:top,refId:'shareholder'}).member;
- shareholders.recordFee({source:'adjustment',refId:'first_dividend',wallet:buyer,usdtUnits:U(4000).toString()});
+ shareholders.recordFee({source:'adjustment',refId:'first_dividend',wallet:buyer,svxUnits:A(40000).toString()});
  now+=DAY;const d=pending.list(top).find(r=>r.bizType==='dividend');assert.ok(d);pending.claim(top,d.id);
- shareholders.recordFee({source:'adjustment',refId:'unclaimed_dividend',wallet:buyer,usdtUnits:U(4000).toString()});
+ shareholders.recordFee({source:'adjustment',refId:'unclaimed_dividend',wallet:buyer,svxUnits:A(40000).toString()});
  const unclaimed=pending.list(top).filter(r=>r.bizType==='dividend');assert.ok(unclaimed.length);
  assert.equal(shareholders.memberView(db.getActiveATokenShareholderMember(top)).dividendUnits,d.amountUnits);
- const refund=shareholders.withdraw({wallet:top});assert.equal(BigInt(refund.refundUnits),U(500)-BigInt(d.amountUnits));
+ const refund=shareholders.withdraw({wallet:top});assert.equal(BigInt(refund.refundUnits),U(500));
  for(const r of unclaimed)assert.equal(db.getATokenPendingReward(r.id).status,'reversed');
  assert.ok(db.listATokenShareholderPoolsByTier('t1000',100).every(p=>p.status!=='settled'));
  at.burn(at.BURN_CAP-A(1)-BigInt(at.getPoolMeta().totalBurnedUnits),'test','near cap');
- shareholders.recordFee({source:'adjustment',refId:'burn_cap',usdtUnits:U(2).toString()});
+ shareholders.recordFee({source:'adjustment',refId:'burn_cap',svxUnits:A(2).toString()});
  assert.equal(BigInt(at.getPoolMeta().totalBurnedUnits),at.BURN_CAP);assert.equal(at.burn(A(1),'test','cap'),0n);
 
  const blind=createATokenBlindBoxService({...options,randomCoins:()=>301n});
@@ -99,7 +97,7 @@ try {
  assert.equal((await request(grant)).payload.energy.id,granted.payload.energy.id);
  assert.equal((await request({...grant,amount:'2000'})).status,409);
  assert.equal((await request({...grant,amount:'-1',requestId:'negative'})).status,400);
- assert.equal((await request(grant,undefined,'POST','/api/wallet/admin/miner-grants')).status,403);
+ assert.equal((await request(grant,undefined,'POST','/api/wallet/admin/miner-grants')).status,410);
  db.db.exec("CREATE TEMP TRIGGER fail_energy_audit BEFORE INSERT ON audit_log WHEN NEW.event_type='funds_energy_grant' BEGIN SELECT RAISE(ABORT,'audit failure'); END");
  assert.equal((await request({...grant,requestId:'audit_failure'})).status,400);
  assert.equal(db.listATokenStakes(buyer).filter(s=>s.id==='energy_admin_audit_failure').length,0);

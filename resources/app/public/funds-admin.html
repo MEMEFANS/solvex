@@ -13,7 +13,7 @@
 </head>
 <body>
   <main class="funds-shell">
-    <header class="funds-header"><div><span class="eyebrow">Solvex Exchange</span><h1>资金管理后台</h1><p>提现审核 · 资产调整 · 矿机赠送</p></div><button id="funds-lock" type="button" class="secondary" hidden>锁定并退出</button></header>
+    <header class="funds-header"><div><span class="eyebrow">Solvex Exchange</span><h1>资金管理后台</h1><p>提现审核 · 资产调整 · 能量充值</p></div><button id="funds-lock" type="button" class="secondary" hidden>锁定并退出</button></header>
     <section id="funds-login" class="card login-card">
       <h2>验证资金管理权限</h2><p>使用原提现后台的独立管理令牌登录。</p>
       <form id="funds-login-form"><label>资金管理令牌<input id="funds-token" type="password" autocomplete="off" spellcheck="false" required></label><button type="submit">进入资金后台</button></form>
@@ -34,7 +34,7 @@
         <section class="card"><h2>资产操作记录</h2><p id="funds-credit-count">尚未读取</p><div class="table-scroll"><table><thead><tr><th>操作时间</th><th>钱包地址</th><th>数量</th><th>备注</th><th>管理员</th></tr></thead><tbody id="funds-credits-body"></tbody></table></div></section>
       </section>
       <section id="funds-assets" hidden>
-        <section class="card"><h2>USDT / SVX 资产调整</h2><p>增加或扣除用户的平台余额。请核对钱包、币种、数量并填写原因。赠送 SVX 只增加余额，不发放流通额度，获得的 SVX 仅可用于质押/开矿机，不可直接挂卖。</p>
+        <section class="card"><h2>USDT / SVX 资产调整</h2><p>增加或扣除用户的平台余额。请核对钱包、币种、数量并填写原因。赠送 SVX 只增加余额，不发放流通额度，获得的 SVX 仅可用于质押/参与矿池，不可直接挂卖。</p>
           <form id="funds-asset-form" class="grid-form">
             <label>用户钱包地址<input id="funds-asset-wallet" placeholder="0x…" autocomplete="off" pattern="0x[a-fA-F0-9]{40}" required></label>
             <label>币种<select id="funds-asset-symbol"><option value="A">SVX</option><option value="USDT">USDT</option></select></label>

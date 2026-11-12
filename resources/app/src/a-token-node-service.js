@@ -155,7 +155,7 @@ export function createATokenNodeService({ aTokenService, database, pendingServic
           periodKey: 'interest_' + end, amountUnits: amount.toString(), quotaUnits: amount.toString(),
           availableAt: available, expiresAt: nextSettlementAt(available),
           payload: { component: 'interest', interestUnits: amount.toString(), principalUnits: '0' } });
-        teamService?.distributeStakeReward?.(node.wallet, amount, node.id, available, now);
+        teamService?.distributeNodeReward?.(node.wallet, amount, node.id, available, now);
       }
       last = end;
       node.lastInterestAt = end;

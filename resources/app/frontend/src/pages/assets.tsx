@@ -220,7 +220,7 @@ export default function AssetsPage() {
             <div className="aix-revenue-summary">
               {revenueQuery.isLoading ? '正在加载…' : <>
                 <div className="aix-rev-total"><span className="lbl">累计 SVX 收益</span><span className="val">{formatDecimal(revenue?.total, 2)}<small>SVX</small></span></div>
-                {[['昨日收益', 'yesterday'], ['矿池产出', 'miner'], ['能量释放', 'stake'], ['直推收益(10%)', 'direct'], ['间推/级差收益', 'team']].map(([title, key]) => <div className="aix-rev-item" key={key}><div className="lbl">{title}</div><div className="val">{formatDecimal(revenue?.stats?.[key], 2)} <small>SVX</small></div></div>)}
+                {[['昨日收益', 'yesterday'], ['能量释放', 'stake'], ['直推收益(10%)', 'direct'], ['间推/级差收益', 'team']].map(([title, key]) => <div className="aix-rev-item" key={key}><div className="lbl">{title}</div><div className="val">{formatDecimal(revenue?.stats?.[key], 2)} <small>SVX</small></div></div>)}
               </>}
             </div>
           </RecordBlock>

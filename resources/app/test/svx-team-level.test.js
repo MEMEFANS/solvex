@@ -1,4 +1,4 @@
-import assert from 'node:assert/strict';
+﻿import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -112,35 +112,35 @@ fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) =>
   assert.equal(team.getLevel(grand), 2);
 
   // parent(V1=5%) 对 child(V0) → 5%；grand(V2=10%) 对 parent(V1=5%) → 5%。
-  // 2026-11-12：级差只按矿机静态产出计提，节点/质押收益不再参与级差。
-  team.distributeMinerReward(child, A(1000), 'miner_p3_diff', now);
-  const parentRows = db.listATokenTeamRewards(parent, 50).filter(r => r.kind === 'miner_level_diff');
-  const grandRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'miner_level_diff');
+  // 2026-11-12：级差按矿池每日利息计提。
+  team.distributeNodeReward(child, A(1000), 'node_p3_diff', now);
+  const parentRows = db.listATokenTeamRewards(parent, 50).filter(r => r.kind === 'node_level_diff');
+  const grandRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(parentRows.length, 1);
   assert.equal(BigInt(parentRows[0].amountUnits), A(50));
   assert.equal(grandRows.length, 1);
   assert.equal(BigInt(grandRows[0].amountUnits), A(50));
 
-  // 级差收益进待领取：parent 50、grand 50（矿机静态产出没有直推奖励）。
+  // 级差收益进待领取：parent 直推 100 + 级差 50，grand 仅级差 50。
   const parentPending = pending.list(parent).filter(row => row.bizType === 'team');
   const grandPending = pending.list(grand).filter(row => row.bizType === 'team');
-  assert.equal(parentPending.length, 1);
-  assert.equal(parentPending.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(50));
+  assert.equal(parentPending.length, 2);
+  assert.equal(parentPending.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(150));
   assert.equal(grandPending.length, 1);
   assert.equal(BigInt(grandPending[0].amountUnits), A(50));
 
-  // 节点/质押收益：只有直推 10%（parent 100），不再产生任何级差行。
+  // 质押收益：只有直推 10%（parent 100），不再产生任何级差行。
   team.distributeStakeReward(child, A(1000), 'stake_p3_diff', now);
   assert.equal(db.listATokenTeamRewards(parent, 50).filter(r => r.kind === 'stake_level_diff').length, 0, '质押收益不发级差');
   assert.equal(db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'stake_level_diff').length, 0, '质押收益不发级差');
   const parentAfterStake = pending.list(parent).filter(row => row.bizType === 'team');
-  assert.equal(parentAfterStake.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(150), '级差 50 + 直推 100');
-  assert.equal(pending.list(grand).filter(row => row.bizType === 'team').reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(50), 'grand 仍只有矿机级差 50');
+  assert.equal(parentAfterStake.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(250), '矿池直推 100 + 级差 50 + 质押直推 100');
+  assert.equal(pending.list(grand).filter(row => row.bizType === 'team').reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(50), 'grand 仍只有矿池级差 50');
 
   // 同一笔收益再结算不会重复进待领取。
-  const replay = team.distributeMinerReward(child, A(1000), 'miner_p3_diff', now);
+  const replay = team.distributeNodeReward(child, A(1000), 'node_p3_diff', now);
   assert.equal(replay.distributed, false, '同一笔收益只结算一次');
-  assert.equal(pending.list(parent).filter(row => row.bizType === 'team').length, 2, '重复结算不新增待领取');
+  assert.equal(pending.list(parent).filter(row => row.bizType === 'team').length, 3, '重复结算不新增待领取');
   console.log('  ✓ 级差比例、待领取对接、幂等');
 });
 
@@ -160,8 +160,8 @@ fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
   team.snapshot(child);
   assert.equal(team.getLevel(parent), 2);
   assert.equal(team.getLevel(grand), 2);
-  team.distributeMinerReward(child, A(1000), 'miner_p3_equal', now);
-  const equalRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'miner_level_diff');
+  team.distributeNodeReward(child, A(1000), 'node_p3_equal', now);
+  const equalRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(equalRows.length, 0, '平级不发级差');
   console.log('  ✓ 平级为 0');
 });
@@ -181,8 +181,8 @@ fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
   team.snapshot(child);
   assert.equal(team.getLevel(grand), 1);
   assert.equal(team.getLevel(parent), 2);
-  team.distributeMinerReward(child, A(1000), 'miner_p3_higher', now);
-  const higherRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'miner_level_diff');
+  team.distributeNodeReward(child, A(1000), 'node_p3_higher', now);
+  const higherRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(higherRows.length, 0, '下级更高不发级差');
   console.log('  ✓ 下级更高为 0');
 });

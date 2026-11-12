@@ -42,7 +42,8 @@ try {
   const staking = createATokenStakingService({ aTokenService: at, database: db, pendingService: pending });
   const nodes = createATokenNodeService({ aTokenService: at, database: db, pendingService: pending });
   const orders = createATokenOrderService({ aTokenService: at, database: db });
-  // 撮合与挂单受自由交易手动开关控制，这里打开开关以覆盖“有币无额度”的拒绝路径
+  // 撮合与挂单受自由交易手动开关控制（需同时满足流动性准备金门槛），这里先补足 LP 并打开开关，以覆盖“有币无额度”的拒绝路径
+  db.insertATokenLpPoolEntryRow({ id:'lp_fund_1', source:'adjustment', refId:'lp_fund_1', usdtUnits:parseUnits('500000',6).toString(), aUnits:'0', direction:'in', createdAt:Date.now() });
   at.setFreeTradingEnabled(true);
 
   const quota = w => {

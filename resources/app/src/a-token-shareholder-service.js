@@ -24,6 +24,8 @@ const BPS = 10_000n;
 const FEE_SOURCES = new Set(['buy_fee', 'sell_fee', 'adjustment']);
 const makeId = prefix => `${prefix}_${crypto.randomBytes(8).toString('hex')}`;
 const fmtU = units => { try { return formatUnits(BigInt(units || '0'), USDT_DECIMALS); } catch { return '0'; } };
+const A_TOKEN_DECIMALS = 18;
+const fmtA = units => { try { return formatUnits(BigInt(units || '0'), A_TOKEN_DECIMALS); } catch { return '0'; } };
 const k = v => String(v || '').toLowerCase();
 
 export function createATokenShareholderService({
@@ -53,14 +55,29 @@ export function createATokenShareholderService({
     return tierKey === 't500' ? true : isTier1000Enabled();
   }
 
+  // 池目标按「500 USDT 等值 SVX」计算，随平台价格变化
+  function poolTargetUnits() {
+    try {
+      return aTokenService.usdtToA(parseUnits(SHAREHOLDER_POOL_TARGET_USDT, USDT_DECIMALS), aTokenService.getPriceUsdtUnits());
+    } catch { return targetUnits; }
+  }
+
   function ensureFillingPool(tierKey, now) {
     const current = db.getFillingATokenShareholderPool(tierKey);
-    if (current) return current;
+    if (current) {
+      if (current.payload?.asset === 'A') return current;
+      // 旧版 USDT 计价池不再接收新手续费：立即按 USDT 结算，随后开启新的 SVX 池
+      db.updateATokenShareholderPool(current.id, {
+        fundedUnits: current.fundedUnits, status: 'closed', closedAt: now,
+      });
+      try { settleClosedPool({ ...current, status: 'closed' }, now); }
+      catch (error) { console.warn('旧股东池结算失败:', error?.message || error); }
+    }
     const existing = db.listATokenShareholderPoolsByTier(tierKey, 1);
     const seq = existing.length ? Number(existing[0].seq) + 1 : 1;
     return db.insertATokenShareholderPool({
-      id: makeId('ashp'), seq, tier: tierKey, targetUnits: targetUnits.toString(),
-      fundedUnits: '0', status: 'filling', openedAt: now, payload: {},
+      id: makeId('ashp'), seq, tier: tierKey, targetUnits: poolTargetUnits().toString(),
+      fundedUnits: '0', status: 'filling', openedAt: now, payload: { asset: 'A' },
     });
   }
 
@@ -93,7 +110,8 @@ export function createATokenShareholderService({
       refundUnits: row.refundUnits || '0',
       refundUsdt: fmtU(row.refundUnits),
       dividendUnits: dividend.toString(),
-      dividendUsdt: fmtU(dividend),
+      dividendSvx: fmtA(dividend),
+      dividendUsdt: '0',
       s3Qualified: row.status === 'active' ? isS3Qualified(row.wallet) : false,
       s3TeamPerfRequired: '100000',
       qualificationDeadline: Number(row.joinedAt) + 30 * 86400000,
@@ -196,8 +214,8 @@ export function createATokenShareholderService({
       pendingService.reverse(member.wallet, row.id);
       reversedUnits += BigInt(row.amount_units);
     }
-    let refund = principal - dividend;
-    if (refund < 0n) refund = 0n;
+    // 分红已改为发 SVX，不再从 USDT 本金中扣减，退出时全额退本金
+    let refund = principal;
     if (refund > 0n) aTokenService.creditUsdt(member.wallet, refund);
     const row = db.withdrawATokenShareholderMember(member.id, {
       withdrawnAt: now,
@@ -240,7 +258,8 @@ export function createATokenShareholderService({
     while (remaining > 0n) {
       const pool = ensureFillingPool(tierKey, now);
       const funded = BigInt(pool.fundedUnits || '0');
-      const room = targetUnits - funded;
+      const poolTarget = BigInt(pool.targetUnits || targetUnits || '0');
+      const room = poolTarget - funded;
       if (room <= 0n) {
         // 理论不可达：满池会立即置 closed；兜底防死循环
         closedPools.push(pool.id);
@@ -250,10 +269,10 @@ export function createATokenShareholderService({
       const entryRefId = part === 0 ? `${refId}:${tierKey}` : `${refId}:${tierKey}:${part}`;
       db.insertATokenShareholderEntryRow({
         id: makeId('ashe'), source, refId: entryRefId, wallet, usdtUnits: take.toString(),
-        direction: 'in', poolId: pool.id, createdAt: now, payload: { ...payload, tier: tierKey },
+        direction: 'in', poolId: pool.id, createdAt: now, payload: { ...payload, tier: tierKey, asset: 'A' },
       });
       const nextFunded = funded + take;
-      const closed = nextFunded >= targetUnits;
+      const closed = nextFunded >= poolTarget;
       db.updateATokenShareholderPool(pool.id, {
         fundedUnits: nextFunded.toString(),
         status: closed ? 'closed' : 'filling',
@@ -269,9 +288,10 @@ export function createATokenShareholderService({
     return { closedPools, distributions };
   }
 
-  function recordFee({ source, refId, wallet = '', usdtUnits, payload = {} }) {
+  // 手续费统一按 SVX（币）记账：50% 直接销毁 SVX，50% 进股东池按币分红
+  function recordFee({ source, refId, wallet = '', svxUnits, payload = {} }) {
     if (!FEE_SOURCES.has(String(source))) return null;
-    const fee = BigInt(usdtUnits || '0');
+    const fee = BigInt(svxUnits || '0');
     if (fee <= 0n) return null;
     if (!refId) throw new Error('股东池记账必须提供 refId');
 
@@ -286,24 +306,21 @@ export function createATokenShareholderService({
 
     return transaction(() => {
       const now = clock();
-      const burnBudget = (fee * FEE_BURN_BPS) / BPS;
-      const price = aTokenService.getPriceUsdtUnits();
-      const burnA = aTokenService.usdtToA(burnBudget, price);
-      const burnedA = aTokenService.burn(burnA, 'trade_fee', '卖出交易手续费50%销毁');
-      // 销毁达到总量 10% 上限后 burn() 会截断；未销毁掉的预算全部转入合伙人分红池
-      const effectiveBurnUsdt = burnedA === burnA ? burnBudget : aTokenService.aToUsdt(burnedA, price);
-      const retainedUsdt = burnBudget - effectiveBurnUsdt;
-      const poolHalf = fee - effectiveBurnUsdt;
+      const burnBudgetA = (fee * FEE_BURN_BPS) / BPS;
+      const burnedA = aTokenService.burn(burnBudgetA, 'trade_fee', '卖出交易手续费50%销毁');
+      // 销毁达到上限后 burn() 会截断；未销毁掉的份额全部转入股东池
+      const poolHalf = fee - burnedA;
       payload = {
         ...payload,
+        asset: 'A',
         burnedAUnits: burnedA.toString(),
-        burnBudgetUsdtUnits: burnBudget.toString(),
-        retainedBurnBudgetUsdtUnits: retainedUsdt.toString(),
+        burnBudgetAUnits: burnBudgetA.toString(),
+        retainedBurnBudgetAUnits: (burnBudgetA - burnedA).toString(),
       };
       // 销毁流水（按笔可核对；达到上限后 burnUnits 为实际销毁额）
       db.insertATokenFeeBurnRow({
         id: makeId('atfb'), refId, source, wallet,
-        feeUnits: fee.toString(), burnUnits: effectiveBurnUsdt.toString(), poolUnits: poolHalf.toString(),
+        feeUnits: fee.toString(), burnUnits: burnedA.toString(), poolUnits: poolHalf.toString(),
         createdAt: now, payload,
       });
       // 50% 按档位分：30% → 500 档池，70% → 1000 档池（尾差给 1000 档，避免丢失）
@@ -321,7 +338,7 @@ export function createATokenShareholderService({
       // 保证两档都有可继续归集的池
       for (const tier of SHAREHOLDER_TIERS) ensureFillingPool(tier.key, now);
       return {
-        idempotent: false, feeUnits: fee.toString(), burnUnits: effectiveBurnUsdt.toString(),
+        idempotent: false, feeUnits: fee.toString(), burnUnits: burnedA.toString(),
         poolUnits: poolHalf.toString(), tiers,
         closed: tiers.some(t => t.closedPools.length > 0),
       };
@@ -360,6 +377,8 @@ export function createATokenShareholderService({
     if (share <= 0n) {
       return { poolId: current.id, tier: tier.key, distributed: false, reason: 'amount_too_small', revoked };
     }
+    // 新版池按 SVX（A）分红；旧版未迁移的 USDT 池按 USDT 结算
+    const asset = current.payload?.asset === 'A' ? 'A' : 'USDT';
     const payouts = [];
     for (const member of eligible) {
       pendingService?.createReward?.({
@@ -369,14 +388,14 @@ export function createATokenShareholderService({
         bizId: current.id,
         periodKey: 'v1',
         amountUnits: share.toString(),
-        asset: 'USDT',
+        asset,
         availableAt: nextSettlementAt(now),
-        payload: { memberId: member.id, poolId: current.id, seq: current.seq, tier: tier.key, tierLabel: tier.label, share: share.toString(), members: eligible.length },
+        payload: { memberId: member.id, poolId: current.id, seq: current.seq, tier: tier.key, tierLabel: tier.label, share: share.toString(), members: eligible.length, asset },
       });
       db.updateATokenShareholderMemberDividend(member.id, (
         BigInt(member.dividendUnits || '0') + share
       ).toString(), { lastPoolId: current.id, lastDividendUnits: share.toString() });
-      payouts.push({ wallet: member.wallet, units: share.toString(), usdt: fmtU(share) });
+      payouts.push({ wallet: member.wallet, units: share.toString(), asset, usdt: fmtU(share), svx: fmtA(share) });
     }
 
     const distributed = share * BigInt(eligible.length);
@@ -443,16 +462,15 @@ export function createATokenShareholderService({
   function feeBurnOverview(limit = 100) {
     const totals = db.sumATokenFeeBurns();
     return {
-      asset: 'USDT',
-      rule: '每笔卖出手续费 50% 销毁、50% 进分红池（买入 0 手续费；再按 30% / 70% 分档）；销毁至剩余总量的 10%（1 亿枚）后停止销毁，销毁份额全部转合伙人分红',
-      totalFeeUsdt: fmtU(totals.feeUnits),
-      totalBurnedUsdt: fmtU(totals.burnUnits), // 兼容字段：销毁预算，实际销毁币数见明细
-      totalBurnBudgetUsdt: fmtU(totals.burnUnits),
-      totalPoolUsdt: fmtU(totals.poolUnits),
+      asset: 'SVX',
+      rule: '每笔卖出手续费按成交 SVX 数量扣 5%：50% 销毁、50% 进股东分红池（买入 0 手续费；再按 30% / 70% 分档）；销毁至剩余总量的 10%（1 亿枚）后停止销毁，销毁份额全部转股东分红',
+      totalFeeSvx: fmtA(totals.feeUnits),
+      totalBurnSvx: fmtA(totals.burnUnits),
+      totalPoolSvx: fmtA(totals.poolUnits),
       entries: db.listATokenFeeBurns(limit).map(r => ({
         id: r.id, refId: r.refId, source: r.source, wallet: r.wallet,
-        feeUsdt: fmtU(r.feeUnits), burnUsdt: fmtU(r.burnUnits), poolUsdt: fmtU(r.poolUnits),
-        createdAt: r.createdAt, burnedAUnits:r.payload?.burnedAUnits || '0', retainedBurnBudgetUsdtUnits:r.payload?.retainedBurnBudgetUsdtUnits || '0',
+        feeSvx: fmtA(r.feeUnits), burnSvx: fmtA(r.burnUnits), poolSvx: fmtA(r.poolUnits),
+        createdAt: r.createdAt, burnedAUnits:r.payload?.burnedAUnits || '0', retainedBurnBudgetAUnits:r.payload?.retainedBurnBudgetAUnits || '0',
       })),
     };
   }
@@ -480,11 +498,11 @@ export function createATokenShareholderService({
         dividendPct: tier.dividendPct,
         currentPool: filling ? {
           id: filling.id, seq: filling.seq,
-          targetUsdt: fmtU(filling.targetUnits),
-          fundedUsdt: fmtU(filling.fundedUnits),
-          progressPct: Math.min(100, Number((BigInt(filling.fundedUnits || '0') * 10000n) / (targetUnits || 1n)) / 100),
+          targetSvx: fmtA(filling.targetUnits),
+          fundedSvx: fmtA(filling.fundedUnits),
+          progressPct: Math.min(100, Number((BigInt(filling.fundedUnits || '0') * 10000n) / (BigInt(filling.targetUnits || targetUnits) || 1n)) / 100),
         } : null,
-        fundedTotalUsdt: fmtU(db.sumATokenShareholderFundedUnits(tier.key)),
+        fundedTotalSvx: fmtA(db.sumATokenShareholderFundedUnits(tier.key)),
         poolCount: pools.length,
         closedPools: pools.filter(p => p.status === 'closed').length,
         settledPools: pools.filter(p => p.status === 'settled').length,
@@ -495,21 +513,21 @@ export function createATokenShareholderService({
 
     const pools = db.listATokenShareholderPools(100);
     return {
-      balanceUsdt: fmtU(db.getATokenShareholderPoolBalance().usdtUnits),
+      balanceSvx: fmtA(db.getATokenShareholderPoolBalance().usdtUnits),
       targetUsdt: SHAREHOLDER_POOL_TARGET_USDT,
       s3TeamPerfRequired: '100000',
       tiers,
       member: memberView(member),
       members: history.map(memberView),
       dividends: dividends.map(r => ({
-        id: r.id, poolId: r.bizId, amountUnits: r.amountUnits, amountUsdt: fmtU(r.amountUnits),
+        id: r.id, poolId: r.bizId, amountUnits: r.amountUnits, amountSvx: fmtA(r.amountUnits),
         availableAt: r.availableAt, expiresAt: r.expiresAt, status: r.status,
       })),
       feeBurn: feeBurnOverview(100),
       pools: pools.map(p => ({
         id: p.id, seq: p.seq, tier: p.tier || 't500',
         tierLabel: TIER_MAP[p.tier || 't500']?.label || '',
-        targetUsdt: fmtU(p.targetUnits), fundedUsdt: fmtU(p.fundedUnits),
+        targetSvx: fmtA(p.targetUnits), fundedSvx: fmtA(p.fundedUnits),
         status: p.status, openedAt: p.openedAt, closedAt: p.closedAt, settledAt: p.settledAt,
         distribution: p.payload?.distribution || null,
       })),

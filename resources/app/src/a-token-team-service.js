@@ -786,14 +786,10 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     }
     // ② 间推：新规归零并彻底移除（旧 10% 逻辑不再保留任何开关）
 
-    // ③ 级差（2026-11-12 口径）：V1~V10 每级 5%，只按「矿机静态产出」计提；
-    //    节点/质押收益（prefix=stake/node）不参与级差，仅保留上面的直推 10%。
+    // ③ 级差（2026-11-12 口径）：V1~V10 每级 5%，按「矿池每日利息」计提；
     //    奖励 = 自己比例 − 直接下级比例；平级为 0、下级更高为 0。
-    //    直接下级：链位置 i=0 时是产单人本人，i>0 时是链上前一位。
-    //    一笔收益只沿链结算一次；奖励行 id 幂等，重复调用不会重复发放。
-    //    级差收益走 pending 待领取，与 P2 的待领取账本共用一套。
     const rateBpsOf = (lvl) => (lvl > 0 ? BigInt(TEAM_LEVELS[lvl - 1].rateBps) : 0n);
-    if (prefix === 'miner') {
+    if (prefix === 'node') {
       for (let i = 0; i < chain.length && i < LEVEL_DIFF_MAX_DEPTH; i++) {
         const uplineLevel = getLevel(chain[i]);
         if (uplineLevel <= 0) continue;
@@ -810,12 +806,12 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return { distributed: true, results, totalDistributed: results.reduce((s, r) => s + BigInt(r.amount), 0n).toString() };
   }
 
-  // ── 矿机产出分润 ──
-  function distributeMinerReward(userAddress, rewardUnits, minerId, slotAt = Date.now()) {
-    return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'miner', sourceId: minerId, slotAt }));
+  // ── 矿池利息分润（2026-11-12 起：直推 10% + 级差）──
+  function distributeNodeReward(userAddress, rewardUnits, nodeId, slotAt = Date.now(), receivedAt = slotAt) {
+    return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'node', sourceId: nodeId, slotAt, receivedAt }));
   }
 
-  // ── 节点/质押收益分润（2026-11-12 起仅直推 10%，不再参与级差；级差只认矿机静态产出）──
+  // ── 质押收益分润（仅直推 10%）──
   function distributeStakeReward(userAddress, rewardUnits, stakeId, slotAt = Date.now(), receivedAt = slotAt) {
     return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'stake', sourceId: stakeId, slotAt, receivedAt }));
   }
@@ -1118,7 +1114,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return { ...raw, rows, by, total: raw.total - excludedPro, excludedPro, rawTotal: raw.total, rawBy: raw.by };
   }
 
-  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, setManualLevel, calcLevel, distributeMinerReward, distributeStakeReward, distributeToA10Pool, getReferralChain,
+  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, setManualLevel, calcLevel, distributeNodeReward, distributeStakeReward, distributeToA10Pool, getReferralChain,
     recordTeamPerformance, reverseTeamPerformance, getUpgradeUnits, getTeamPerfUnits,
     settleParityRewards:(...args) => transaction(() => settleParityRewards(...args)),
     settleA10Pool:(...args) => transaction(() => settleA10Pool(...args)), profile, summary, getTeamStatsView, teamActivationBreakdown, TEAM_LEVELS };

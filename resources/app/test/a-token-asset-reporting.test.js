@@ -6,7 +6,6 @@ import vm from 'node:vm';
 import { parseUnits } from 'ethers';
 import { closeDatabase } from '../src/database.js';
 import { createWalletService } from '../src/wallet-service.js';
-import { createATokenMinerService } from '../src/a-token-miner-service.js';
 import { createATokenRevenueService } from '../src/a-token-revenue-service.js';
 import { createPlatformService } from '../src/platform-service.js';
 import { readAdminAixIncome } from '../src/a-token-admin-income.js';
@@ -19,16 +18,19 @@ try {
   const ws = createWalletService({ dataRoot:root, depositAddress:wallet, networks:[] });
   ws.ensureUser(wallet); ws.creditBalance(wallet, 'A', A(10)); ws.creditBalance(wallet, 'USDT', 200000000n);
   const db = ws.database;
-  const miner = createATokenMinerService({database:db}).createMiner(wallet, 'mini120', {startedAt:t});
+  db.db.prepare(`INSERT INTO a_token_miners
+    (id,wallet,plan,total_units,daily_rate_bps,daily_target_units,started_at,expires_at,last_release_at,day_earned_units,total_earned_units,status,payload_json)
+    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    .run('legacy_miner',wallet,'mini120',A(100).toString(),333,A('3.33').toString(),t,t+30*86400000,t,'0','0','active','{}');
   db.transaction(() => {
     for (let i = 0; i < 601; i++) {
-      db.insertATokenMinerReleaseRow({ id:'m_'+i, minerId:miner.id, wallet, amountUnits:A('3.000000000000000001').toString(), releasedAt:t+i });
+      db.insertATokenMinerReleaseRow({ id:'m_'+i, minerId:'legacy_miner', wallet, amountUnits:A('3.000000000000000001').toString(), releasedAt:t+i });
       db.insertATokenTeamRewardRow({ id:'team_'+i, recipientWallet:wallet, sourceWallet:wallet,
         kind:i % 2 ? 'parity' : 'miner_level_diff', amountUnits:A('1.000000000000000001').toString(), createdAt:t+i });
     }
     // Payload fields cannot override the ledger's amount/time/kind columns.
     db.db.prepare('UPDATE a_token_team_rewards SET payload_json=? WHERE id=?').run(JSON.stringify({ amountUnits:A(999).toString(), kind:'wrong' }), 'team_0');
-    db.db.prepare('UPDATE a_token_miner_releases SET payload_json=? WHERE id=?').run(JSON.stringify({ minerId:miner.id }), 'm_0');
+    db.db.prepare('UPDATE a_token_miner_releases SET payload_json=? WHERE id=?').run(JSON.stringify({ minerId:'legacy_miner' }), 'm_0');
     const stake = (id, planId, principal, paid, status='active', extra={}) => db.upsertATokenStakeRow({
       id, wallet, planId, principalUnits:A(principal).toString(), totalEarnedUnits:A(paid).toString(),
       dailyRateBps:100, startedAt:t, expiresAt:t+100*86400000,

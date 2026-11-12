@@ -11,7 +11,7 @@ import type { SupportSession } from '@/types';
 const QUICK = [
   ['充值不到账怎么办？', '充值未到账'],
   ['提现多久能到账？', '提现到账时间'],
-  ['矿机收益什么时候发放？', '矿机收益'],
+  ['矿池收益什么时候发放？', '矿池收益'],
   ['SVX 交易怎么操作？', 'SVX 交易'],
 ] as const;
 
@@ -70,7 +70,7 @@ export default function SupportPage() {
   }
 
   return <div className="rx-page">
-    <PageHeading title="在线客服" subtitle="7×24 小时在线客服，充值、提现、矿机与交易问题均可在此咨询" />
+    <PageHeading title="在线客服" subtitle="7×24 小时在线客服，充值、提现、矿池与交易问题均可在此咨询" />
     {!wallet.authenticated ? <Gate description="连接并确认钱包后即可与在线客服对话" />
       : query.error ? <ErrorState error={query.error} retry={() => void query.refetch()} />
       : !session ? <Loading />

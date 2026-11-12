@@ -55,8 +55,8 @@ try {
   assert.equal(buyAlpha.totalUsdt, '1000.0', '买入实付 = 成交金额');
   assert.equal(walletService.balanceUnits(wallet, 'USDT'), U(2000), 'USDT 应扣 1000（买入 0 手续费）');
   // 2026-11-11 新规：买入 0 手续费，不产生 buy_fee 记账
-  assert.equal(BigInt(shareholder.overview().balanceUsdt ? parseUnits(shareholder.overview().balanceUsdt, 6) : 0n), 0n, '买入不产生手续费');
-  assert.equal(BigInt(parseUnits(shareholder.feeBurnOverview().totalBurnedUsdt, 6)), 0n, '买入不产生销毁');
+  assert.equal(BigInt(shareholder.overview().balanceSvx ? parseUnits(shareholder.overview().balanceSvx, 18) : 0n), 0n, '买入不产生手续费');
+  assert.equal(BigInt(parseUnits(shareholder.feeBurnOverview().totalBurnSvx, 18)), 0n, '买入不产生销毁');
   assert.equal(at.balanceA(wallet), 0n, '甲区买入不应直接进可用余额');
 
   // ── 2. 乙区一键买：500 USDT → 5000 SVX，成交币留在乙区余额（不进主 A、不产生额度）──
@@ -106,11 +106,11 @@ try {
   const before = walletService.balanceUnits(wallet, 'USDT');
   const sell = trade.sell({ wallet, aixAmount: '1000', requestId: 'sell_1' });
   assert.equal(BigInt(sell.grossUsdt ? parseUnits(sell.grossUsdt, 6) : 0n), U(100), '成交额应为 100 USDT');
-  assert.equal(walletService.balanceUnits(wallet, 'USDT'), before + U(95), '应实收 95 USDT');
+  assert.equal(walletService.balanceUnits(wallet, 'USDT'), before + U(100), '卖出实收全额 USDT（手续费扣 SVX）');
   assert.equal(at.balanceA(wallet), A(3500), '应扣 1000 SVX');
   assert.equal(availableQuota(), A(3500), '卖出应消耗 1000 流通额度');
-  assert.equal(BigInt(shareholder.overview().balanceUsdt ? parseUnits(shareholder.overview().balanceUsdt, 6) : 0n), U('2.5'), '卖出手续费 5 USDT 的 50% 进股东池');
-  assert.equal(BigInt(parseUnits(shareholder.feeBurnOverview().totalBurnedUsdt, 6)), U('2.5'), '卖出手续费 5 USDT 的 50% 销毁');
+  assert.equal(BigInt(shareholder.overview().balanceSvx ? parseUnits(shareholder.overview().balanceSvx, 18) : 0n), A(25), '卖出手续费 50 SVX 的 50% 进股东池');
+  assert.equal(BigInt(parseUnits(shareholder.feeBurnOverview().totalBurnSvx, 18)), A(25), '卖出手续费 50 SVX 的 50% 销毁');
   const repeatSell = trade.sell({ wallet, aixAmount: '1000', requestId: 'sell_1' });
   assert.equal(repeatSell.idempotent, true);
   assert.equal(at.balanceA(wallet), A(3500), '重复卖出不应重复扣币');

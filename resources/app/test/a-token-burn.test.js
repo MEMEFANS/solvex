@@ -7,8 +7,6 @@ import { createWalletService } from '../src/wallet-service.js';
 import { closeDatabase } from '../src/database.js';
 import { createATokenService, A_TOKEN_DECIMALS } from '../src/a-token-service.js';
 import { createAiManagedService } from '../src/ai-managed-service.js';
-import { MINER_PLANS } from '../src/a-token-miner-service.js';
-import { ACTIVATION_PLANS } from '../src/a-token-activation-service.js';
 
 const A = v => BigInt(v) * 10n ** BigInt(A_TOKEN_DECIMALS);
 const U = v => BigInt(v) * 10n ** 6n;
@@ -18,11 +16,6 @@ const dataRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'wg-atoken-burn-test-'));
 try {
   const walletService = createWalletService({ dataRoot, depositAddress:`0x${'D0'.padStart(40, '0')}`, networks:[] });
   const aToken = createATokenService({ database: walletService.database, walletService });
-
-  // ── 规则 3：0.002 BNB 激活包产出 90 → 100 枚 ──
-  assert.equal(BigInt(MINER_PLANS.mini120.totalUnits), A(100), 'mini120 矿机总量应为 100 SVX');
-  assert.match(ACTIVATION_PLANS['1'].label, /Mini 矿机/, '激活套餐文案应显示 Mini 矿机');
-  assert.match(ACTIVATION_PLANS['2'].label, /Pro 矿机/, '激活套餐文案应显示 Pro 矿机');
 
   // ── 规则 1：当日销毁累计进 todayBurnedUnits ──
   assert.equal(aToken.burn(A(50), 'trade', '测试销毁'), A(50));

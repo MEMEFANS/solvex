@@ -3,7 +3,7 @@ import { SHAREHOLDER_TIERS, SHAREHOLDER_TIER_1000_SETTING_KEY } from './a-token-
 
 // SVX后台路由 /api/admin/a-token/*（需后台 operator session,由 server.js 在 admin 块内调用）
 export function createATokenAdminApi({
-  aTokenService, poolService, minerService, stakingService, activationService, klineService, orderService, walletService,
+  aTokenService, poolService, stakingService, klineService, orderService, walletService,
   aTokenTeamService, blindBoxService, aTokenLpJobService,
   send, readBody,
 }) {
@@ -15,6 +15,11 @@ export function createATokenAdminApi({
       send(res, 403, { error:'此操作需要独立资金后台权限', code:'FUNDS_ADMIN_REQUIRED' });
       return true;
     }
+    // 矿机功能已于 2026-11-12 彻底下线，历史接口统一返回 410
+    if (/\/miners?(\/|$)|\/activations?(\/|$)|\/activation\/|\/team-activations$/.test(pathname)) {
+      send(res, 410, { error:'矿机功能已下线', code:'MINER_DISABLED' });
+      return true;
+    }
     const { url, allowRequest, operatorSession } = ctx;
     const searchParams = url?.searchParams;
 
@@ -22,9 +27,7 @@ export function createATokenAdminApi({
       if (pathname === '/api/admin/a-token/stats' && request.method === 'GET') {
         return send(res, 200, {
           pool: aTokenService.poolStats(),
-          activation: aTokenService.getActivationMeta(),
           orders: orderService?.stats?.() || null,
-          miners: aTokenTeamService?.reportingMinerSummary?.() || walletService.database?.adminMinerSummary?.() || null,
         });
       }
       // 挂单查询（所有钱包）?status=OPEN|FILLED|CANCELLED&wallet=...&limit=500
@@ -93,26 +96,6 @@ export function createATokenAdminApi({
         return send(res, 200, { ok: true, changes: info?.changes || 0 });
       }
 
-      // 激活管理
-      if (pathname === '/api/admin/a-token/activations' && request.method === 'GET') {
-        const status = String(searchParams?.get('status') || '').trim();
-        const all = activationService.listAll(500);
-        const items = status ? all.filter(r => r.status === status) : all;
-        return send(res, 200, { items });
-      }
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/activations/verify') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const body = await readBody(request);
-        const record = activationService.findById(String(body.id || ''));
-        if (!record) return send(res, 404, { error:'激活记录不存在' });
-        const result = await activationService.verify(record);
-        return send(res, 200, { ok:true, activation: result });
-      }
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/activations/reject') {
-        const body = await readBody(request);
-        return send(res, 200, { ok:true, activation: activationService.adminReject(String(body.id || ''), String(body.reason || '')) });
-      }
-
       // ── 平台公告（公开接口 /api/announcement 只读；此处可写，最多 2 条）──
       if (request.method === 'POST' && pathname === '/api/admin/a-token/announcement') {
         if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
@@ -172,26 +155,6 @@ export function createATokenAdminApi({
         const enabled = body.enabled === true || body.enabled === '1' || body.enabled === 1;
         aTokenService.setPoolMeta({ burnEnabled: enabled ? '1' : '0' });
         return send(res, 200, { ok:true, burnEnabled: enabled, pool: aTokenService.poolStats() });
-      }
-
-      // ── 矿机激活开关（关闭时用户不可激活矿机）──
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/activation/mode') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const body = await readBody(request);
-        const enabled = body.enabled === true || body.enabled === '1' || body.enabled === 1;
-        aTokenService.setPoolMeta({ activationEnabled: enabled ? '1' : '0' });
-        return send(res, 200, { ok:true, activationEnabled: enabled, pool: aTokenService.poolStats() });
-      }
-
-      // ── 矿机激活名额进度（前台「激活名额进度」进度条展示值可调）──
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/activation/progress') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const body = await readBody(request);
-        const patch = {};
-        if (body.cap !== undefined) patch.cap = body.cap;
-        if (body.activatedCount !== undefined) patch.activatedCount = body.activatedCount;
-        const activationMeta = aTokenService.setActivationMeta(patch);
-        return send(res, 200, { ok:true, activationMeta });
       }
 
       // ── SVX 提现开关（关闭时用户不可发起 SVX 链上提现）──
@@ -254,51 +217,6 @@ export function createATokenAdminApi({
         const results = [];
         for (let i = 0; i < n; i++) results.push(klineService.tickLiveBar());
         return send(res, 200, { ok:true, ticks: results.length, last: results[results.length - 1] });
-      }
-
-      // ── 矿机管理 ──
-      // 列表 ?wallet= &status= &plan= &limit=500
-      if (pathname === '/api/admin/a-token/miners' && request.method === 'GET') {
-        const wallet = String(searchParams?.get('wallet') || '').trim();
-        const status = String(searchParams?.get('status') || '').trim();
-        const plan = String(searchParams?.get('plan') || '').trim();
-        const limit = Math.max(1, Math.min(2000, Number(searchParams?.get('limit') || 500)));
-        const items = minerService.presentAll({ wallet, status, plan, limit });
-        return send(res, 200, {
-          items,
-          activationMeta: aTokenService.getActivationMeta(),
-          summary: aTokenTeamService?.reportingMinerSummary?.() || walletService.database?.adminMinerSummary?.() || null,
-          today: walletService.database?.adminMinerTodaySummary?.() || null,
-          plans: Object.keys(minerService.MINER_PLANS || {}).map(k => ({
-            id: k, days: minerService.MINER_PLANS[k].days,
-            dailyTarget: minerService.dailyTargetOf(k).toString(),
-          })),
-        });
-      }
-      // 手动发放（补齐截至当前未入账的产出）
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/miners/release') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const body = await readBody(request);
-        const minerId = String(body.minerId || '').trim();
-        const result = minerService.releaseNowById(minerId);
-        if (!result) return send(res, 404, { error: '矿机不存在或已不是 active 状态' });
-        return send(res, 200, { ok: true, ...result });
-      }
-      // 强制过期（默认补齐尾差，也可以不补）
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/miners/expire') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const body = await readBody(request);
-        const minerId = String(body.minerId || '').trim();
-        const payRemaining = body.payRemaining !== false; // 默认 true
-        const miner = minerService.forceExpire(minerId, { payRemaining });
-        if (!miner) return send(res, 404, { error: '矿机不存在' });
-        return send(res, 200, { ok: true, miner });
-      }
-      // 批量处理所有 active 矿机（立刻跑一轮产出，不等 60s 定时器）
-      if (request.method === 'POST' && pathname === '/api/admin/a-token/miners/process-all') {
-        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 30, 60_000)) return true;
-        const processed = minerService.processAll();
-        return send(res, 200, { ok: true, processed });
       }
 
       // ── 盲盒概率档位配置（存 service_settings: blindbox_probability）──
@@ -366,17 +284,6 @@ export function createATokenAdminApi({
           console.warn('[a-token-admin] free trading audit failed', error?.message || error);
         }
         return send(res, 200, { ok:true, enabled });
-      }
-
-      // 团队激活查询：?address=0x...&exclude=0x...,0x...
-      // 统计该地址整棵下线（团队）的 mini120/pro1500 激活数，并返回按直推拆分的明细，
-      // 便于运维自行选择排除某个直推（排除其本人及其整棵子树）后查看净数。
-      if (pathname === '/api/admin/a-token/team-activations' && request.method === 'GET') {
-        const address = String(searchParams?.get('address') || '').trim().toLowerCase();
-        if (!/^0x[a-f0-9]{40}$/.test(address)) return send(res, 400, { error:'请输入正确的钱包地址（0x 开头 42 位）' });
-        if (!aTokenTeamService?.teamActivationBreakdown) return send(res, 500, { error:'团队统计服务未就绪' });
-        const exclude = String(searchParams?.get('exclude') || '').split(',').map(s => s.trim()).filter(Boolean);
-        return send(res, 200, aTokenTeamService.teamActivationBreakdown(address, exclude));
       }
 
       // 用户列表（含 A 余额）

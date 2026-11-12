@@ -3,7 +3,6 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createWalletService } from '../src/wallet-service.js';
-import { createATokenMinerService } from '../src/a-token-miner-service.js';
 import { createATokenService } from '../src/a-token-service.js';
 import { createATokenPendingService } from '../src/a-token-pending-service.js';
 import { createATokenStakingService } from '../src/a-token-staking-service.js';
@@ -17,14 +16,13 @@ const token = 'ISOLATED_TEST_FUNDS_TOKEN';
 let reads = 0;
 function response() {return {setHeader(){}};}
 const send = (res,status,payload) => Object.assign(res,{status,payload});
-let service, miner, api;
+let service, api;
 function start() {
   service = createWalletService({dataRoot:root,depositAddress:'0x'+'d'.repeat(40),networks:[]});
-  miner = createATokenMinerService({database:service.database,aTokenService:{}});
   const at=createATokenService({database:service.database,walletService:service});
   const pending=createATokenPendingService({database:service.database,aTokenService:at});
   const energy=createATokenStakingService({database:service.database,aTokenService:at,pendingService:pending});
-  api = createFundsAdminApi({walletService:service,minerService:miner,stakingService:energy,payoutService:{status:()=>({enabled:false})},send,
+  api = createFundsAdminApi({walletService:service,stakingService:energy,payoutService:{status:()=>({enabled:false})},send,
     getToken:()=>token,readBody:async req=>{reads++;return req.body;},isSameOrigin:req=>!req.headers.origin || req.headers.origin==='https://funds.test',allowRequest:()=>true});
 }
 async function request(uri,method='GET',body,headers={'x-wallet-admin-token':token}) {
@@ -87,7 +85,7 @@ try {
   assert.equal(history.status,200);assert(history.payload.items.every(row=>row.adminUsername==='funds-admin'));
   assert.equal(history.payload.items.length,3);
   console.log('PASS: authenticated credit/debit preserve amounts, idempotency, balance limits and asset/direction conflicts');
-  assert.equal((await request('/api/wallet/admin/miner-grants','POST',{})).status,403);
+  assert.equal((await request('/api/wallet/admin/miner-grants','POST',{})).status,410);
   const gift={wallet,amount:'1000',reason:'活动赠送',requestId:'miner_grant_once'};
   const first=await request('/api/wallet/admin/energy-grants','POST',gift);
   assert.equal(first.status,200);

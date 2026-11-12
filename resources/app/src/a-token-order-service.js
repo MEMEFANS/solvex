@@ -429,7 +429,7 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       : BigInt(sellRaw.order_price_usdt_units);
     if (execPrice <= 0n) return false;
 
-    // 费率快照：买入 0（2026-11-11 起）、卖出 5%（按成交 USDT 扣，进股东池）
+    // 费率快照：买入 0（2026-11-11 起）；卖出 5% 按成交 SVX 数量扣币（2026-11-12 起）
     const bPayload = payloadOf(buyRaw);
     const sPayload = payloadOf(sellRaw);
     const sellFeeBps = BigInt(sPayload.feeRateBps ?? Number(SELL_FEE_BPS));
@@ -451,9 +451,9 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     const sellRemainAfter = sRemainA - aFill;
     const buyRemainAfter = bRemainUsdt - usdtFill;
 
-    // 双方手续费均按成交 USDT 金额计算
-    const sellFee = usdtFill * sellFeeBps / BPS;      // 卖方手续费：从应收 USDT 中扣，全部进股东池
-    const sellerNet = usdtFill - sellFee;
+    // 卖方手续费按成交 SVX 数量扣币，买家实收全额 USDT
+    const sellFeeA = aFill * sellFeeBps / BPS;        // 卖方手续费：扣 SVX，50% 销毁 + 50% 进股东池
+    const sellerNet = usdtFill;
     // 兼容历史单：启动迁移后正常为 0；万一仍有存量 5% 托管，直接退回买家
     const legacyEscrow = BigInt(bPayload.buyFeeRemainingUnits || '0');
     if (legacyEscrow > 0n) at.creditUsdt(bWallet, legacyEscrow);
@@ -466,13 +466,13 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     // 2026-11-02 交易大厅买到的 SVX 同步计入驱动额度（1:1 数量），矿机匹配池可直接使用
     try { db.addATokenTurboQuota(bWallet, aFill); }
     catch (e) { console.error(`[交易] ${bWallet} 驱动额度累加失败:`, e?.message || e); }
-    // 2) 卖家收 USDT（成交金额扣除 5% 手续费）
+    // 2) 卖家收全额 USDT（手续费改扣 SVX，不再从 USDT 中扣）
     at.creditUsdt(sWallet, sellerNet);
-    // 3) 卖出手续费全部进股东池（买入 0，不再产生 buy_fee 记账）
+    // 3) 卖出手续费（SVX）50% 销毁 + 50% 进股东池
     try {
-      if (sellFee > 0n) shareholderService?.recordFee({ source: 'sell_fee', refId: `${groupId}:sell`, wallet: sWallet, usdtUnits: sellFee.toString(), payload: { orderId: sellRaw.id } });
-      if (!shareholderService && sellFee > 0n) {
-        console.error(`[交易] 股东池服务缺失，本次卖出手续费未入账 groupId=${groupId} sell=${sellFee}`);
+      if (sellFeeA > 0n) shareholderService?.recordFee({ source: 'sell_fee', refId: `${groupId}:sell`, wallet: sWallet, svxUnits: sellFeeA.toString(), payload: { orderId: sellRaw.id, asset: 'A' } });
+      if (!shareholderService && sellFeeA > 0n) {
+        console.error(`[交易] 股东池服务缺失，本次卖出手续费未入账 groupId=${groupId} sell=${sellFeeA}`);
       }
     } catch (e) {
       console.error(`[交易] 手续费入股东池失败 groupId=${groupId}:`, e?.message || e);
@@ -496,11 +496,11 @@ export function createATokenOrderService({ aTokenService, database, teamService,
       priceUsdtUnits: execPrice.toString(),
       sizeUnits: aFill.toString(),
       amountUsdtUnits: usdtFill.toString(),
-      feeUnits: sellFee.toString(),
+      feeUnits: sellFeeA.toString(),
       burnUnits: '0',
       dividendUnits: '0',
       createdAt: now,
-      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: sellRaw.id, counterOrderId: buyRaw.id, priceUsdt: priceStr, feeAsset: 'USDT', netUsdtUnits: sellerNet.toString() },
+      payload: { source: 'p2p_match', matchGroupId: groupId, orderId: sellRaw.id, counterOrderId: buyRaw.id, priceUsdt: priceStr, feeAsset: 'SVX', netUsdtUnits: sellerNet.toString() },
     });
 
     // 更新两张订单的剩余冻结额度；剩余量低于灰尘阈值即视为该单已完成（尾差原路退回），
@@ -555,12 +555,12 @@ export function createATokenOrderService({ aTokenService, database, teamService,
     fills.set(buyRaw.id, accBuy);
 
     const accSell = fills.get(sellRaw.id) || {
-      aSold: '0', usdtReceived: '0', feeUsdt: '0', count: 0, sumUnits: 0n, sumUsdt: 0n, sumFee: 0n,
+      aSold: '0', usdtReceived: '0', feeSvx: '0', count: 0, sumUnits: 0n, sumUsdt: 0n, sumFee: 0n,
     };
-    accSell.sumUnits += aFill; accSell.sumUsdt += sellerNet; accSell.sumFee += sellFee; accSell.count += 1;
+    accSell.sumUnits += aFill; accSell.sumUsdt += sellerNet; accSell.sumFee += sellFeeA; accSell.count += 1;
     accSell.aSold = fmtA2(accSell.sumUnits);
     accSell.usdtReceived = fmtU(accSell.sumUsdt);
-    accSell.feeUsdt = fmtU(accSell.sumFee || 0n);
+    accSell.feeSvx = fmtA2(accSell.sumFee || 0n);
     accSell.avgPrice = accSell.sumUnits > 0n ? fmtU(accSell.sumUsdt * 1_000000000000000000n / accSell.sumUnits, USDT_DECIMALS) : null;
     fills.set(sellRaw.id, accSell);
 

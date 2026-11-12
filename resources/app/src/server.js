@@ -34,12 +34,10 @@ import { createATokenService, A_TOKEN_DECIMALS } from './a-token-service.js';
 import { installSolvexWithdrawalFees } from './solvex-withdrawal-fees.js';
 import { createATokenLpJobService } from './a-token-lp-job-service.js';
 import { createATokenPoolService } from './a-token-pool-service.js';
-import { createATokenMinerService } from './a-token-miner-service.js';
 import { createATokenTeamService } from './a-token-team-service.js';
 import { createATokenUpgradeService } from './a-token-upgrade-service.js';
 import { createATokenStakingService } from './a-token-staking-service.js';
 import { createATokenTransferService } from './a-token-transfer-service.js';
-import { createATokenActivationService } from './a-token-activation-service.js';
 import { createATokenKlineService } from './a-token-kline-service.js';
 import { createATokenOrderService } from './a-token-order-service.js';
 import { createATokenShareholderService } from './a-token-shareholder-service.js';
@@ -453,7 +451,6 @@ const aTokenTeamService = createATokenTeamService({
   rotationAddresses: aTokenRotationAddresses, rotationHideViewers: aTokenRotationHideViewers,
   reportingExclusions: proReportingExclusions,
 });
-const aTokenMinerService = createATokenMinerService({ aTokenService, database: walletService.database, teamService: aTokenTeamService });
 // 升级舱不产收益；生效本金计入上级团队业绩，赎回立即冲销并在 30 天后返还。
 const aTokenUpgradeService = createATokenUpgradeService({
   database: walletService.database, walletService, aTokenService, teamService: aTokenTeamService,
@@ -462,31 +459,9 @@ const upgradeReconciliation = aTokenUpgradeService.reconcileActivePerformance();
 if (upgradeReconciliation.recorded) console.log('[升级舱] 已补齐团队业绩事件', upgradeReconciliation.recorded);
 const aTokenStakingService = createATokenStakingService({ aTokenService, database: walletService.database, teamService: aTokenTeamService, pendingService: aTokenPendingService });
 const aTokenTransferService = createATokenTransferService({ aTokenService, database: walletService.database, referralService, teamService: aTokenTeamService, walletService });
-const aTokenActivationService = createATokenActivationService({
-  aTokenService, minerService: aTokenMinerService, database: walletService.database,
-  rpcUrl: bscNetworkCfg.rpcUrl || process.env.BSC_RPC_URL || '',
-  collectionAddress: process.env.A_TOKEN_COLLECTION_ADDRESS || '',
-  confirmations: Number(process.env.A_TOKEN_ACTIVATION_CONFIRMATIONS || 12),
-  // 收款地址轮换：rotationPlan 指定参与轮换的套餐（逗号分隔，如 '1,2' 表示 0.002 与 0.05 都轮换）
-  // rotationEvery=N 表示每 N 笔中的第 N 笔充到轮换地址，其余进主地址（N=2 即主/轮换交替）
-  // A_TOKEN_ROTATION_ADDRESSES 可为每个套餐指定专属轮换地址（'1:0x..,2:0x..'），未单列的套餐用 A_TOKEN_ROTATION_ADDRESS
-  // 默认关闭（A_TOKEN_ROTATION_ADDRESS 为空）；需要启用时在 .env 设置
-  rotationAddress: process.env.A_TOKEN_ROTATION_ADDRESS || '',
-  rotationAddressesByPlan: process.env.A_TOKEN_ROTATION_ADDRESSES || '',
-  rotationPlan: process.env.A_TOKEN_ROTATION_PLAN || '2',
-  rotationEvery: Number(process.env.A_TOKEN_ROTATION_EVERY || 3),
-  // 每个套餐独立的轮换间隔（'1:3,2:2' 表示 0.002 套餐 3 进 1、0.05 套餐 2 进 1）；
-  // 未单列的套餐回退到 A_TOKEN_ROTATION_EVERY
-  rotationEveryByPlan: process.env.A_TOKEN_ROTATION_EVERY_BY_PLAN || '',
-  // 链上收款对账（兜底漏单）：增量扫描收款地址，自动补录"链上已付、站内无记录"的付款
-  reconcileLookbackBlocks: Number(process.env.A_TOKEN_RECONCILE_LOOKBACK_BLOCKS || 5000),
-  reconcileRangeCap: Number(process.env.A_TOKEN_RECONCILE_RANGE_CAP || 2000),
-  reconcileConcurrency: Number(process.env.A_TOKEN_RECONCILE_CONCURRENCY || 8),
-  extraCollectionAddresses: process.env.A_TOKEN_RECONCILE_EXTRA_ADDRESSES || '',
-});
-// 旧链上矿机激活已停用，不运行自动验款或链上补单任务。
-// 股东池（2026-11-11）：卖出手续费 5% 按成交 USDT 金额归集（买入 0），每 500 USDT 一池
-// P3：注入团队业绩（S3 判定）与统一待领取账本（分红以 USDT 挂 pending），满池即分红
+// 矿机激活功能已于 2026-11-12 彻底下线（历史激活记录保留在库中，不再补偿或产出）。
+// 股东池（2026-11-12）：卖出手续费 5% 改扣 SVX，50% 销毁 + 50% 进股东池，每 500 USDT 等值一池
+// P3：注入团队业绩（S3 判定）与统一待领取账本（分红以 SVX 挂 pending），满池即分红
 const aTokenShareholderService = createATokenShareholderService({
   database: walletService.database, walletService, aTokenService,
   teamService: aTokenTeamService, pendingService: aTokenPendingService,
@@ -616,8 +591,8 @@ try { airdropPointsService.settleDue(); } catch (e) { console.warn('[空投积�
 const airdropSettleTimer = setInterval(() => { try { airdropPointsService.settleDue(); } catch {} }, 10 * 60_000);
 airdropSettleTimer.unref?.();
 const aTokenApi = createATokenApi({
-      aTokenService, poolService: aTokenPoolService, minerService: aTokenMinerService,
-      stakingService: aTokenStakingService, transferService: aTokenTransferService, activationService: aTokenActivationService,
+      aTokenService, poolService: aTokenPoolService,
+      stakingService: aTokenStakingService, transferService: aTokenTransferService,
       klineService: aTokenKlineService, orderService: aTokenOrderService, withdrawalService: aTokenWithdrawalService,
       claimService: aTokenClaimService,
       walletService, teamService: aTokenTeamService, matchPoolService: aTokenMatchPoolService,
@@ -660,8 +635,8 @@ depositReconcileStartTimer.unref?.();
 const depositReconcileTimer = setInterval(depositReconcileTick, 60 * 1000);
 depositReconcileTimer.unref?.();
 const aTokenAdminApi = createATokenAdminApi({
-  aTokenService, poolService: aTokenPoolService, minerService: aTokenMinerService,
-  stakingService: aTokenStakingService, activationService: aTokenActivationService,
+  aTokenService, poolService: aTokenPoolService,
+  stakingService: aTokenStakingService,
   klineService: aTokenKlineService, orderService: aTokenOrderService, walletService,
   aTokenTeamService, blindBoxService: aTokenBlindBoxService,
   aTokenLpJobService,
@@ -691,14 +666,14 @@ const communityApi = createCommunityApi({
   redPacketService: communityRedPacketService,
   send, readBody, getSession: walletSession, isSameOrigin,
 });
-const fundsAdminApi = createFundsAdminApi({ walletService, minerService:aTokenMinerService, stakingService:aTokenStakingService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
-// ── 60s 定时：矿机产出 + 质押日结 + 每日固定销毁跨日结算 ──
+const fundsAdminApi = createFundsAdminApi({ walletService, stakingService:aTokenStakingService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
+// ── 60s 定时：质押日结 + 每日固定销毁跨日结算 ──
 // 2026-10-29：团伙深链曾使团队全量快照递归爆栈、O(N²) 自旋卡死（23:23 与 00:11 两次全站无响应）。
 // 已修复：teamHeldOf 改迭代式 + 全链路剔除封禁账号（见 a-token-team-service.js），团队任务恢复启用。
 // 2026-11-09 P1：A10 分红池与平级奖已停止新增（新等级/分红模型在 P3 重建）。
-// 旧矿机已停止新增，历史记录保留；质押只保留能量档。
+// 矿机功能已彻底下线（2026-11-12）；质押只保留能量档。
 const TEAM_JOBS_ENABLED = false;
-const aTokenMinerTimer = setInterval(() => {
+const aTokenBurnTimer = setInterval(() => {
   try { aTokenService.settleDailyBurn(); } catch (e) { console.error('[SVX每日销毁]', e?.message || e); }
 }, 60_000);
 const aTokenStakeTimer = setInterval(() => {
@@ -730,7 +705,7 @@ const aTokenKlineTimer = setInterval(() => {
   try { aTokenKlineService.tickLiveBar(); } catch (e) { console.error('[SVX K线] tick失败', e?.message || e); }
 }, 20_000);
 aTokenKlineTimer.unref?.();
-aTokenMinerTimer.unref?.();
+aTokenBurnTimer.unref?.();
 aTokenStakeTimer.unref?.();
 
 // 5 分钟定时：团队等级快照（P3 等级/级差依赖快照；O(n) 建树记忆化，前端团队页只读快照）
@@ -1017,52 +992,17 @@ export const server = http.createServer(async (request, res) => {
           const links = db.listReferralLinks();
           const link = links.find(l => String(l.wallet).toLowerCase() === wallet) || null;
           const referrerWallet = link?.referrerWallet || null;
-          // 矿机（格式化 SVX 18 位小数为可读数值）
-          const miners = db.listATokenMiners(wallet).map(m => ({ ...m,
-            totalUnits: fmtA(m.totalUnits),
-            totalEarnedUnits: fmtA(m.totalEarnedUnits),
-            dayEarnedUnits: fmtA(m.dayEarnedUnits),
-            dailyTargetUnits: fmtA(m.dailyTargetUnits),
-          }));
+          // 矿机功能已下线：不再读取矿机与激活记录
           // 全历史统计；列表单独限制条数，质押利息与返还本金分开。
           const aixIncome = readAdminAixIncome(db, wallet);
-          // 激活记录
-          const activations = db.listATokenActivationsByWallet(wallet);
-          // 直推列表（带激活统计）
+          // 直推列表
           const directs = links.filter(l => String(l.referrerWallet || '').toLowerCase() === wallet);
           const teamStatsView = aTokenTeamService.getTeamStatsView(wallet);
           const reporting = teamStatsView.reporting;
-          const excludedDirectProWallets = new Set(reporting?.enabled ? reporting.excludedDirectWallets || [] : []);
-          let act002 = 0, act005 = 0, actPending = 0, actRejected = 0;
-          const directList = directs.map(d => {
-            const dw = String(d.wallet).toLowerCase();
-            const act = db.listATokenActivationsByWallet(d.wallet) || [];
-            const confirmed002 = act.some(a => a.plan === '1' && a.status === 'confirmed');
-            const confirmed005 = act.some(a => a.plan === '2' && a.status === 'confirmed');
-            if (confirmed002) act002++;
-            if (confirmed005) act005++;
-            const pending = act.filter(a => a.status === 'pending').length;
-            const rejected = act.filter(a => a.status === 'rejected').length;
-            if (pending) actPending += pending;
-            if (rejected) actRejected += rejected;
-            // 直推用户的矿机数
-            const dm = db.listATokenMiners(d.wallet) || [];
-            const activeMiner = dm.filter(m => m.status === 'active').length;
-            // Apply the same one-miner exclusion as the team report without changing source records.
-            const proMiners = dm.filter(m => m.plan === 'pro1500');
-            const excludedProMiner = excludedDirectProWallets.has(dw) ? proMiners
-              .filter(m => !String(m.activationId || '').startsWith('ata_aix_'))
-              .sort((a, b) => Number(a.startedAt) - Number(b.startedAt) || String(a.id).localeCompare(String(b.id)))[0] : null;
-            return {
-              wallet: d.wallet,
-              joinedAt: d.createdAt,
-              hasMini: confirmed002,
-              hasPro: confirmed005 && (!excludedProMiner || proMiners.length > 1),
-              pending, rejected,
-              minerCount: Math.max(0, dm.length - (excludedProMiner ? 1 : 0)),
-              activeMinerCount: Math.max(0, activeMiner - (excludedProMiner?.status === 'active' ? 1 : 0)),
-            };
-          });
+          const directList = directs.map(d => ({
+            wallet: d.wallet,
+            joinedAt: d.createdAt,
+          }));
           // 间推（直推的直推）
           const directWallets = new Set(directs.map(d => String(d.wallet).toLowerCase()));
           const indirects = links.filter(l => directWallets.has(String(l.referrerWallet || '').toLowerCase()));
@@ -1082,13 +1022,8 @@ export const server = http.createServer(async (request, res) => {
               if (!teamSet.has(s) && s !== wallet) { teamSet.add(s); stack.push(s); }
             }
           }
-          // 团队激活统计
-          let teamAct002 = 0, teamAct005 = 0;
-          for (const w of teamSet) {
-            const act = db.listATokenActivationsByWallet(w) || [];
-            if (act.some(a => a.plan === '1' && a.status === 'confirmed')) teamAct002++;
-            if (act.some(a => a.plan === '2' && a.status === 'confirmed')) teamAct005++;
-          }
+          const act002 = 0, act005 = 0, actPending = 0, actRejected = 0;
+          const teamAct002 = 0, teamAct005 = 0;
           // 交易记录（SVX 买卖）—— 使用 orderService 返回格式化可读字段
           const orders = aTokenOrderService.myOrders({ wallet, limit: 100 });
           const trades = db.listATokenTradesByWallet ? db.listATokenTradesByWallet(wallet, 100) : [];
@@ -1105,11 +1040,11 @@ export const server = http.createServer(async (request, res) => {
             personalHeld,
             teamHeld,
             referrerWallet,
-            miners: { count: miners.length, totalReleased: aixIncome.minerTotalReleased, items: miners.slice(0, 100) },
+            miners: { count: 0, totalReleased: aixIncome.minerTotalReleased, items: [] },
             minerReleases: aixIncome.minerReleases.slice(-100).reverse(),
             stakes: aixIncome.stakes,
             stakeRewards: aixIncome.stakeRewards.slice(-100).reverse(),
-            activations,
+            activations: [],
             direct: {
               count: tEff.directCount,
               realCount: directs.length,

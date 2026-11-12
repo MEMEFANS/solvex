@@ -38,33 +38,6 @@ function adjustAsset(walletService, body) {
     : walletService.adminDebitAsset(input,'funds-admin');
 }
 
-function grantMiner(walletService, minerService, body) {
-  if (!minerService) throw new Error('矿机服务不可用');
-  const wallet = getAddress(String(body.wallet || '').trim());
-  const requestId = requestIdOf(body), reason = reasonOf(body);
-  const plan = String(body.plan || '');
-  if (!['mini120','pro1500'].includes(plan)) throw new Error('矿机套餐无效');
-  const database = walletService.database;
-  const key = `funds_miner_grant:${requestId}`;
-  const previous = database.getSetting(key);
-  if (previous) {
-    const existing = JSON.parse(previous);
-    if (existing.wallet.toLowerCase() !== wallet.toLowerCase() || existing.plan !== plan) throw conflict();
-    return existing.miner;
-  }
-  // Establish the wallet before the DB transaction; createMiner and its durable
-  // request/audit record then commit together. No balance is credited here.
-  walletService.ensureUser(wallet);
-  return database.transaction(() => {
-    const miner = minerService.createMiner(wallet,plan);
-    const record = { wallet, plan, reason, requestId, miner, adminUsername:'funds-admin', createdAt:Date.now() };
-    database.saveSetting(key,JSON.stringify(record));
-    database.db.prepare('INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)')
-      .run(`funds_miner_${requestId}`,wallet,'funds_miner_grant',record.createdAt,JSON.stringify(record));
-    return miner;
-  });
-}
-
 function listFundsBalanceAdjustments(walletService, limit = 200) {
   const bounded = Math.min(Math.max(Number(limit) || 200, 1), 1000);
   const assets = new Map(walletService.publicConfig().assets.map(asset => [asset.symbol, asset]));
@@ -92,7 +65,7 @@ function tokenEqual(actual, expected) {
 }
 
 // Funds operations require their own bearer credential; operator cookies grant no access.
-export function createFundsAdminApi({ walletService, minerService, stakingService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
+export function createFundsAdminApi({ walletService, stakingService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
   const send = (res, status, payload) => { respond(res, status, payload); return true; };
   async function handle(request, res, pathname) {
     if (!pathname.startsWith('/api/wallet/admin/')) return false;
@@ -136,12 +109,8 @@ export function createFundsAdminApi({ walletService, minerService, stakingServic
         });
         return send(res,200,{ok:true,energy});
       }
-      if (pathname === '/api/wallet/admin/miner-grants' && request.method === 'GET') {
-        const rows = walletService.database.db.prepare("SELECT payload_json FROM audit_log WHERE event_type='funds_miner_grant' ORDER BY created_at DESC LIMIT 200").all();
-        return send(res,200,{ items:rows.map(row => JSON.parse(row.payload_json)) });
-      }
-      if (pathname === '/api/wallet/admin/miner-grants' && request.method === 'POST') {
-        return send(res,403,{error:'旧矿机赠送已关闭，请使用能量充值',code:'LEGACY_MINER_DISABLED'});
+      if (pathname === '/api/wallet/admin/miner-grants') {
+        return send(res,410,{error:'矿机功能已下线',code:'MINER_DISABLED'});
       }
       if (pathname === '/api/wallet/admin/withdrawal-automation' && request.method === 'GET') {
         return send(res, 200, { ...walletService.withdrawalAutomationSettings(), ...payoutService.status() });

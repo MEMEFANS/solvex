@@ -22,7 +22,7 @@ function errorCode(error) {
 }
 
 export function createATokenApi({
-  aTokenService, poolService, minerService, stakingService, transferService, activationService, klineService, orderService, withdrawalService, claimService, walletService, teamService, matchPoolService, nodeService, pendingService, shareholderService, turboService, zoneTradeService, upgradeService, blindBoxService,
+  aTokenService, poolService, stakingService, transferService, klineService, orderService, withdrawalService, claimService, walletService, teamService, matchPoolService, nodeService, pendingService, shareholderService, turboService, zoneTradeService, upgradeService, blindBoxService,
   verifyBlindboxPayment = null,
   tokenInfo = null,
   send, readBody, getSession, withAccountLock = (addr, op) => op(),
@@ -80,18 +80,7 @@ export function createATokenApi({
       } catch (e) { return sendError(res, e); }
     }
     if (isGet && pathname === '/api/a-token/plans') {
-      const meta = activationService.getMeta ? activationService.getMeta() : {};
-      const plans = activationService.getPlans();
       return send(res, 200, {
-        activation: [],
-        activationMeta: meta,
-        paymentMode: 'svx_balance',
-        paymentAsset: 'SVX',
-        collectionAddress: '',
-        collectionAddressByPlan: {},
-        chainId: 56,
-        confirmations: Number(process.env.A_TOKEN_ACTIVATION_CONFIRMATIONS || 12),
-        activationEnabled: false,
         withdrawEnabled: false,
         rules: SOLVEX_RULES,
         assetMode: 'platform',
@@ -101,7 +90,6 @@ export function createATokenApi({
           maxCoins: p.maxUnits ? formatATokenDisplay(p.maxUnits) : '',
         })),
         nodes: nodeService?.describe?.() || null,
-        miner: [],
         liquidity: aTokenService.liquidityStatus(),
       });
     }
@@ -168,7 +156,8 @@ export function createATokenApi({
       if (isGet && pathname === '/api/a-token/profile') {
         const prof = await aTokenService.profile(session.address);
         // 用 service.present() 的完整字段覆盖（含 remaining/progressPct/label/flexible 等）
-        prof.miners = minerService.present(session.address);
+        // 矿机功能已下线，不再下发矿机数据
+        prof.miners = [];
         prof.stakes = stakingService.present(session.address);
         prof.liquidity = aTokenService.liquidityStatus();
         // 算力节点 / 甲区乙区余额 / 待领取总览（P1 新链路）
@@ -218,9 +207,6 @@ export function createATokenApi({
           return send(res, 200, result);
         } catch (e) { return sendError(res, e); }
       }
-      if (isGet && pathname === '/api/a-token/miners') {
-        return send(res, 200, { miners: minerService.present(session.address) });
-      }
       if (isGet && pathname === '/api/a-token/stakes') {
         return send(res, 200, { stakes: stakingService.present(session.address) });
       }
@@ -255,13 +241,6 @@ export function createATokenApi({
       // 2026-11-01 起互转功能关闭（保留历史记录查询 my-transfers）
       if (isGet && pathname === '/api/a-token/transfer-quote') {
         return send(res, 403, { error: 'SVX 互转功能已关闭', code: 'TRANSFER_DISABLED' });
-      }
-      if (isGet && pathname === '/api/a-token/activations') {
-        return send(res, 200, { activations: activationService.listByWallet(session.address) });
-      }
-      if (isGet && pathname === '/api/a-token/activation-request') {
-        const params = new URLSearchParams(request.url?.split('?')[1] || '');
-        return send(res, 200, { record: activationService.getRequest(session.address, params.get('plan'), params.get('requestId')) });
       }
       // ===== 匹配池（2026-10-31）=====
       // GET /api/a-token/match-pool：总览（蓄能额度/驱动额度/流通额度 + 条目 + 购买记录）

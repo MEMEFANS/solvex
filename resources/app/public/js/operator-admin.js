@@ -22,7 +22,7 @@
   let dashboard = { summary:{}, users:[], tokens:[], recentDeposits:[], recentWithdrawals:[] };
   let deposits = [];
   const USER_PAGE_SIZE = 50;
-  let usersOffset = 0, usersTotal = 0, usersRequestSeq = 0, overviewRequestSeq = 0, depositsRequestSeq = 0, minerRequestSeq = 0, klineRequestSeq = 0;
+  let usersOffset = 0, usersTotal = 0, usersRequestSeq = 0, overviewRequestSeq = 0, depositsRequestSeq = 0, klineRequestSeq = 0;
   let adminGeneration = 0, userSearchTimer = null;
   const pendingReads = new Map();
   let blindboxSnapshot = null, blindboxRequestSeq = 0;
@@ -89,8 +89,7 @@
     supportTickets = []; supportConv = null; supportActiveTicketId = null; supportListSig = '';
     byId('admin-support-ticket-list').replaceChildren();
     byId('admin-support-conv').replaceChildren();
-    aMinerData = null; aKlineStatus = null;
-    byId('admin-a-miner-root').replaceChildren();
+    aKlineStatus = null;
     byId('admin-a-kline-root').replaceChildren();
     byId('admin-users-body').replaceChildren();
     byId('admin-deposits-body').replaceChildren();
@@ -270,7 +269,7 @@
     const teamStatsEditor = `
       <div class="admin-detail-section ats-editor${storedOv ? ' is-set' : ''}">
         ${subHead(storedOv ? `📊 团队展示数据 · 已手动设置（更新于 ${date(storedOv.updatedAt)}${storedOv.updatedBy ? ` · ${esc(storedOv.updatedBy)}` : ''}）` : '📊 团队展示数据（仅前端展示）')}
-        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；该地址的真实上级打开团队页时，团队人数 / 开通矿机 / 团队业绩（Mini 100 SVX、Pro 1500 SVX）会按真实推荐链自动叠加，页面展示等级也会按虚拟业绩相应提升。仅用于前端展示，不影响手续费率、真实等级与分润等实际权益。</p>
+        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；该地址的真实上级打开团队页时，团队人数 / 团队业绩会按真实推荐链自动叠加，页面展示等级也会按虚拟业绩相应提升。仅用于前端展示，不影响手续费率、真实等级与分润等实际权益。</p>
         <div class="ats-grid">
           ${atsField('ats-direct', '直推人数', d.direct?.count, d.statsOverride?.real?.directCount)}
           ${atsField('ats-indirect', '间推人数', d.indirect?.count, d.statsOverride?.real?.indirectCount)}
@@ -311,18 +310,7 @@
     const directRows = (d.direct?.list || []).map(u => `<tr>
       <td><code title="${esc(u.wallet)}">${esc(shortAddress(u.wallet))}</code></td>
       <td>${date(u.joinedAt)}</td>
-      <td><span class="admin-status ${u.hasMini ? 'good' : ''}">${u.hasMini ? '✓' : '—'}</span></td>
-      <td><span class="admin-status ${u.hasPro ? 'good' : ''}">${u.hasPro ? '✓' : '—'}</span></td>
-      <td>${u.minerCount || 0} 台</td>
-    </tr>`).join('') || emptyRow(5, '暂无直推用户');
-    // 矿机列表
-    const minerRows = (d.miners?.items || []).map(m => `<tr>
-      <td><code>${esc(String(m.id||'').slice(-8))}</code></td>
-      <td>${esc(m.plan || '-')}</td>
-      <td><span class="admin-status ${m.status==='active'?'good':''}">${m.status==='active'?'运行中':m.status==='expired'?'已到期':m.status==='redeemed'?'已赎回':m.status}</span></td>
-      <td>${amount(m.totalEarnedUnits || 0)} / ${amount(m.totalUnits || 0)} SVX</td>
-      <td>${date(m.startedAt)}</td>
-    </tr>`).join('') || emptyRow(5, '暂无矿机');
+    </tr>`).join('') || emptyRow(2, '暂无直推用户');
     // 质押列表
     const stakeRows = (d.stakes?.items || []).map(s => `<tr>
       <td><code>${esc(String(s.id||'').slice(-8))}</code></td>
@@ -333,13 +321,6 @@
       <td>${amount(s.principalReturnedUnits || 0)} SVX</td>
       <td>${amount(s.outstandingPrincipalUnits || 0)} SVX</td>
     </tr>`).join('') || emptyRow(7, '暂无质押');
-    // 激活记录
-    const actRows = (d.activations || []).map(a => `<tr>
-      <td><code>${esc(String(a.id||'').slice(-10))}</code></td>
-      <td>${a.plan === '1' ? 'Mini' : 'Pro'} · ${['SVX','AIX'].includes(a.paymentAsset) ? esc(a.payload?.svx || a.payload?.aix || '') + ' SVX（已销毁）' : (a.plan === '1' ? '0.002' : '0.05') + ' BNB（历史）'}</td>
-      <td><span class="admin-status ${a.status==='confirmed'?'good':a.status==='rejected'?'bad':'warn'}">${a.status==='confirmed'?'已确认':a.status==='rejected'?'已拒绝':'待确认'}</span></td>
-      <td>${date(a.createdAt)}</td>
-    </tr>`).join('') || emptyRow(4, '暂无激活记录');
     // 订单（inputA/inputUsdt 为剩余冻结量）：挂单中显示「剩余」，已结束显示原始委托量；另列已成交
     const orderRows = (d.orders || []).slice(0, 50).map(o => {
       const isBuy = o.side === 'buy';
@@ -391,41 +372,21 @@
       <div class="admin-detail-section">
         ${subHead(`直推团队（共 ${effPeople(d.direct?.count, d.direct?.realCount)}）`)}
         <div class="admin-detail-stats">
-          <span>激活 Mini：<b>${effPeople(d.direct?.actMini, d.direct?.realActMini)}</b></span>
-          <span>激活 Pro：<b>${effPeople(d.direct?.actPro, d.direct?.realActPro)}</b></span>
-          <span>待确认：<b>${d.direct?.pending || 0}</b> 笔</span>
-          <span>已拒绝：<b>${d.direct?.rejected || 0}</b> 笔</span>
-        </div>
-        <div class="admin-detail-stats">
           <span>直推总业绩：<b>${amount(d.direct?.holdA || 0)} SVX</b>${Number(d.direct?.virtualHoldA || 0) > 0 ? ` <span style="color:#0e9c88;font-size:11px">（真实 ${amount(d.direct?.realHoldA || 0)} + 虚拟 ${amount(d.direct?.virtualHoldA || 0)}）</span>` : ''}</span>
         </div>
-        <div class="admin-table-scroll"><table><thead><tr><th>直推地址</th><th>加入时间</th><th>Mini</th><th>Pro</th><th>矿机数</th></tr></thead><tbody>${directRows}</tbody></table></div>
+        <div class="admin-table-scroll"><table><thead><tr><th>直推地址</th><th>加入时间</th></tr></thead><tbody>${directRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
         ${subHead(`间推/团队（间推 ${effPeople(d.indirect?.count, d.indirect?.realCount)} · 团队 ${effPeople(d.team?.count, d.team?.realCount)}）`)}
-        <div class="admin-detail-stats">
-          <span>团队激活 Mini：<b>${effPeople(d.team?.actMini, d.team?.realActMini)}</b></span>
-          <span>团队激活 Pro：<b>${effPeople(d.team?.actPro, d.team?.realActPro)}</b></span>
-        </div>
         <div class="admin-detail-stats">
           <span>团队总业绩：<b>${amount(Number(d.teamHeld || 0) + Number(d.team?.virtualHoldA || 0))} SVX</b>${Number(d.team?.virtualHoldA || 0) > 0 ? ` <span style="color:#0e9c88;font-size:11px">（真实 ${amount(d.teamHeld || 0)} + 虚拟 ${amount(d.team?.virtualHoldA || 0)}）</span>` : ''}</span>
         </div>
       </div>
 
       <div class="admin-detail-section">
-        ${subHead(`矿机（${d.miners?.count || 0} 台 · 累计产出 ${amount(d.miners?.totalReleased || 0)} SVX）`)}
-        <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>已产/总额</th><th>开始时间</th></tr></thead><tbody>${minerRows}</tbody></table></div>
-      </div>
-
-      <div class="admin-detail-section">
         ${subHead(`质押（${d.stakes?.count || 0} 笔 · 累计利息 ${amount(d.stakes?.totalEarned || 0)} SVX · 已返本金 ${amount(d.stakes?.principalReturned || 0)} SVX · 累计到账 ${amount(d.stakes?.totalCredited || 0)} SVX）`)}
         <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>质押 SVX</th><th>累计利息</th><th>已返本金</th><th>质押中本金</th></tr></thead><tbody>${stakeRows}</tbody></table></div>
-      </div>
-
-      <div class="admin-detail-section">
-        ${subHead('激活记录')}
-        <div class="admin-table-scroll"><table><thead><tr><th>ID</th><th>套餐</th><th>状态</th><th>提交时间</th></tr></thead><tbody>${actRows}</tbody></table></div>
       </div>
 
       <div class="admin-detail-section">
@@ -533,7 +494,6 @@
       } else if (page === 'community-admin') await window.AdminCommunityAdmin?.load();
       else if (page === 'devices') await window.AdminDevices?.load();
       else if (page === 'a-kline') await loadAKline();
-      else if (page === 'a-miner') await loadAMiner();
       else if (page === 'a-token-balance') { await loadFreeTrading(); }
       else if (page === 'blindbox') await loadBlindbox();
       else if (page === 'support') await loadSupportTickets();
@@ -574,7 +534,7 @@
     ++usersRequestSeq;
     clearTimeout(userSearchTimer);
     currentPage = page;
-    const titles = { overview:'首页总览', users:'用户管理', devices:'设备管理', deposits:'充值记录', tokens:'代币管理', stocks:'股票管理', mall:'商城商户审核', support:'在线客服', 'community-admin':'群聊管理', 'a-kline':'SVX 行情调控', 'a-token-balance':'SVX 代币管理', 'a-miner':'SVX 矿机管理', blindbox:'盲盒概率', 'team-activations':'团队激活查询', announcement:'平台公告' };
+    const titles = { overview:'首页总览', users:'用户管理', devices:'设备管理', deposits:'充值记录', tokens:'代币管理', stocks:'股票管理', mall:'商城商户审核', support:'在线客服', 'community-admin':'群聊管理', 'a-kline':'SVX 行情调控', 'a-token-balance':'SVX 代币管理', blindbox:'盲盒概率', announcement:'平台公告' };
     document.querySelectorAll('[data-admin-page]').forEach(button => button.classList.toggle('active', button.dataset.adminPage === page));
     document.querySelectorAll('[data-admin-panel]').forEach(panel => panel.classList.toggle('active', panel.dataset.adminPanel === page));
     byId('admin-page-title').textContent = titles[page] || '管理后台';
@@ -745,65 +705,6 @@
     } catch (error) { byId('admin-aix-balance-result').textContent = error.message; }
   });
   byId('admin-free-trading-toggle')?.addEventListener('click', toggleFreeTrading);
-  // 团队激活查询：整棵下线的 Mini/Pro 激活数，可按直推排除后看净数
-  let teamQueryData = null;
-  function teamCard(label, value, sub, color) {
-    return `<div style="flex:1;min-width:120px;border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--panel)">
-      <div style="font-size:12px;color:var(--mut)">${label}</div>
-      <div style="font-size:22px;font-weight:700;color:${color}">${value}</div>
-      <div style="font-size:11px;color:var(--mut)">${sub}</div></div>`;
-  }
-  function teamCheckedSet() {
-    return new Set([...document.querySelectorAll('#admin-team-direct-body input[type=checkbox]:checked')].map(c => c.dataset.wallet));
-  }
-  function renderTeamResult() {
-    const box = byId('admin-team-result');
-    const detail = byId('admin-team-detail');
-    if (!box || !teamQueryData) return;
-    const d = teamQueryData;
-    const checked = teamCheckedSet();
-    const picked = d.directRows.filter(r => checked.has(r.wallet));
-    const exMini = picked.reduce((s, r) => s + r.mini, 0);
-    const exPro = picked.reduce((s, r) => s + r.pro, 0);
-    const exMembers = picked.reduce((s, r) => s + r.members, 0);
-    const hasEx = checked.size > 0;
-    const netMini = d.teamMini - exMini, netPro = d.teamPro - exPro, netCount = d.teamCount - exMembers;
-    const pair = (net, all) => hasEx ? `${net}<span style="font-size:13px;font-weight:400;color:var(--mut)"> / ${all}</span>` : String(all);
-    box.innerHTML = `<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">
-      ${teamCard('团队总人数', hasEx ? `${netCount}<span style="font-size:13px;font-weight:400;color:var(--mut)"> / ${d.teamCount}</span>` : d.teamCount, `直推 ${d.directCount} · 间推 ${d.indirectCount}`, 'var(--txt)')}
-      ${teamCard('Mini 激活（团队）', pair(netMini, d.teamMini), hasEx ? `已排除 ${exMini}` : '全部直推', 'var(--brand)')}
-      ${teamCard('Pro 激活（团队）', pair(netPro, d.teamPro), hasEx ? `已排除 ${exPro}` : '全部直推', 'var(--blu)')}
-    </div>
-    <div style="margin-top:8px;font-size:12px;color:var(--mut)">地址：<span style="font-family:monospace">${esc(d.address)}</span>${
-      hasEx ? `　|　已排除 ${checked.size} 个直推（${exMembers} 人）` : ''}</div>`;
-    if (detail) detail.hidden = !d.directRows.length;
-    const countEl = byId('admin-team-direct-count');
-    if (countEl) countEl.textContent = `${d.directCount} 个直推（每人含其整棵子树）`;
-    const body = byId('admin-team-direct-body');
-    if (!body) return;
-    body.innerHTML = d.directRows.length
-      ? d.directRows.map(r => `<tr>
-        <td><input type="checkbox" data-wallet="${esc(r.wallet)}"${checked.has(r.wallet) ? ' checked' : ''}></td>
-        <td style="font-family:monospace">${esc(r.wallet)}</td>
-        <td>${r.members}</td><td>${r.mini}</td><td>${r.pro}</td></tr>`).join('')
-      : '<tr><td colspan="5" style="color:var(--mut)">该地址没有任何直推</td></tr>';
-    body.querySelectorAll('input[type=checkbox]').forEach(c => c.addEventListener('change', renderTeamResult));
-  }
-  byId('admin-team-query-btn')?.addEventListener('click', async () => {
-    const wallet = byId('admin-team-wallet').value.trim();
-    if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) { byId('admin-team-result').textContent = '请输入正确的钱包地址（0x 开头 42 位）'; teamQueryData = null; byId('admin-team-detail').hidden = true; return; }
-    byId('admin-team-result').textContent = '查询中...';
-    byId('admin-team-detail').hidden = true;
-    try {
-      teamQueryData = await aApi('/team-activations?address=' + encodeURIComponent(wallet.toLowerCase()));
-      renderTeamResult();
-    } catch (error) { teamQueryData = null; byId('admin-team-result').textContent = error.message; }
-  });
-  byId('admin-team-wallet')?.addEventListener('keydown', event => { if (event.key === 'Enter') byId('admin-team-query-btn')?.click(); });
-  byId('admin-team-clear-exclude')?.addEventListener('click', () => {
-    document.querySelectorAll('#admin-team-direct-body input[type=checkbox]').forEach(c => { c.checked = false; });
-    renderTeamResult();
-  });
   // ── 平台公告：读取当前内容 / 保存（最多 2 条，中英双语，存 service_settings）──
   async function loadAnnouncement() {
     const status = byId('admin-announce-status');
@@ -1065,11 +966,10 @@
   }
 
   /* ============================================================
-   * SVX 行情 / 矿机管理 后台模块（嵌入 admin 后台，走 cookie 鉴权）
+   * SVX 行情 后台模块（嵌入 admin 后台，走 cookie 鉴权）
    * ============================================================ */
   const PERIOD_LABELS = { '1m':'1 分', '5m':'5 分', '15m':'15 分', '1h':'1 时', '4h':'4 时', '1d':'日线' };
   let aKlineStatus = null;
-  let aMinerData = null;
 
   async function aApi(path, options = {}) {
     const url = path.startsWith('/') ? `/api/admin/a-token${path}` : `/api/admin/a-token/${path}`;
@@ -1145,14 +1045,6 @@
         </div>
       </div>
       <div class="admin-a-card">
-        <h3>⛏ 矿机激活开关</h3>
-        ${tip('关闭时：用户无法激活（购买）矿机，提交时提示「矿机激活暂未开放」。已运行的矿机产出不受影响。')}
-        <div class="admin-a-form-grid">
-          <label>当前状态：${pool.activationEnabled ? '<b style="color:#0e9c88">✅ 激活已开放（用户可购买矿机）</b>' : '<b style="color:#a8700a">⛔ 激活已关闭（用户不可购买矿机）</b>'}</label>
-          <label style="align-self:flex-end">${aBtn(pool.activationEnabled ? '⛔ 关闭激活' : '⛏ 开放激活', { id:'a-activation-toggle' })}</label>
-        </div>
-      </div>
-      <div class="admin-a-card">
         <h3>💸 SVX 提现开关</h3>
         ${tip('关闭时：用户无法发起 SVX 链上提现，提交时提示「SVX 提现暂未开放」。已提交的提现单照常处理。')}
         <div class="admin-a-form-grid">
@@ -1198,15 +1090,6 @@
       try { await aApi('/burn/mode', { method:'POST', body:JSON.stringify({ enabled: turningOn }) }); aSetBtn('a-burn-toggle', turningOn?'✓ 已开启销毁':'✓ 已暂停销毁'); await loadAKline(); }
       catch(e){ toast(e.message); }
     });
-    $id('a-activation-toggle')?.addEventListener('click', async ()=>{
-      const turningOn = !pool.activationEnabled;
-      const msg = turningOn
-        ? '确定开放矿机激活？开放后用户可正常激活（购买）矿机。'
-        : '⚠ 确定关闭矿机激活？关闭后用户将无法激活（购买）矿机，已运行矿机不受影响。';
-      if (!await confirmDialog(msg)) return;
-      try { await aApi('/activation/mode', { method:'POST', body:JSON.stringify({ enabled: turningOn }) }); aSetBtn('a-activation-toggle', turningOn?'✓ 已开放激活':'✓ 已关闭激活'); await loadAKline(); }
-      catch(e){ toast(e.message); }
-    });
     $id('a-withdraw-toggle')?.addEventListener('click', async ()=>{
       const turningOn = !pool.withdrawEnabled;
       const msg = turningOn
@@ -1215,112 +1098,6 @@
       if (!await confirmDialog(msg)) return;
       try { await aApi('/withdraw/mode', { method:'POST', body:JSON.stringify({ enabled: turningOn }) }); aSetBtn('a-withdraw-toggle', turningOn?'✓ 已开放提现':'✓ 已关闭提现'); await loadAKline(); }
       catch(e){ toast(e.message); }
-    });
-  }
-
-  async function loadAMiner(qs = '') {
-    const generation = adminGeneration, seq = ++minerRequestSeq;
-    try {
-      const result = await aApi('/miners' + (qs ? '?'+qs : ''));
-      if (generation !== adminGeneration || seq !== minerRequestSeq || currentPage !== 'a-miner') return;
-      aMinerData = result; renderAMiner();
-    } catch (e) { const root = byId('admin-a-miner-root'); if (root && generation === adminGeneration && seq === minerRequestSeq && currentPage === 'a-miner') root.innerHTML = `<div class="admin-inline-status" style="color:var(--admin-red)">加载失败：${esc(e.message)}</div>`; }
-  }
-  function renderAMiner() {
-    const root = byId('admin-a-miner-root'); if (!root) return;
-    const m = aMinerData || {}; const items = m.items || []; const summary = m.summary?.by || {};
-    const total = m.summary?.total || 0;
-    const aActive = (summary['active:mini120'] || 0) + (summary['active:pro1500'] || 0);
-    const aDone = (summary['completed:mini120'] || 0) + (summary['completed:pro1500'] || 0);
-    const plans = m.plans || [];
-    const today = m.today || {};
-    const tMini = today.by?.mini120 || 0, tPro = today.by?.pro1500 || 0;
-    const stat = (label, value, color) => `<div class="admin-a-stat"><small>${esc(label)}</small><b style="color:${color}">${esc(value)}</b></div>`;
-    const planDaily = (p) => { const row = plans.find(x=>x.id===p); return row ? aFmt(Number(row.dailyTarget)/1e18, 2) : (p==='mini120'?'3.33':'16.67'); };
-    const DAY_MS = 86400_000;
-    const walletShort = (w)=> !w ? '-' : w.length>=16 ? w.slice(0,8)+'…'+w.slice(-6) : w;
-    const rows = items.length===0
-      ? `<tr><td colspan="10" class="admin-empty">暂无矿机记录（请先赠送矿机或切换筛选条件）</td></tr>`
-      : items.map(r=>{
-          const dl = r.status==='active' && r.expiresAt ? Math.max(0, Math.floor((r.expiresAt-Date.now())/DAY_MS)) : 0;
-          const warn = r.status==='active' && dl<=3;
-          return `<tr data-mid="${esc(r.id)}">
-            <td><code style="font-size:11px" title="${esc(r.id)}">${esc(r.id.slice(0,22))}</code></td>
-            <td><code title="${esc(r.wallet||'')}">${esc(walletShort(r.wallet))}</code></td>
-            <td>${r.plan==='mini120'?aPill('#50d2c2','Mini 矿机'):r.plan==='pro1500'?aPill('#8a7dff','Pro 矿机'):esc(r.plan)}</td>
-            <td style="text-align:right">${r.status==='active'?aPill('#50d2a8','● active'):aPill('#81918e','● completed')}</td>
-            <td style="text-align:right">${aFmt(r.dailyTarget,2)} <small>SVX/日</small></td>
-            <td style="text-align:right">${aFmt(r.total,0)} SVX</td>
-            <td style="text-align:right">${aFmt(r.totalEarned,2)}<br><small style="color:#0e9c88">${aFmt(r.remaining,2)} 待 · ${Number(r.progressPct||0).toFixed(1)}%</small></td>
-            <td style="text-align:right">${new Date(r.startedAt||0).toLocaleDateString('zh-CN')}</td>
-            <td style="text-align:right">${r.expiresAt ? new Date(r.expiresAt).toLocaleDateString('zh-CN') + (warn ? ' <b style="color:var(--admin-red)">'+dl+'天</b>' : '') : '-'}</td>
-            <td style="white-space:nowrap">${r.status==='active' ? `<button type="button" class="admin-table-action reject" data-mact="expire">⏹ 过期</button>` : '-'}</td>
-          </tr>`;
-        }).join('');
-    root.innerHTML = `
-      <div class="admin-a-grid">
-        ${stat('矿机总数', String(total), '#50d2c2')}
-        ${stat('Active 数', String(aActive), '#f6c454')}
-        ${stat('已完成', String(aDone), '#81918e')}
-        ${stat('今日激活', `${today.total ?? 0} 台（Mini ${tMini} · Pro ${tPro}）`, '#ff9f43')}
-        ${stat('今日激活用户', String(today.wallets ?? 0), '#ff9f43')}
-        ${stat('待产出≈', aFmt(items.reduce((a,r)=>a + (r.status==='active'?Number(r.remaining||0):0), 0), 0) + ' A', '#8a7dff')}
-      </div>
-      <div class="admin-a-card">
-        <h3>赠送矿机</h3>
-        <p>矿机赠送已移至独立资金后台。</p>
-        <button type="button" class="admin-primary-button" id="am-open-funds">打开资金后台</button>
-      </div>
-      <div class="admin-a-card">
-        <h3>👤 设置用户等级（A1-A10）</h3>
-        <div class="admin-a-form-grid" style="grid-template-columns: 2fr 1fr auto;gap:12px;align-items:flex-end">
-          <label>用户钱包<input id="am-level-wallet" type="text" placeholder="0x..."></label>
-          <label>等级<select id="am-level-val">${Array.from({length:10},(_,i)=>`<option value="${i+1}">A${i+1}</option>`).join('')}</select></label>
-          <label style="align-self:flex-end">${aBtn('👤 设置等级', { id:'am-level-set' })}</label>
-        </div>
-      </div>
-      <div class="admin-a-card"><h3>SVX 激活规则</h3><p>Mini：20 SVX，终身限一次，30 天产出 100 SVX。Pro：400 SVX，可重复激活、同时持有多台，90 天产出 1500 SVX。无激活名额上限；激活费用全额计入销毁。</p></div>
-      <div class="admin-a-card">
-        <h3>🔎 搜索筛选</h3>
-        <div class="admin-a-form-grid" style="grid-template-columns: 2fr 1fr 1fr auto;gap:12px;align-items:flex-end">
-          <label>钱包地址<input id="am-f-w" type="text" placeholder="0x... 留空=全部"></label>
-          <label>状态<select id="am-f-s"><option value="">全部</option><option value="active">Active</option><option value="completed">Completed</option></select></label>
-          <label>套餐<select id="am-f-p"><option value="">全部</option><option value="mini120">Mini 矿机</option><option value="pro1500">Pro 矿机</option></select></label>
-          <label style="align-self:flex-end">${aBtn('🔎 刷新列表', { id:'am-refresh' })}</label>
-        </div>
-      </div>
-      <div class="admin-table-scroll" style="margin-top:4px">
-        <table class="admin-table"><thead><tr>
-          <th>矿机 ID</th><th>用户钱包</th><th>套餐</th><th style="text-align:right">状态</th>
-          <th style="text-align:right">日产</th><th style="text-align:right">总额度</th><th style="text-align:right">已产出/进度</th>
-          <th style="text-align:right">开始</th><th style="text-align:right">到期</th><th style="text-align:right">操作</th>
-        </tr></thead><tbody id="am-tbody">${rows}</tbody></table>
-      </div>
-    `;
-    // 事件
-    const $id = (id)=>document.getElementById(id);
-    const mark = (id,msg)=>{const el=$id(id);if(!el)return;const t=el.textContent;el.disabled=true;el.textContent=msg;setTimeout(()=>{el.textContent=t;el.disabled=false;},1500);toast(msg);};
-    $id('am-open-funds')?.addEventListener('click', () => window.open('/funds-admin.html', '_blank', 'noopener,noreferrer'));
-    $id('am-level-set')?.addEventListener('click', async ()=>{
-      const w=String($id('am-level-wallet').value||'').trim();
-      const lv=$id('am-level-val').value;
-      if(!w)return toast('请输入钱包地址');
-      if(!await confirmDialog(`确认将 ${shortAddress(w)} 等级设置为 A${lv}？`))return;
-      try{ await api(`/api/admin/users/${encodeURIComponent(w)}/level`,{method:'POST',body:JSON.stringify({level:Number(lv)})});
-        mark('am-level-set',`✓ 已设为 A${lv}`);
-      }catch(e){toast(e.message);}
-    });
-    $id('am-refresh')?.addEventListener('click', ()=>{
-      const q=new URLSearchParams({limit:500});
-      ['w','s','p'].forEach(k=>{const v=$id('am-f-'+k)?.value; if(v) q.set(k==='w'?'wallet':k==='s'?'status':'plan',v);});
-      loadAMiner(q.toString());
-    });
-    $id('am-tbody')?.addEventListener('click', async(e)=>{
-      const b = e.target.closest('button[data-mact]'); if(!b)return;
-      const tr=b.closest('tr[data-mid]'); if(!tr)return; const mid=tr.dataset.mid;
-      try{
-        if(b.dataset.mact==='expire'){ if(!await confirmDialog('确认强制过期这台矿机？（会补齐剩余 A 尾差给用户）')) return; await aApi('/miners/expire',{method:'POST',body:JSON.stringify({minerId:mid, payRemaining:true})}); toast('✓ 已强制过期'); await loadAMiner();}
-      }catch(err){toast(err.message);}
     });
   }
 
@@ -1517,7 +1294,7 @@
 
   // 刷新按钮
   byId('admin-a-kline-refresh')?.addEventListener('click', loadAKline);
-  byId('admin-a-miner-refresh')?.addEventListener('click', () => loadAMiner());
+  byId('admin-a-kline-refresh')?.addEventListener('click', () => loadAKline());
   byId('admin-blindbox-refresh')?.addEventListener('click', loadBlindbox);
   initBlindboxPanel();
 
