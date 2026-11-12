@@ -472,13 +472,18 @@ export function createATokenApi({
         try { q = zoneTradeService.quote({ side: 'buy', zone, amount }); }
         catch (e) { return sendError(res, e); }
         try {
-          // 同上：签名消息绑定用户输入的金额（不随价格 tick 变化），旧消息保留兼容
+          // 同上：签名消息绑定用户输入的金额（不随价格 tick 变化），旧消息保留兼容。
+          // 分区文案有两套：报价里的 zoneLabel 是「甲区/乙区」，前端展示文案是「蓄能额度/驱动额度」，
+          // 两套都接受（文字不一致会验签失败，误报「钱包签名与当前账户不一致」）。
           const timestamp = String(body.timestamp ?? '');
           const signature = String(body.signature ?? '');
-          const messages = [
-            `Solvex ${q.zoneLabel}买币确认：支付 ${amount} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`,
-            `Solvex ${q.zoneLabel}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`,
-          ];
+          const uiLabel = { alpha: '蓄能额度', beta: '驱动额度', market: '自由交易（驱动额度）' }[zone] || q.zoneLabel;
+          const labels = uiLabel === q.zoneLabel ? [q.zoneLabel] : [uiLabel, q.zoneLabel];
+          const messages = [];
+          for (const label of labels) {
+            messages.push(`Solvex ${label}买币确认：支付 ${amount} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`);
+            messages.push(`Solvex ${label}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`);
+          }
           let lastError;
           for (const message of messages) {
             try { walletService.verifyOperationSignature({ address: session.address, message, signature }); lastError = null; break; }
