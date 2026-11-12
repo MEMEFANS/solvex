@@ -1064,8 +1064,9 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       nextLevel: displayLevel < 10 && displayLevel >= 0 ? TEAM_LEVELS_VIEW[displayLevel] : null,
       upgradeA: formatUnits(upgradeUnits, A_TOKEN_DECIMALS),
       teamPerfA: formatUnits(teamPerfUnits, A_TOKEN_DECIMALS),
-      directReferrer: chain[0] || null,
-      indirectReferrer: chain[1] || null,
+      // 隐私口径：下级只看得到推荐人的邀请码，不下发上级钱包地址
+      directReferrerCode: chain[0] ? (links.find(item => k(item.wallet) === k(chain[0]))?.code || null) : null,
+      indirectReferrerCode: chain[1] ? (links.find(item => k(item.wallet) === k(chain[1]))?.code || null) : null,
       directCount: directs.length + statsAcc.dDirect,
       indirectCount: indirectWalletSet.size + statsAcc.dIndirect,
       directMini: realDirectMini + statsAcc.dDirectMini,
