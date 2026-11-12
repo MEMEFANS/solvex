@@ -219,6 +219,7 @@ button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,te
 #tab-a-token-trade .aentry-zone-heading strong { font-weight:750; }
 #tab-a-token-trade .aentry-zone-heading small { color:#71808f; font-size:10px; font-weight:400; }
 #tab-a-token-trade .atrade-terminal .aentry-type { gap:10px; margin:0 12px 12px; }
+#tab-a-token-trade .atrade-terminal .aentry-type[hidden] { display:none !important; }
 #tab-a-token-trade .atrade-terminal .aentry-type button { display:flex; align-items:center; justify-content:space-between; gap:8px; height:auto; min-height:66px; padding:9px 11px; text-align:left; border:2px solid #ccd6df; border-radius:10px; background:#f8fafc; color:#243746; box-shadow:none; }
 #tab-a-token-trade .atrade-terminal .aentry-type button:hover { border-color:#94a6b5; background:#f2f6f9; }
 #tab-a-token-trade .aentry-zone-copy { min-width:0; }
