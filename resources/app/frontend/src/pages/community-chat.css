@@ -20,7 +20,8 @@
 .sx-group-item { position:relative; width:100%; display:flex; align-items:center; gap:10px; padding:13px 10px; margin-bottom:5px; text-align:left; border:1px solid transparent; background:transparent; border-radius:11px; }
 .sx-group-item:hover { background:#f1edf8; }
 .sx-group-item.is-active { background:#eee8fd; border-color:#e6dcfc; }
-.sx-group-icon { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; background:#eae4ff; color:#7947dc; flex-shrink:0; }
+.sx-group-icon { display:grid; place-items:center; width:40px; height:40px; border-radius:13px; background:#eae4ff; color:#7947dc; flex-shrink:0; overflow:hidden; }
+.sx-group-icon img { width:100%; height:100%; object-fit:cover; display:block; }
 .sx-group-icon.tone-1 { background:#e5f1ff; color:#6095d3; }.sx-group-icon.tone-2 { background:#fff1d9; color:#c29845; }.sx-group-icon.tone-3 { background:#e0f3f0; color:#4caa9d; }
 .sx-group-item-copy { display:flex; flex:1; flex-direction:column; gap:5px; min-width:0; }
 .sx-group-item-copy strong { color:#343a50; font-size:12px; font-weight:600; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }

@@ -19,6 +19,10 @@ export function createCommunityGroupService({database, walletService, teamServic
   );`);
   if (!db.prepare('PRAGMA table_info(community_groups)').all().some(c => c.name === 'muted_all'))
     db.exec('ALTER TABLE community_groups ADD COLUMN muted_all INTEGER NOT NULL DEFAULT 0');
+  // 群头像：存 data URL，对外返回可缓存的固定地址（带版本号刷新缓存）
+  for (const [name, sql] of [['avatar', "avatar TEXT NOT NULL DEFAULT ''"], ['avatar_version', 'avatar_version INTEGER NOT NULL DEFAULT 0']])
+    if (!db.prepare('PRAGMA table_info(community_groups)').all().some(c => c.name === name))
+      db.exec(`ALTER TABLE community_groups ADD COLUMN ${sql}`);
   for (const table of ['community_messages','community_red_packets']) {
     if (!db.prepare(`PRAGMA table_info(${table})`).all().some(c=>c.name==='group_number'))
       db.exec(`ALTER TABLE ${table} ADD COLUMN group_number TEXT NOT NULL DEFAULT '${MAIN}'`);
@@ -51,9 +55,41 @@ export function createCommunityGroupService({database, walletService, teamServic
     return group;
   }
   function view(group,wallet) {
+    // 总群默认用代币 LOGO；管理员自定义头像后走带版本号的固定地址（可长期缓存）。
+    const custom = group.avatar ? `/api/community/group-avatar/${group.number}?v=${Number(group.avatar_version||0)}` : '';
     return {number:group.number,name:group.name,kind:group.kind,owner:group.owner,
+      avatar:custom||(group.number===MAIN?'/assets/brand/logo.svg':''),
       mutedAll:Number(group.muted_all||0),
       isAdmin:isAdmin(group,wallet),invite:isAdmin(group,wallet)?group.invite:undefined};
+  }
+  // 群头像与个人头像同一套校验：JPG/PNG/WebP，240KB 以内
+  function normalizeGroupAvatar(raw) {
+    if (raw == null || raw === '') return '';
+    const value = String(raw);
+    if (value.length > 400_000) fail('群头像图片过大，请重新选择');
+    const match = value.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+    if (!match) fail('群头像仅支持 JPG、PNG 或 WebP 图片');
+    const bytes = Buffer.from(match[2], 'base64');
+    if (!bytes.length || bytes.length > 240 * 1024) fail('群头像图片不能超过 240KB');
+    const valid = match[1] === 'png'
+      ? bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))
+      : match[1] === 'jpeg'
+        ? bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff
+        : bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'RIFF' && bytes.toString('ascii', 8, 12) === 'WEBP';
+    if (!valid) fail('群头像图片内容无效');
+    return value;
+  }
+  function setAvatar(number, wallet, raw) {
+    const group = access(number, wallet);
+    if (!isAdmin(group, wallet)) fail('只有群管理员可以更换群头像');
+    db.prepare('UPDATE community_groups SET avatar=?, avatar_version=avatar_version+1 WHERE number=?')
+      .run(normalizeGroupAvatar(raw), group.number);
+    return view(get(group.number), wallet);
+  }
+  function getAvatar(number) {
+    const group = get(number);
+    const match = String(group?.avatar || '').match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
+    return match ? { mime: match[1], data: match[2] } : null;
   }
   function list(wallet) {
     return {groups:db.prepare('SELECT * FROM community_groups ORDER BY number').all().filter(g=>entitled(g,wallet)&&membership(g.number,wallet)?.status!=='kicked').map(g=>view(g,wallet)),canCreate:Boolean(wallet)&&Number(teamService.snapshot(wallet).level)>=3};
@@ -135,5 +171,5 @@ export function createCommunityGroupService({database, walletService, teamServic
     }
     return {...cache.get(n),group:view(group,wallet)};
   }
-  return {list,create,join,scoped,moderate};
+  return {list,create,join,scoped,moderate,setAvatar,getAvatar};
 }

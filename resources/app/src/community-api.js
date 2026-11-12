@@ -58,6 +58,21 @@ export function createCommunityApi({
     try {
       const address=getSession(request)?.address||'';
       const params=new URLSearchParams(request.url?.split('?')[1]||'');
+      const groupAvatarMatch = request.method === 'GET' && pathname.match(/^\/api\/community\/group-avatar\/(\d{1,12})$/);
+      if (groupAvatarMatch) {
+        const avatar = groupService?.getAvatar(groupAvatarMatch[1]);
+        if (!avatar) return send(res, 404, { error: '群头像不存在' });
+        const body = Buffer.from(avatar.data, 'base64');
+        res.writeHead(200, {
+          'Content-Type': avatar.mime,
+          'Content-Length': body.length,
+          'Cache-Control': 'public, max-age=31536000, immutable',
+          'X-Content-Type-Options': 'nosniff',
+          'Cross-Origin-Resource-Policy': 'same-origin',
+        });
+        res.end(body);
+        return true;
+      }
       const avatarMatch = request.method === 'GET' && pathname.match(/^\/api\/community\/avatar\/(0x[0-9a-fA-F]{40})$/);
       if (avatarMatch) {
         const avatar = baseService.getAvatar(avatarMatch[1]);
@@ -77,6 +92,11 @@ export function createCommunityApi({
       if (groupService && request.method === 'POST' && ['/api/community/groups','/api/community/groups/join'].includes(pathname)) {
         guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,8000);
         return send(res,200,{group:pathname.endsWith('/join')?groupService.join(actor,payload):groupService.create(actor,payload)});
+      }
+      // POST /api/community/groups/avatar?group=100001 { avatar: dataURL } — 仅群管理员
+      if (groupService && request.method === 'POST' && pathname === '/api/community/groups/avatar') {
+        guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,400_000);
+        return send(res,200,{group:groupService.setAvatar(params.get('group')||'100001',actor,payload.avatar)});
       }
       const scoped=groupService?.scoped(params.get('group')||'100001',address);
       const service=scoped?.service||baseService, redPacketService=scoped?.redPacketService||basePackets;
