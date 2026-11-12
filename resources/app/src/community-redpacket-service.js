@@ -53,7 +53,11 @@ export function createCommunityRedPacketService({
   let sweeper = null;
 
   const decimalsOf = asset => walletService.assetDecimals(asset);
-  const fmt = (asset, units) => formatUnits(BigInt(units), decimalsOf(asset));
+  // 红包展示金额统一保留两位小数，避免 1.230000000000000000 这类长尾
+  const fmt = (asset, units) => {
+    const value = Number(formatUnits(BigInt(units || '0'), decimalsOf(asset)));
+    return Number.isFinite(value) ? value.toFixed(2) : '0.00';
+  };
 
   function normalizeAsset(raw) {
     const asset = String(raw || '').trim().toUpperCase();
@@ -126,18 +130,18 @@ export function createCommunityRedPacketService({
       sender: row.sender,
       asset: row.asset,
       algorithm: row.algorithm,
-      total: formatUnits(BigInt(row.total_units), decimals),
+      total: fmt(row.asset, row.total_units),
       shareCount: Number(row.share_count),
       claimedCount,
       remainingCount: Math.max(0, Number(row.share_count) - claimedCount),
-      claimedTotal: formatUnits(BigInt(row.claimed_units || '0'), decimals),
+      claimedTotal: fmt(row.asset, row.claimed_units),
       status: expiredBeforeSweep ? 'expired' : row.status,
       greeting: row.greeting || '',
       createdAt: Number(row.created_at),
       expiresAt: Number(row.expires_at),
       mine: Boolean(viewer) && String(row.sender).toLowerCase() === String(viewer).toLowerCase(),
       grabbed: Boolean(claimRow),
-      claimAmount: claimRow ? formatUnits(BigInt(claimRow.amount_units), decimals) : '',
+      claimAmount: claimRow ? fmt(row.asset, claimRow.amount_units) : '',
     };
   }
 

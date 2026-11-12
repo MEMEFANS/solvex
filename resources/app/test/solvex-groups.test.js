@@ -34,7 +34,7 @@ try {
  const packet=privateChat.redPacketService.createPacket(owner,{asset:'USDT',total:'2',count:1,algorithm:'equal',clientId:'packet_private'});
  assert.throws(()=>publicChat.redPacketService.grab(packet.packet.id,outsider,{clientId:'bad_grab'}),/不存在/);
  const got=groups.scoped(g.number,member).redPacketService.grab(packet.packet.id,member,{clientId:'good_grab'});
- assert.equal(got.claim.amount,'2.0');
+ assert.equal(got.claim.amount,'2.00');
  groups.moderate(g.number,owner,'mute',{address:member,minutes:1});
  assert.throws(()=>groups.scoped(g.number,member).service.postMessage(member,{body:'被禁言'}),/禁言/);
  assert.throws(()=>groups.moderate(g.number,member,'message-delete',{id:message.message.id}),/管理员/);

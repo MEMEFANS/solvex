@@ -102,7 +102,7 @@ export default function AssetsPage() {
       : symbol === 'A' ? (balances?.A ?? platform?.spot?.A) : platform?.spot?.[symbol];
     const frozen = isUsdt ? account.reservedUsdt : zone ? undefined : platform?.spotFrozen?.[symbol];
     const price = isUsdt ? '1' : (platform?.marketPrices?.[symbol] || (symbol.startsWith('A') ? markPrice : '0'));
-    return { symbol, available: formatDecimal(available, 8), frozen: formatDecimal(frozen, 8), total: formatDecimal(available, 8), valuation: mulDecimal(available || '0', price) };
+    return { symbol, available: formatDecimal(available, 2), frozen: formatDecimal(frozen, 2), total: formatDecimal(available, 2), valuation: formatDecimal(mulDecimal(available || '0', price), 2) };
   }), [symbols, platform, balances, markPrice, aTokenProfileQuery.data]);
   const totalEquity = platform?.account?.totalEquity || mulDecimal(balances?.A || '0', platform?.marketPrices?.A || markPrice);
   const parts = [
