@@ -62,7 +62,7 @@ export async function startRuntime() {
   };
   window.addEventListener('popstate', () => { void window.switchTab(fromURL()); });
   await window.switchTab(fromURL());
-  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261112-internal-kline-8').catch(() => {});
+  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261112-sw-immutable-9').catch(() => {});
 }
 let legacyEarn: Promise<void> | undefined;
 export async function showLegacyEarn(tab: string, isCurrent = () => true) {

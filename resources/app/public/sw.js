@@ -3,11 +3,14 @@
  *  - /api/*          → 永远直连网络，绝不缓存（数据实时性优先）
  *  - 页面导航 (HTML)  → 网络优先，缓存兜底（离线也能打开壳）
  *  - /js/ /styles/ /vendor/ /assets/ → 缓存优先 + 后台更新（文件带 ?v= 版本号，URL 变化即拉新）
+ *  - /app/assets/   → Vite 内容哈希产物：缓存命中即终身使用，不做后台校验（跨境用户零重复流量）
  *  - 其余同源 GET     → 不接管，走浏览器默认行为
  * 注意：修改静态文件需升级对应 ?v= 版本号，或递增 SW_VERSION 重建缓存。
  */
 const SW_VERSION = 'solvex-static-v48-assets-header';
 const STATIC_PREFIXES = ['/app/assets/', '/js/', '/styles/', '/vendor/', '/assets/'];
+// 文件名即内容哈希：URL 不变内容就永不变，新版本以新 URL 发布，缓存后无需任何再校验。
+const IMMUTABLE_PREFIXES = ['/app/assets/'];
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -83,7 +86,8 @@ self.addEventListener('fetch', (event) => {
       const cache = await caches.open(SW_VERSION);
       const cached = await cache.match(request);
       // Versioned URLs change with each release. Re-fetching cached assets competes with login on mobile.
-      if (cached && url.searchParams.has('v')) return cached;
+      // Immutable (content-hashed) URLs are safe to keep serving forever: new deploys publish new URLs.
+      if (cached && (url.searchParams.has('v') || IMMUTABLE_PREFIXES.some(prefix => url.pathname.startsWith(prefix)))) return cached;
       const network = fetch(request)
         .then(response => {
           if (response && response.ok) cache.put(request, response.clone());
