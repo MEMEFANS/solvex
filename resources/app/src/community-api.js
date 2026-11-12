@@ -39,15 +39,20 @@ export function createCommunityApi({
     }));
   }
 
-  function sessionPayload(address, service, redPacketService, group) {
+  function sessionPayload(address, service, redPacketService, group, groupAdminList = []) {
     const data = service.overview(address);
     const admins = new Set(adminService ? adminService.activeAdminAddresses() : []);
+    const groupAdmins = new Set(groupAdminList.map(item => String(item).toLowerCase()));
     const key = String(address || '').toLowerCase();
+    const owner = String(group?.owner || '').toLowerCase();
     return {
       ...data,
       group,
-      members: data.members.map(member => ({ ...member, isAdmin: admins.has(String(member.address).toLowerCase()) || String(member.address).toLowerCase()===group?.owner })),
-      me: data.me ? { ...data.me, isAdmin: admins.has(key) || Boolean(group?.isAdmin) } : null,
+      members: data.members.map(member => {
+        const wallet = String(member.address).toLowerCase();
+        return { ...member, isAdmin: admins.has(wallet) || wallet === owner || groupAdmins.has(wallet), isOwner: Boolean(owner) && wallet === owner, isGroupAdmin: groupAdmins.has(wallet) };
+      }),
+      me: data.me ? { ...data.me, isAdmin: admins.has(key) || Boolean(group?.isAdmin), isOwner: Boolean(owner) && key === owner } : null,
       isAdmin: Boolean(address) && (admins.has(key) || group?.isAdmin),
       redPacketPolicy: redPacketService ? redPacketService.policy() : [],
     };
@@ -103,6 +108,16 @@ export function createCommunityApi({
         guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,8_000);
         return send(res,200,{group:groupService.setName(params.get('group')||'100001',actor,payload.name)});
       }
+      // POST /api/community/groups/owner?group= { address } — 群主/平台管理员转让群主
+      if (groupService && request.method === 'POST' && pathname === '/api/community/groups/owner') {
+        guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,8_000);
+        return send(res,200,{group:groupService.setOwner(params.get('group')||'100001',actor,payload.address)});
+      }
+      // POST /api/community/groups/admin?group= { address, enabled } — 群主任命/取消群管理员
+      if (groupService && request.method === 'POST' && pathname === '/api/community/groups/admin') {
+        guardWrite(request); const actor=requireSession(request).address; const payload=await readBody(request,8_000);
+        return send(res,200,{group:groupService.setGroupAdmin(params.get('group')||'100001',actor,payload.address,Boolean(payload.enabled))});
+      }
       const scoped=groupService?.scoped(params.get('group')||'100001',address);
       const service=scoped?.service||baseService, redPacketService=scoped?.redPacketService||basePackets;
       if(groupService && request.method==='POST' && pathname.startsWith('/api/community/admin/')) {
@@ -112,7 +127,7 @@ export function createCommunityApi({
       // GET /api/community/session — 群概览（成员、本人身份、未读、红包限额）；匿名可用
       if (request.method === 'GET' && pathname === '/api/community/session') {
         const address = getSession(request)?.address || '';
-        return send(res, 200, sessionPayload(address, service, redPacketService, scoped?.group));
+        return send(res, 200, sessionPayload(address, service, redPacketService, scoped?.group, groupService?.adminAddresses(scoped?.group?.number)));
       }
       // GET /api/community/messages?before_id=&after_id=&limit=
       if (request.method === 'GET' && pathname === '/api/community/messages') {

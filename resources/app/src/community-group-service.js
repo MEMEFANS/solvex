@@ -16,6 +16,9 @@ export function createCommunityGroupService({database, walletService, teamServic
     group_number TEXT NOT NULL, wallet TEXT NOT NULL COLLATE NOCASE, status TEXT NOT NULL DEFAULT 'active',
     muted_until INTEGER NOT NULL DEFAULT 0, last_read_id INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(group_number,wallet)
+  ); CREATE TABLE IF NOT EXISTS community_group_admins (
+    group_number TEXT NOT NULL, wallet TEXT NOT NULL COLLATE NOCASE, appointed_by TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL, PRIMARY KEY(group_number,wallet)
   );`);
   if (!db.prepare('PRAGMA table_info(community_groups)').all().some(c => c.name === 'muted_all'))
     db.exec('ALTER TABLE community_groups ADD COLUMN muted_all INTEGER NOT NULL DEFAULT 0');
@@ -37,7 +40,9 @@ export function createCommunityGroupService({database, walletService, teamServic
     db.prepare('UPDATE community_groups SET invite=? WHERE number=?').run(randomBytes(9).toString('hex'),row.number);
   const get=number=>db.prepare('SELECT * FROM community_groups WHERE number=?').get(String(number||MAIN));
   const membership=(number,wallet)=>db.prepare('SELECT * FROM community_group_members WHERE group_number=? AND wallet=?').get(number,key(wallet));
-  const isAdmin=(group,wallet)=>Boolean(wallet)&&(key(group.owner)===key(wallet)||adminService?.isAdmin(wallet));
+  const isOwner=(group,wallet)=>Boolean(wallet)&&key(group.owner)===key(wallet);
+  const isGroupAdmin=(number,wallet)=>Boolean(wallet)&&Boolean(db.prepare('SELECT 1 FROM community_group_admins WHERE group_number=? AND wallet=?').get(String(number),key(wallet)));
+  const isAdmin=(group,wallet)=>Boolean(wallet)&&(isOwner(group,wallet)||isGroupAdmin(group.number,wallet)||adminService?.isAdmin(wallet));
   // 总群对所有人开放；其他群一律需要群号 + 邀请码（管理员与自己已加入的群除外）。
   function entitled(group,wallet) {
     if (isAdmin(group,wallet)||group.number===MAIN) return true;
@@ -93,6 +98,37 @@ export function createCommunityGroupService({database, walletService, teamServic
     const title = String(raw || '').trim();
     if (!title || title.length > 40) fail('群名称需为1至40个字');
     db.prepare('UPDATE community_groups SET name=? WHERE number=?').run(title, group.number);
+    return view(get(group.number), wallet);
+  }
+  // 只有群主（或平台管理员）能转让群主 / 任命群管理员；一位群主可任命多位管理员
+  const canManageRoles = (group, wallet) => isOwner(group, wallet) || Boolean(adminService?.isAdmin(wallet));
+  const addressOf = raw => {
+    const value = String(raw || '').trim();
+    if (!/^0x[0-9a-fA-F]{40}$/.test(value)) fail('请输入有效的钱包地址');
+    return key(value);
+  };
+  function adminAddresses(number) {
+    return db.prepare('SELECT wallet FROM community_group_admins WHERE group_number=?').all(String(number || MAIN)).map(row => key(row.wallet));
+  }
+  function setOwner(number, wallet, raw) {
+    const group = access(number, wallet);
+    if (!canManageRoles(group, wallet)) fail('只有群主可以转让群主');
+    const next = addressOf(raw);
+    if (next === key(group.owner)) fail('该地址已经是群主');
+    // 原群主降级为普通管理员，新群主直接具备管理权限
+    db.prepare('UPDATE community_groups SET owner=? WHERE number=?').run(next, group.number);
+    db.prepare('INSERT OR IGNORE INTO community_group_admins(group_number,wallet,appointed_by,created_at) VALUES(?,?,?,?)').run(group.number, next, key(wallet), clock());
+    if (key(wallet) && key(wallet) !== next)
+      db.prepare('INSERT OR IGNORE INTO community_group_admins(group_number,wallet,appointed_by,created_at) VALUES(?,?,?,?)').run(group.number, key(wallet), next, clock());
+    return view(get(group.number), wallet);
+  }
+  function setGroupAdmin(number, wallet, raw, enabled) {
+    const group = access(number, wallet);
+    if (!canManageRoles(group, wallet)) fail('只有群主可以设置群管理员');
+    const target = addressOf(raw);
+    if (target === key(group.owner)) fail('群主默认拥有管理权限，无需设置');
+    if (enabled) db.prepare('INSERT OR IGNORE INTO community_group_admins(group_number,wallet,appointed_by,created_at) VALUES(?,?,?,?)').run(group.number, target, key(wallet), clock());
+    else db.prepare('DELETE FROM community_group_admins WHERE group_number=? AND wallet=?').run(group.number, target);
     return view(get(group.number), wallet);
   }
   function getAvatar(number) {
@@ -180,5 +216,5 @@ export function createCommunityGroupService({database, walletService, teamServic
     }
     return {...cache.get(n),group:view(group,wallet)};
   }
-  return {list,create,join,scoped,moderate,setAvatar,getAvatar,setName};
+  return {list,create,join,scoped,moderate,setAvatar,getAvatar,setName,setOwner,setGroupAdmin,adminAddresses};
 }

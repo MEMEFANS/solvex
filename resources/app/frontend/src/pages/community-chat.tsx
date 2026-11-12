@@ -114,17 +114,19 @@ function PacketRow({ message, onOpen }: { message: CommunityMessage; onOpen: () 
   </div>;
 }
 
-function MemberRow({ member, isAdmin, onMute, onUnmute, onKick }: { member: CommunityMember; isAdmin: boolean; onMute: () => void; onUnmute: () => void; onKick: () => void }) {
+function MemberRow({ member, isAdmin, onMute, onUnmute, onKick, onToggleAdmin, onTransferOwner }: { member: CommunityMember; isAdmin: boolean; onMute: () => void; onUnmute: () => void; onKick: () => void; onToggleAdmin: () => void; onTransferOwner: () => void }) {
   const muted = Number(member.mutedUntil || 0) > Date.now(), mine = isMine(member.address);
   return <div className="sx-member">
     <CommunityAvatar nickname={member.nickname} src={member.avatar} small />
     <div className="sx-member-info">
-      <strong>{member.nickname || shortAddress(member.address)}{member.isAdmin ? <em>管理员</em> : mine ? <em>我</em> : null}</strong>
+      <strong>{member.nickname || shortAddress(member.address)}{member.isOwner ? <em>群主</em> : member.isAdmin ? <em>管理员</em> : mine ? <em>我</em> : null}</strong>
       <small>{muted ? `禁言至 ${new Date(Number(member.mutedUntil)).toLocaleString('zh-CN', { hour12: false })}` : `${shortAddress(member.address)} · ${new Date(Number(member.joinedAt) || Date.now()).toLocaleDateString('zh-CN')} 加入`}</small>
     </div>
-    {isAdmin && !mine && !member.isAdmin && <div className="sx-member-actions">
-      <button type="button" onClick={muted ? onUnmute : onMute}>{muted ? '解禁' : '禁言'}</button>
-      <button type="button" className="danger" onClick={onKick}>踢出</button>
+    {isAdmin && !mine && <div className="sx-member-actions">
+      {!member.isAdmin && <><button type="button" onClick={muted ? onUnmute : onMute}>{muted ? '解禁' : '禁言'}</button><button type="button" className="danger" onClick={onKick}>踢出</button></>}
+      {!member.isOwner && member.isGroupAdmin && <button type="button" onClick={onToggleAdmin}>取消管理员</button>}
+      {!member.isOwner && !member.isAdmin && <button type="button" onClick={onToggleAdmin}>设为管理员</button>}
+      {isAdmin && !member.isOwner && <button type="button" className="danger" onClick={onTransferOwner}>转让群主</button>}
     </div>}
   </div>;
 }
@@ -498,6 +500,12 @@ export default function CommunityPage() {
     if (ok) setMuteTarget(null);
   }
   const unmuteMember = (member: CommunityMember) => void runAdminAction('admin/unmute', { address: member.address }, `已解除 ${member.nickname} 的禁言`);
+  // 群主可任免群管理员；群主转让后原群主降为管理员
+  const toggleGroupAdmin = (member: CommunityMember) => void runAdminAction('groups/admin', { address: member.address, enabled: !member.isGroupAdmin }, member.isGroupAdmin ? '已取消管理员' : `已将 ${member.nickname || shortAddress(member.address)} 设为管理员`);
+  function transferOwner(member: CommunityMember) {
+    if (!window.confirm(`确认把群主转让给 ${member.nickname || shortAddress(member.address)}？转让后你将成为普通管理员。`)) return;
+    void runAdminAction('groups/owner', { address: member.address }, '群主已转让');
+  }
   function kickMember(member: CommunityMember) {
     if (!window.confirm(`确定将 ${member.nickname} 移出群聊？被踢出后需后台恢复才能重新加入。`)) return;
     void runAdminAction('admin/kick', { address: member.address }, `已将 ${member.nickname} 移出群聊`);
@@ -656,7 +664,7 @@ export default function CommunityPage() {
       </section>
     </div>
   </div>
-  <Dialog open={membersOpen} onOpenChange={setMembersOpen}><DialogContent className="sx-chat-dialog"><DialogTitle>群聊信息</DialogTitle><DialogDescription>{groupName} · 群号 {group} · {memberCount} 位成员</DialogDescription>{isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '开启全员禁言'}</button><span>{mutedAll ? '当前全员禁言中，仅群管理员可发言' : '开启后全群仅群管理员可发言'}</span></div>}<div className="sx-members">{!overview?.members?.length ? <p className="sx-form-hint">暂无成员</p> : overview.members.map(member => <MemberRow key={member.address || member.nickname} member={member} isAdmin={Boolean(overview.isAdmin)} onMute={() => openMute(member)} onUnmute={() => unmuteMember(member)} onKick={() => kickMember(member)} />)}</div></DialogContent></Dialog>
+  <Dialog open={membersOpen} onOpenChange={setMembersOpen}><DialogContent className="sx-chat-dialog"><DialogTitle>群聊信息</DialogTitle><DialogDescription>{groupName} · 群号 {group} · {memberCount} 位成员</DialogDescription>{isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '开启全员禁言'}</button><span>{mutedAll ? '当前全员禁言中，仅群管理员可发言' : '开启后全群仅群管理员可发言'}</span></div>}<div className="sx-members">{!overview?.members?.length ? <p className="sx-form-hint">暂无成员</p> : overview.members.map(member => <MemberRow key={member.address || member.nickname} member={member} isAdmin={Boolean(overview.isAdmin)} onMute={() => openMute(member)} onUnmute={() => unmuteMember(member)} onKick={() => kickMember(member)} onToggleAdmin={() => toggleGroupAdmin(member)} onTransferOwner={() => transferOwner(member)} />)}</div></DialogContent></Dialog>
   <Dialog open={Boolean(action)} onOpenChange={open => { if (!open && !actionBusy) setAction(null); }}><DialogContent className="sx-chat-dialog"><DialogTitle>{actionTitle}</DialogTitle><DialogDescription>{action === 'join' ? '输入群号加入。总群（100001）所有人可进，其他群需要群号和邀请码。' : action === 'create' ? 'V3 及以上可创建私人群，邀请朋友一起交流。' : '昵称和头像会同步显示在消息与成员列表中。'}</DialogDescription><form className="sx-chat-form" onSubmit={event => void submitAction(event)}>
     {action === 'join' ? <><label>群号<input autoFocus required maxLength={24} placeholder="请输入群号" value={actionForm.number} onChange={e => setActionForm({ ...actionForm, number: e.target.value })} /></label><label>邀请码 <small>非总群必填</small><input maxLength={100} placeholder="加入总群可留空" value={actionForm.invite} onChange={e => setActionForm({ ...actionForm, invite: e.target.value })} /></label></> : action === 'create' ? <label>群名称<input autoFocus required maxLength={24} value={actionForm.name} onChange={e => setActionForm({ ...actionForm, name: e.target.value })} /></label> : <>
       <div className="sx-settings-avatar"><CommunityAvatar className="sx-settings-avatar-preview" nickname={actionForm.nickname} src={actionForm.avatar || overview?.me?.avatar} /><div className="sx-settings-avatar-copy"><strong>我的头像</strong><small>支持 JPG、PNG、WebP，自动居中裁剪</small><button type="button" className="sx-chat-secondary" disabled={actionBusy} onClick={() => avatarInputRef.current?.click()}>修改头像</button></div><input ref={avatarInputRef} className="sx-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectAvatar(file); }} /></div>
