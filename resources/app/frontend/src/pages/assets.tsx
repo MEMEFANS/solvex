@@ -75,7 +75,10 @@ export default function AssetsPage() {
   const [depositOpen, setDepositOpen] = useState(false);
 
   const walletQuery = useQuery({ queryKey: ['wallet-profile', identity], queryFn: () => api<WalletProfile>('wallet/profile'), enabled: wallet.authenticated });
-  const platformQuery = useQuery({ queryKey: ['a-token-profile', identity], queryFn: () => api<PlatformProfile>('a-token/profile'), enabled: wallet.authenticated });
+  // 账户估值/资金记录来自交易账户接口 platform/profile；此前误接 a-token/profile，
+  // 导致总资产估值、现货/合约/策略市值全部为 0（2026-11-12 修复）
+  const platformQuery = useQuery({ queryKey: ['platform-profile', identity], queryFn: () => api<PlatformProfile>('platform/profile'), enabled: wallet.authenticated });
+  const aTokenProfileQuery = useQuery({ queryKey: ['a-token-profile', identity], queryFn: () => api<PlatformProfile>('a-token/profile'), enabled: wallet.authenticated });
   const poolQuery = useQuery({ queryKey: ['svx-pool-price'], queryFn: () => api<{ priceUsdt?: string }>('a-token/pool', {}, false), staleTime: 60000 });
   const revenueQuery = useQuery({ queryKey: ['svx-revenue', identity], queryFn: () => api<RevenueReport>('a-token/revenue?limit=200'), enabled: wallet.authenticated && view === 'revenue' });
   const walletProfile = walletQuery.data, platform = platformQuery.data, balances = walletProfile?.balances;
@@ -102,7 +105,7 @@ export default function AssetsPage() {
     { name:'质押账户', value: platform?.account?.stakingValue },
   ];
   const denominator = Math.max(...parts.map(item => Math.max(0, Number(item.value) || 0)), 0);
-  const sellQuota = platform?.sellQuota?.available;
+  const sellQuota = aTokenProfileQuery.data?.sellQuota?.available;
   const visibleRows = rows.filter(item => {
     const keyword = query.trim().toUpperCase();
     return (!keyword || disp(item.symbol).includes(keyword) || item.symbol.includes(keyword) || (NAMES[item.symbol] || '').toUpperCase().includes(keyword)) && (!hideZero || !isZero(item.total));
