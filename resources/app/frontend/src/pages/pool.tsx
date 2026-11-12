@@ -46,15 +46,17 @@ export default function PoolPage({ changeTab }: { changeTab: (value: string) => 
   const activeNodes = nodes.filter(n => n.status === 'active' && Number(n.expiresAt) > Date.now());
   const active = activeNodes.length;
   const loading = wallet.authenticated && profile.isPending && !profile.error;
+  // 档位只设下限：投入数量越多，自动匹配更高档收益率，不设单卡上限。
   const tiers: (PoolTier & { Icon: typeof Box })[] = term ? [
-    { title: '铜矿', min: term.minCoins, max: term.midCoins, rate: term.lowRatePct, tone: 'copper', Icon: Box },
-    { title: '银矿', min: term.midCoins, max: term.highCoins, rate: term.midRatePct, tone: 'silver', Icon: Gem },
+    { title: '铜矿', min: term.minCoins, rate: term.lowRatePct, tone: 'copper', Icon: Box },
+    { title: '银矿', min: term.midCoins, rate: term.midRatePct, tone: 'silver', Icon: Gem },
     { title: '金矿', min: term.highCoins, rate: term.highRatePct, tone: 'gold', Icon: Sparkles },
   ] : [];
   const sceneCounts = { copper: 0, silver: 0, gold: 0 };
   for (const node of activeNodes) {
     const principal = toUnits(String(node.principal));
-    const tier = tiers.find(t => principal >= toUnits(String(t.min)) && (t.max === undefined || principal < toUnits(String(t.max))));
+    let tier: (PoolTier & { Icon: typeof Box }) | undefined;
+    for (const t of tiers) if (principal >= toUnits(String(t.min))) tier = t;
     if (tier?.tone) sceneCounts[tier.tone] += 1;
   }
   const connect = () => connectWallet();
@@ -126,7 +128,7 @@ export default function PoolPage({ changeTab }: { changeTab: (value: string) => 
         <div className="rx-tiers">{tiers.map((t, i) => <Card className={'rx-tier rx-tier-' + i} data-tone={t.tone} key={t.title}>
           <div className="rx-tier-top"><span className="rx-tier-icon"><t.Icon size={22} strokeWidth={1.5} /></span><span>{term.days} 天周期</span></div>
           <h3>{t.title}</h3><div className="rx-tier-rate">{t.rate}<span>%</span></div><p>周期总利息</p>
-          <div className="rx-tier-min"><strong>{formatDecimal(t.min, 0)}</strong> SVX 起</div><small>{t.max ? '少于 ' + formatDecimal(t.max, 0) + ' SVX' : '按投入数量匹配档位'}</small>
+          <div className="rx-tier-min"><strong>{formatDecimal(t.min, 0)}</strong> SVX 起</div><small>按投入数量匹配档位</small>
           <Button className="rx-tier-invest" variant="outline" onClick={() => investTier(t)}>投入矿池 <ArrowUpRight /></Button>
         </Card>)}</div>}
       <p className="rx-pool-note"><Clock3 size={15} />利息每日 08:00 进入待领取；本金到期可领，不作废。</p>

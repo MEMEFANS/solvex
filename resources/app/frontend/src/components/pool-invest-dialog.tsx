@@ -11,7 +11,7 @@ import { api, postOnce, walletIdentity } from '@/lib/api';
 import { formatDecimal, formatUnits, number, toUnits, units } from '@/lib/utils';
 import type { PoolTerm } from '@/types';
 
-export type PoolTier = { title: string; min: string; max?: string; rate: number; tone?: 'copper' | 'silver' | 'gold' };
+export type PoolTier = { title: string; min: string; rate: number; tone?: 'copper' | 'silver' | 'gold' };
 type Quote = { coins: string; interest: string; payout: string; ratePct: number; days: number };
 
 // 弹窗只做提前告知：起投、档位、本息全部来自接口；不额外发明上限校验。
@@ -32,13 +32,15 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
   const raw = amount.trim();
   const isInteger = /^\d+$/.test(raw);
   const coins = isInteger ? toUnits(raw) : 0n;
-  const minimum = term ? toUnits(term.minCoins) : 0n;
+  // 档位只设下限：起投数量取卡片的 min（铜/银/金各自起投），不设上限。
+  const minText = tier?.min ?? term?.minCoins ?? '0';
+  const minimum = toUnits(minText);
   const balanceUnits = toUnits(balance);
   // 校验优先级：空 → 非整数 → 低于起投 → 超余额，只提示最靠前的一条。
   const reason = !raw ? '请输入投入数量'
     : !isInteger ? '请输入整数数量，不支持小数'
     : !term ? '矿池配置加载中，请稍后重试'
-    : coins < minimum ? '低于起投数量，最少 ' + formatDecimal(term.minCoins, 0) + ' SVX'
+    : coins < minimum ? '低于起投数量，最少 ' + formatDecimal(minText, 0) + ' SVX'
     : !profile.data && !profile.error ? '正在同步蓄能额度余额，请稍候'
     : !profile.data ? '余额同步失败，请稍后重试'
     : coins > balanceUnits ? '超过蓄能额度可用余额 ' + formatDecimal(balance, 4) + ' SVX'
@@ -71,11 +73,8 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
   const shownRate = fresh ? fresh.ratePct : rate;
   const shownInterest = fresh ? formatDecimal(fresh.interest, 4) : estimate?.interest;
   const shownPayout = fresh ? formatDecimal(fresh.payout, 4) : estimate?.payout;
-  // 档位上限来自接口，是带 18 位小数的十进制字符串（如 2000.000000000000000000），
-  // 不能直接 BigInt(...)，否则抛错导致整页报「页面暂时无法显示」。
-  const rangeText = tier ? (tier.max
-    ? '该卡片 ' + formatDecimal(tier.min, 0) + '–' + formatUnits(toUnits(tier.max) - 1n, 18, 0) + ' SVX'
-    : formatDecimal(tier.min, 0) + ' SVX 起') : '';
+  // 档位只设下限：卡片起投 + 按投入数量自动匹配收益率，不再展示上限区间。
+  const cardMin = tier ? formatDecimal(tier.min, 0) : '—';
   async function submit() {
     if (busyRef.current || reason || !tier || !term) return;
     busyRef.current = true; setBusy(true); setSubmitError('');
@@ -105,11 +104,10 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
       <div className="rx-invest-balance"><span>蓄能额度可用余额</span><strong>{profile.data ? formatDecimal(balance, 4) : '—'}<small>SVX</small></strong></div>
       <label className="rx-invest-label" htmlFor="pool-invest-amount">投入数量</label>
       <div className="rx-input-group">
-        <Input id="pool-invest-amount" inputMode="numeric" autoComplete="off" placeholder={(term ? formatDecimal(term.minCoins, 0) : '—') + ' SVX 起'} value={amount} onChange={event => setAmount(event.target.value)} />
+        <Input id="pool-invest-amount" inputMode="numeric" autoComplete="off" placeholder={cardMin + ' SVX 起'} value={amount} onChange={event => setAmount(event.target.value)} />
         <button type="button" disabled={!profile.data} onClick={() => setAmount(balanceWhole)}>全部</button>
       </div>
-      <p className="rx-invest-range">起投 {term ? formatDecimal(term.minCoins, 0) : '—'} SVX{rangeText ? ' · ' + rangeText : ''}</p>
-      <p className="rx-invest-range-note">收益率按实际投入数量自动匹配档位。</p>
+      <p className="rx-invest-range">起投 {cardMin} SVX · 投入越多自动匹配更高档收益率</p>
       <div className="rx-invest-estimate" aria-live="polite">
         <div><span>投入本金</span><strong>{estimate ? formatDecimal(raw, 0) : '—'} SVX</strong></div>
         <div><span>预计利息</span><strong>{shownInterest ? '+' + shownInterest : '—'} SVX</strong></div>
