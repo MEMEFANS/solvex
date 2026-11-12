@@ -22,6 +22,9 @@ const assetLogo = (asset?: string) => assetName(asset) === 'SVX' ? '/assets/bran
 const packetArt = (asset?: string) => `/assets/community/packet-${assetName(asset) === 'SVX' ? 'svx' : 'usdt'}-v1.webp`;
 const packetExpired = (packet: CommunityPacket) => ['expired', 'refunded'].includes(packet.status || '') || (Boolean(packet.expiresAt) && Number(packet.expiresAt) <= Date.now() && packet.status !== 'finished');
 const emojis = ['😊', '👍', '🎉', '❤️', '🤝', '🚀', '👏', '☕', '💪', '✨', '😄', '🙏'];
+// 群管理员禁言时长快捷选项（后端上限 43200 分钟 = 30 天）
+const MUTE_PRESETS = [1, 6, 12, 24, 72, 168, 720];
+const muteHoursText = (hours: number) => hours >= 24 && hours % 24 === 0 ? `${hours / 24} 天` : `${hours} 小时`;
 interface PacketDetail { packet: CommunityPacket; claims: { address: string; nickname?: string; amount: string; claimedAt: number }[] }
 type GroupAction = 'join' | 'create' | 'settings';
 const fmtTime = (ts?: number) => {
@@ -156,6 +159,9 @@ export default function CommunityPage() {
   const [actionForm, setActionForm] = useState({ number: '', invite: '', name: '', nickname: '', avatar: '' });
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState('');
+  const [muteTarget, setMuteTarget] = useState<CommunityMember | null>(null);
+  const [muteForm, setMuteForm] = useState({ hours: '1', reason: '' });
+  const [muteBusy, setMuteBusy] = useState(false);
 
   const groupRef = useRef(group);
   const overviewRef = useRef<CommunitySession | null>(null);
@@ -467,15 +473,25 @@ export default function CommunityPage() {
       setOverview(session);
       setMessages(list);
       setHasMore(Boolean(page.hasMore));
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : '操作失败'); }
+      return true;
+    } catch (caught) { toast.error(caught instanceof Error ? caught.message : '操作失败'); return false; }
   }
 
-  function muteMember(member: CommunityMember) {
-    const value = window.prompt(`禁言 ${member.nickname}（分钟，1-43200）`, '60');
-    if (value == null) return;
-    const minutes = Number(value);
-    if (!Number.isInteger(minutes) || minutes < 1 || minutes > 43_200) { toast.error('请输入 1-43200 的整数分钟'); return; }
-    void runAdminAction('admin/mute', { address: member.address, minutes }, `已禁言 ${member.nickname}`);
+  // 禁言改为弹窗：时长按小时选（1 小时 ~ 30 天），可填原因，避免黑框 prompt 输分钟。
+  function openMute(member: CommunityMember) {
+    setMuteForm({ hours: '1', reason: '' });
+    setMuteTarget(member);
+  }
+  async function submitMute(event: FormEvent) {
+    event.preventDefault();
+    const target = muteTarget;
+    if (!target || muteBusy) return;
+    const hours = Number(muteForm.hours);
+    if (!Number.isFinite(hours) || hours < 1 || hours > 720) { toast.error('禁言时长需在 1-720 小时之间'); return; }
+    setMuteBusy(true);
+    const ok = await runAdminAction('admin/mute', { address: target.address, minutes: Math.round(hours * 60), reason: muteForm.reason.trim() }, `已禁言 ${target.nickname || shortAddress(target.address)} ${muteHoursText(hours)}`);
+    setMuteBusy(false);
+    if (ok) setMuteTarget(null);
   }
   const unmuteMember = (member: CommunityMember) => void runAdminAction('admin/unmute', { address: member.address }, `已解除 ${member.nickname} 的禁言`);
   function kickMember(member: CommunityMember) {
@@ -607,14 +623,23 @@ export default function CommunityPage() {
       </section>
     </div>
   </div>
-  <Dialog open={membersOpen} onOpenChange={setMembersOpen}><DialogContent className="sx-chat-dialog"><DialogTitle>群聊信息</DialogTitle><DialogDescription>{groupName} · 群号 {group} · {memberCount} 位成员</DialogDescription>{isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '全员禁言'}</button><span>{mutedAll ? '全员禁言已开启，仅群管理员可发言' : '开启后仅群管理员可发言'}</span></div>}<div className="sx-members">{!overview?.members?.length ? <p className="sx-form-hint">暂无成员</p> : overview.members.map(member => <MemberRow key={member.address || member.nickname} member={member} isAdmin={Boolean(overview.isAdmin)} onMute={() => muteMember(member)} onUnmute={() => unmuteMember(member)} onKick={() => kickMember(member)} />)}</div></DialogContent></Dialog>
+  <Dialog open={membersOpen} onOpenChange={setMembersOpen}><DialogContent className="sx-chat-dialog"><DialogTitle>群聊信息</DialogTitle><DialogDescription>{groupName} · 群号 {group} · {memberCount} 位成员</DialogDescription>{isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '开启全员禁言'}</button><span>{mutedAll ? '当前全员禁言中，仅群管理员可发言' : '开启后全群仅群管理员可发言'}</span></div>}<div className="sx-members">{!overview?.members?.length ? <p className="sx-form-hint">暂无成员</p> : overview.members.map(member => <MemberRow key={member.address || member.nickname} member={member} isAdmin={Boolean(overview.isAdmin)} onMute={() => openMute(member)} onUnmute={() => unmuteMember(member)} onKick={() => kickMember(member)} />)}</div></DialogContent></Dialog>
   <Dialog open={Boolean(action)} onOpenChange={open => { if (!open && !actionBusy) setAction(null); }}><DialogContent className="sx-chat-dialog"><DialogTitle>{actionTitle}</DialogTitle><DialogDescription>{action === 'join' ? '输入群号加入。总群（100001）所有人可进，其他群需要群号和邀请码。' : action === 'create' ? 'V3 及以上可创建私人群，邀请朋友一起交流。' : '昵称和头像会同步显示在消息与成员列表中。'}</DialogDescription><form className="sx-chat-form" onSubmit={event => void submitAction(event)}>
     {action === 'join' ? <><label>群号<input autoFocus required maxLength={24} placeholder="请输入群号" value={actionForm.number} onChange={e => setActionForm({ ...actionForm, number: e.target.value })} /></label><label>邀请码 <small>非总群必填</small><input maxLength={100} placeholder="加入总群可留空" value={actionForm.invite} onChange={e => setActionForm({ ...actionForm, invite: e.target.value })} /></label></> : action === 'create' ? <label>群名称<input autoFocus required maxLength={24} value={actionForm.name} onChange={e => setActionForm({ ...actionForm, name: e.target.value })} /></label> : <>
       <div className="sx-settings-avatar"><CommunityAvatar className="sx-settings-avatar-preview" nickname={actionForm.nickname} src={actionForm.avatar || overview?.me?.avatar} /><div className="sx-settings-avatar-copy"><strong>群头像</strong><small>支持 JPG、PNG、WebP，自动居中裁剪</small><button type="button" className="sx-chat-secondary" disabled={actionBusy} onClick={() => avatarInputRef.current?.click()}>修改头像</button></div><input ref={avatarInputRef} className="sx-avatar-file" type="file" accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void selectAvatar(file); }} /></div>
       <label>群昵称<input autoFocus required maxLength={24} value={actionForm.nickname} onChange={e => setActionForm({ ...actionForm, nickname: e.target.value })} /></label>
+      {isAdmin && <div className="sx-mute-all"><button type="button" className="sx-chat-secondary" onClick={() => void runAdminAction(mutedAll ? 'admin/unmute-all' : 'admin/mute-all', {}, mutedAll ? '已解除全员禁言' : '已开启全员禁言')}>{mutedAll ? '解除全员禁言' : '开启全员禁言'}</button><span>{mutedAll ? '全员禁言中，仅群管理员可发言' : '群管理：开启后全群仅管理员可发言；单人禁言在「群成员」里操作，可选 1 小时 ~ 30 天'}</span></div>}
     </>}
     {actionError && <p className="sx-form-error" role="alert">{actionError}</p>}<button type="submit" className="sx-chat-primary" disabled={actionBusy}>{actionBusy ? '处理中…' : action === 'join' ? '加入群聊' : action === 'create' ? '创建群聊' : '保存设置'}</button>
   </form></DialogContent></Dialog>
+  <Dialog open={Boolean(muteTarget)} onOpenChange={open => { if (!open && !muteBusy) setMuteTarget(null); }}><DialogContent className="sx-chat-dialog"><DialogTitle>禁言成员</DialogTitle><DialogDescription>{muteTarget ? `${muteTarget.nickname || shortAddress(muteTarget.address)} · ${shortAddress(muteTarget.address)}` : ''}</DialogDescription>
+    <form className="sx-chat-form" onSubmit={event => void submitMute(event)}>
+      <label>禁言时长<div className="sx-amount-input"><input aria-label="禁言时长（小时）" type="number" min="1" max="720" step="1" required value={muteForm.hours} onChange={event => setMuteForm({ ...muteForm, hours: event.target.value })} /><span>小时</span></div></label>
+      <div className="sx-mute-presets" role="group" aria-label="快捷禁言时长">{MUTE_PRESETS.map(hours => <button key={hours} type="button" aria-pressed={Number(muteForm.hours) === hours} onClick={() => setMuteForm({ ...muteForm, hours: String(hours) })}>{muteHoursText(hours)}</button>)}</div>
+      <label>禁言原因 <small>选填</small><input maxLength={80} placeholder="例如：刷屏、广告" value={muteForm.reason} onChange={event => setMuteForm({ ...muteForm, reason: event.target.value })} /></label>
+      <p className="sx-form-hint">最长 30 天，禁言期间无法发言和发红包，可随时手动解禁。</p>
+      <button type="submit" className="sx-chat-primary" disabled={muteBusy}>{muteBusy ? '处理中…' : '确认禁言'}</button>
+    </form></DialogContent></Dialog>
   <Dialog open={packetOpen} onOpenChange={open => { if (!packetBusy) setPacketOpen(open); }}><DialogContent className="sx-chat-dialog sx-send-packet-dialog"><DialogTitle>发红包</DialogTitle><DialogDescription>给 {groupName} 的朋友送一份心意</DialogDescription>
     <form className="sx-chat-form" onSubmit={event => void submitPacket(event)}>
       <div className="sx-send-packet-preview"><img src={packetArt(packetForm.asset)} alt={`${assetName(packetForm.asset)}红包预览`} /><div><small>一份心意，一起分享</small><strong>{packetForm.greeting || '恭喜发财，大吉大利'}</strong><span>{assetName(packetForm.asset)} · {packetForm.algorithm === 'random' ? '拼手气红包' : '普通红包'}</span></div></div>
