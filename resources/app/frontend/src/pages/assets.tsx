@@ -80,9 +80,9 @@ export default function AssetsPage() {
   // 导致总资产估值、现货/合约/策略市值全部为 0（2026-11-12 修复）
   const platformQuery = useQuery({ queryKey: ['platform-profile', identity], queryFn: () => api<PlatformProfile>('platform/profile'), enabled: wallet.authenticated });
   const aTokenProfileQuery = useQuery({ queryKey: ['a-token-profile', identity], queryFn: () => api<PlatformProfile>('a-token/profile'), enabled: wallet.authenticated });
-  // 合伙人身份（股东计划已激活）用于资产页徽章
-  const shareholderQuery = useQuery({ queryKey: ['ecosystem', 'shareholder', wallet.address, wallet.revision], queryFn: ({ signal }) => api<{ active?: boolean }>('a-token/shareholder', { signal }), enabled: wallet.authenticated, refetchInterval: 60000 });
-  const isPartner = Boolean(shareholderQuery.data?.active);
+  // 合伙人身份：股东接口返回 { member }，status=active 即已加入合伙人计划
+  const shareholderQuery = useQuery({ queryKey: ['ecosystem', 'shareholder', wallet.address, wallet.revision], queryFn: ({ signal }) => api<{ member?: { status?: string } | null }>('a-token/shareholder', { signal }), enabled: wallet.authenticated, refetchInterval: 60000 });
+  const isPartner = shareholderQuery.data?.member?.status === 'active';
   const poolQuery = useQuery({ queryKey: ['svx-pool-price'], queryFn: () => api<{ priceUsdt?: string }>('a-token/pool', {}, false), staleTime: 60000 });
   const revenueQuery = useQuery({ queryKey: ['svx-revenue', identity], queryFn: () => api<RevenueReport>('a-token/revenue?limit=200'), enabled: wallet.authenticated && view === 'revenue' });
   const walletProfile = walletQuery.data, platform = platformQuery.data, balances = walletProfile?.balances;
