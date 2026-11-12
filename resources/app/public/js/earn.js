@@ -858,7 +858,7 @@
       if (!await confirmDialog('购买 ' + q.aixIn + ' SVX 驱动额度：成交 ' + q.usdtCost + ' USDT，实付 ' + q.usdtOut + ' USDT（买入 0 手续费，大盘价 $' + q.priceUsdt + '），购买后不可退款。确认？')) return;
       const requestId = 'tbo_' + crypto.randomUUID().replaceAll('-', '');
       const timestamp = String(Date.now());
-      const msg = 'Solvex 驱动额度购买确认：支付 ' + q.usdtOut + ' USDT，编号 ' + requestId + '，时间：' + timestamp;
+      const msg = 'Solvex 驱动额度购买确认：购买 ' + aix + ' SVX，编号 ' + requestId + '，时间：' + timestamp;
       const signature = await provider.request({ method: 'personal_sign', params: [msg, addr] });
       const r = await authApi('match-pool/buy-turbo', {
         method: 'POST',

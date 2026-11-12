@@ -623,11 +623,12 @@
       const timestamp = String(Date.now());
       let message, path, body;
       if (currentSide === 'buy') {
-        message = `Solvex ${zoneName}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`;
+        // 签名消息绑定用户输入金额（与价格 tick 无关），避免报价后价格变动导致验签失败
+        message = `Solvex ${zoneName}买币确认：支付 ${amt} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`;
         path = 'zone/buy';
         body = { zone: currentZone, amount: amt, timestamp };
       } else {
-        message = `Solvex 一键卖出确认：卖出 ${q.aIn} SVX，编号 ${requestId}，时间：${timestamp}`;
+        message = `Solvex 一键卖出确认：卖出 ${amt} SVX，编号 ${requestId}，时间：${timestamp}`;
         path = 'zone/sell';
         body = { amount: amt, timestamp };
       }

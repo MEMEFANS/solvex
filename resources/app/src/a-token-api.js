@@ -393,11 +393,21 @@ export function createATokenApi({
         try { cost = matchPoolService.costForA(String(body.aix ?? '')); }
         catch (e) { return sendError(res, e); }
         try {
-          walletService.verifyOperationSignature({
-            address: session.address,
-            message: `Solvex 驱动额度购买确认：支付 ${cost.totalStr} USDT，编号 ${requestId}，时间：${String(body.timestamp ?? '')}`,
-            signature: String(body.signature ?? ''),
-          });
+          // 签名消息只绑定「购买数量 + 编号 + 时间」，不绑定按实时价折算的金额：
+          // 旧版消息含金额，价格 tick 后前后端折算值不同，验签恢复出另一个地址，
+          // 表现为「钱包签名与当前账户不一致」。保留旧消息兼容仍缓存旧 JS 的客户端。
+          const timestamp = String(body.timestamp ?? '');
+          const signature = String(body.signature ?? '');
+          const messages = [
+            `Solvex 驱动额度购买确认：购买 ${String(body.aix ?? '')} SVX，编号 ${requestId}，时间：${timestamp}`,
+            `Solvex 驱动额度购买确认：支付 ${cost.totalStr} USDT，编号 ${requestId}，时间：${timestamp}`,
+          ];
+          let lastError;
+          for (const message of messages) {
+            try { walletService.verifyOperationSignature({ address: session.address, message, signature }); lastError = null; break; }
+            catch (e) { lastError = e; }
+          }
+          if (lastError) throw lastError;
         } catch (e) { return sendError(res, e); }
         try {
           const result = await withAccountLock(session.address, () => matchPoolService.buyTurboByA({
@@ -462,11 +472,19 @@ export function createATokenApi({
         try { q = zoneTradeService.quote({ side: 'buy', zone, amount }); }
         catch (e) { return sendError(res, e); }
         try {
-          walletService.verifyOperationSignature({
-            address: session.address,
-            message: `Solvex ${q.zoneLabel}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${String(body.timestamp ?? '')}`,
-            signature: String(body.signature ?? ''),
-          });
+          // 同上：签名消息绑定用户输入的金额（不随价格 tick 变化），旧消息保留兼容
+          const timestamp = String(body.timestamp ?? '');
+          const signature = String(body.signature ?? '');
+          const messages = [
+            `Solvex ${q.zoneLabel}买币确认：支付 ${amount} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`,
+            `Solvex ${q.zoneLabel}买币确认：支付 ${q.usdtIn} USDT（买入手续费 0），编号 ${requestId}，时间：${timestamp}`,
+          ];
+          let lastError;
+          for (const message of messages) {
+            try { walletService.verifyOperationSignature({ address: session.address, message, signature }); lastError = null; break; }
+            catch (e) { lastError = e; }
+          }
+          if (lastError) throw lastError;
         } catch (e) { return sendError(res, e); }
         try {
           const result = await withAccountLock(session.address, () => zoneTradeService.buy({
@@ -484,11 +502,18 @@ export function createATokenApi({
         try { q = zoneTradeService.quote({ side: 'sell', amount }); }
         catch (e) { return sendError(res, e); }
         try {
-          walletService.verifyOperationSignature({
-            address: session.address,
-            message: `Solvex 一键卖出确认：卖出 ${q.aIn} SVX，编号 ${requestId}，时间：${String(body.timestamp ?? '')}`,
-            signature: String(body.signature ?? ''),
-          });
+          const timestamp = String(body.timestamp ?? '');
+          const signature = String(body.signature ?? '');
+          const messages = [
+            `Solvex 一键卖出确认：卖出 ${amount} SVX，编号 ${requestId}，时间：${timestamp}`,
+            `Solvex 一键卖出确认：卖出 ${q.aIn} SVX，编号 ${requestId}，时间：${timestamp}`,
+          ];
+          let lastError;
+          for (const message of messages) {
+            try { walletService.verifyOperationSignature({ address: session.address, message, signature }); lastError = null; break; }
+            catch (e) { lastError = e; }
+          }
+          if (lastError) throw lastError;
         } catch (e) { return sendError(res, e); }
         try {
           const result = await withAccountLock(session.address, () => zoneTradeService.sell({
