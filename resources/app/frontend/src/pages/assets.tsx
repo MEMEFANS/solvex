@@ -11,7 +11,7 @@ import { formatDecimal, formatUnits, mulDecimal, sumDecimal, units } from '@/lib
 import { depositUsdt, openUsdtWithdrawal } from '@/lib/wallet';
 import type { CapitalRow, PlatformProfile, RevenueReport, WalletConfig, WalletProfile } from '@/types';
 
-const NAMES: Record<string, string> = { USDT:'Tether', BTC:'Bitcoin', ETH:'Ethereum', BNB:'BNB', SOL:'Solana', XRP:'XRP', DOGE:'Dogecoin', A:'Solvex 平台原生代币', 'A-ALPHA':'矿池 / 能量 / 节点扣款', 'A-BETA':'AI 量化驱动额度' };
+const NAMES: Record<string, string> = { USDT:'Tether', BTC:'Bitcoin', ETH:'Ethereum', BNB:'BNB', SOL:'Solana', XRP:'XRP', DOGE:'Dogecoin', A:'Solvex 平台原生代币', 'A-ALPHA':'矿池 / 能量 / 节点扣款', 'A-BETA':'协议驱动额度' };
 // 三种 SVX 分开显示：主钱包、蓄能额度（矿池/能量扣款）、驱动额度
 const disp = (symbol: string) => symbol === 'A' ? 'SVX' : symbol === 'A-ALPHA' ? 'SVX 蓄能额度' : symbol === 'A-BETA' ? 'SVX 驱动额度' : symbol;
 const logo = (symbol: string) => symbol.startsWith('A') ? '/assets/brand/logo.svg' : `/assets/tokens/${symbol.toLowerCase()}.png?v=20261111-domain-solvex-1`;
@@ -101,7 +101,9 @@ export default function AssetsPage() {
       : zone ? units(aTokenProfileQuery.data?.zones?.[zone])
       : symbol === 'A' ? (balances?.A ?? platform?.spot?.A) : platform?.spot?.[symbol];
     const frozen = isUsdt ? account.reservedUsdt : zone ? undefined : platform?.spotFrozen?.[symbol];
-    const price = isUsdt ? '1' : (platform?.marketPrices?.[symbol] || (symbol.startsWith('A') ? markPrice : '0'));
+    // SVX 三种额度统一用 SVX 池价估值（A-ALPHA / A-BETA 不在行情表里）
+    const svxPrice = platform?.marketPrices?.A || markPrice || '0';
+    const price = isUsdt ? '1' : (symbol.startsWith('A') ? svxPrice : (platform?.marketPrices?.[symbol] || '0'));
     // 估值兜底：价格缺失时按 0 计算，避免整行显示成「—」
     const valued = mulDecimal(available || '0', price || '0');
     const valuation = valued === '—' ? formatDecimal(Number(available || 0) * Number(price || 0), 2) : formatDecimal(valued, 2);
