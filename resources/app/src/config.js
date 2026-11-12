@@ -142,7 +142,8 @@ export function getConfig() {
       usdcContract:process.env.USDC_CONTRACT_ADDRESS || '0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d',
       v3Router:process.env.PANCAKE_V3_ROUTER || '0x1b81D678ffb9C0263b24A97847620C99d213eB14',
       v3Quoter:process.env.PANCAKE_V3_QUOTER || '0xB048Bbc1Ee6b733FFfCFb9e9CeF7375518e25997',
-      v3FeeTiers:(process.env.PANCAKE_V3_FEE_TIERS || '100,500').split(',').map(value => Number(value.trim())).filter(Boolean),
+      // 费率档位：0.05%（fee=500）池子 USDT/USDC 结构更均衡，出款只询价该档（2026-11-12 用户确认）
+      v3FeeTiers:(process.env.PANCAKE_V3_FEE_TIERS || '500').split(',').map(value => Number(value.trim())).filter(Boolean),
       slippageBps:Math.min(200, Math.max(10, Number(process.env.PLATFORM_SWAP_SLIPPAGE_BPS) || 30)),
     },
   };
