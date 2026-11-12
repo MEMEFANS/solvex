@@ -71,8 +71,10 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
   const shownRate = fresh ? fresh.ratePct : rate;
   const shownInterest = fresh ? formatDecimal(fresh.interest, 4) : estimate?.interest;
   const shownPayout = fresh ? formatDecimal(fresh.payout, 4) : estimate?.payout;
+  // 档位上限来自接口，是带 18 位小数的十进制字符串（如 2000.000000000000000000），
+  // 不能直接 BigInt(...)，否则抛错导致整页报「页面暂时无法显示」。
   const rangeText = tier ? (tier.max
-    ? '该卡片 ' + formatDecimal(tier.min, 0) + '–' + formatDecimal(String(BigInt(tier.max) - 1n), 0) + ' SVX'
+    ? '该卡片 ' + formatDecimal(tier.min, 0) + '–' + formatUnits(toUnits(tier.max) - 1n, 18, 0) + ' SVX'
     : formatDecimal(tier.min, 0) + ' SVX 起') : '';
   async function submit() {
     if (busyRef.current || reason || !tier || !term) return;
