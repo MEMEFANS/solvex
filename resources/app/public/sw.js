@@ -7,7 +7,7 @@
  *  - 其余同源 GET     → 不接管，走浏览器默认行为
  * 注意：修改静态文件需升级对应 ?v= 版本号，或递增 SW_VERSION 重建缓存。
  */
-const SW_VERSION = 'solvex-static-v48-assets-header';
+const SW_VERSION = 'solvex-static-v50-session-persist';
 const STATIC_PREFIXES = ['/app/assets/', '/js/', '/styles/', '/vendor/', '/assets/'];
 // 文件名即内容哈希：URL 不变内容就永不变，新版本以新 URL 发布，缓存后无需任何再校验。
 const IMMUTABLE_PREFIXES = ['/app/assets/'];
@@ -85,17 +85,30 @@ self.addEventListener('fetch', (event) => {
     event.respondWith((async () => {
       const cache = await caches.open(SW_VERSION);
       const cached = await cache.match(request);
+      const immutable = IMMUTABLE_PREFIXES.some(prefix => url.pathname.startsWith(prefix));
+      // A proxy can return its HTML fallback with HTTP 200 for a missing chunk.
+      // Never keep that response as a permanent JavaScript/CSS cache entry.
+      const validAsset = response => response && response.ok && (!immutable || !response.headers.get('Content-Type')?.includes('text/html'));
       // Versioned URLs change with each release. Re-fetching cached assets competes with login on mobile.
       // Immutable (content-hashed) URLs are safe to keep serving forever: new deploys publish new URLs.
-      if (cached && (url.searchParams.has('v') || IMMUTABLE_PREFIXES.some(prefix => url.pathname.startsWith(prefix)))) return cached;
+      if (validAsset(cached) && (url.searchParams.has('v') || immutable)) return cached;
       const network = fetch(request)
+        .then(async response => {
+          if (immutable && (response.status === 404 || (response.ok && !validAsset(response)))) {
+            const retry = new URL(request.url);
+            retry.searchParams.set('__svx_asset_retry', String(Date.now()));
+            response = await fetch(retry.href, { cache: 'no-store', credentials: 'same-origin' });
+          }
+          if (immutable && response.ok && !validAsset(response)) return new Response('', { status: 502, statusText: 'Invalid module response' });
+          return response;
+        })
         .then(response => {
-          if (response && response.ok) cache.put(request, response.clone());
+          if (validAsset(response)) cache.put(request, response.clone());
           return response;
         })
         .catch(() => null);
       event.waitUntil(network);
-      return cached || (await network) || new Response('', { status: 504, statusText: 'Offline' });
+      return (validAsset(cached) && cached) || (await network) || new Response('', { status: 504, statusText: 'Offline' });
     })());
   }
 });

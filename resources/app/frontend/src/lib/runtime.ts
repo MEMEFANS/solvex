@@ -24,11 +24,71 @@ export function installLegacyDOM() {
   window.WG_OPERATOR_MODE = ['127.0.0.1','localhost','::1'].includes(location.hostname) && new URLSearchParams(location.search).get('operator') === '1';
   document.documentElement.classList.toggle('operator-mode', Boolean(window.WG_OPERATOR_MODE));
 }
-function loadScript(name: string) {
-  return new Promise<void>((resolve, reject) => { const script = document.createElement('script'); script.src = '/js/' + name + '.js?v=20261112-internal-kline-8'; script.onload = () => resolve(); script.onerror = () => reject(new Error('界面模块加载失败，请刷新重试')); document.body.append(script); });
+const runtimeScriptPromises = new Map<string, Promise<void>>();
+
+function runtimeScriptReady(name: string) {
+  if (name === 'wallet') return Boolean(window.solvexWalletBridge);
+  if (name === 'page-loader') return typeof window.loadPageFeature === 'function';
+  if (name === 'portal-shared') return Boolean(window.Portal);
+  if (name === 'theme') return Boolean(window.WGTheme);
+  if (name === 'i18n') return Boolean(window.I18n);
+  // These scripts do not expose a public object. They are only ever inserted
+  // by this runtime, so the explicit data marker is the reliable signal.
+  return false;
 }
+
+function loadScript(name: string) {
+  const path = '/js/' + name + '.js';
+  const src = path + '?v=20261113-session-persist-1';
+  // Match by pathname as well as the full URL. A tab opened before a deploy
+  // can still contain the same classic script with the previous query string;
+  // appending a second copy would re-declare its top-level `let`/`const` names.
+  const existing = [...document.scripts].find(script => {
+    try { return new URL(script.src, location.href).pathname === path; } catch { return false; }
+  });
+  const key = new URL(path, location.href).href;
+  const pending = runtimeScriptPromises.get(key);
+  if (pending) return pending;
+  if (existing) {
+    const promise = new Promise<void>((resolve, reject) => {
+      if (existing.dataset.solvexLoaded === '1' || runtimeScriptReady(name)) { resolve(); return; }
+      existing.addEventListener('load', () => resolve(), { once:true });
+      existing.addEventListener('error', () => reject(new Error('界面模块加载失败，请刷新重试')), { once:true });
+    });
+    runtimeScriptPromises.set(key, promise);
+    promise.catch(() => runtimeScriptPromises.delete(key));
+    return promise;
+  }
+  const promise = new Promise<void>((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = src;
+    script.dataset.solvexRuntime = '1';
+    script.onload = () => { script.dataset.solvexLoaded = '1'; resolve(); };
+    script.onerror = () => { script.remove(); reject(new Error('界面模块加载失败，请刷新重试')); };
+    document.body.append(script);
+  });
+  runtimeScriptPromises.set(key, promise);
+  promise.catch(() => runtimeScriptPromises.delete(key));
+  return promise;
+}
+
+let runtimeStartPromise: Promise<void> | undefined;
 export async function startRuntime() {
-  for (const name of ['account-action-guard','theme','i18n','core','device-id','wallet','portal-shared','page-loader','announcement']) await loadScript(name);
+  if (runtimeStartPromise) return runtimeStartPromise;
+  runtimeStartPromise = startRuntimeOnce().catch(error => {
+    runtimeStartPromise = undefined;
+    throw error;
+  });
+  return runtimeStartPromise;
+}
+
+async function startRuntimeOnce() {
+  // The wallet depends on core helpers; page-loader must be present before any
+  // route can request a deferred feature. The remaining boot scripts are
+  // independent and can download together, shaving several round trips on
+  // mobile networks without changing their initialization order.
+  await Promise.all([loadScript('account-action-guard'), loadScript('theme'), loadScript('i18n'), loadScript('core'), loadScript('device-id'), loadScript('portal-shared'), loadScript('page-loader'), loadScript('announcement')]);
+  await loadScript('wallet');
   window.Portal?.register('referrals', { load: () => window.dispatchEvent(new Event('referralrefresh')), reset: () => window.ReferralRewards?.reset() });
   const legacySwitch = window.switchTab;
   let routeRequest = 0;
@@ -53,7 +113,15 @@ export async function startRuntime() {
     if (!document.getElementById('tab-earn')?.classList.contains('active')) void window.switchTab('earn');
     window.dispatchEvent(new CustomEvent('earntabchange', { detail: sub }));
   };
-  const connector = document.createElement('script'); connector.type = 'module'; connector.src = '/vendor/wallet/connector.js?v=20261111-domain-team-1'; document.head.append(connector);
+  if (![...document.scripts].some(script => {
+    try { return new URL(script.src, location.href).pathname === '/vendor/wallet/connector.js'; } catch { return false; }
+  })) {
+    const connector = document.createElement('script');
+    connector.type = 'module';
+    connector.src = '/vendor/wallet/connector.js?v=20261113-runtime-dedupe-2';
+    connector.dataset.solvexRuntime = '1';
+    document.head.append(connector);
+  }
   const fromURL = () => {
     const route = location.hash.replace('#/','') || new URLSearchParams(location.search).get('page') || 'earn';
     if (route === 'shareholder' || route === 'earn/shareholder') return 'partner-plan';
@@ -62,7 +130,7 @@ export async function startRuntime() {
   };
   window.addEventListener('popstate', () => { void window.switchTab(fromURL()); });
   await window.switchTab(fromURL());
-  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261112-sw-immutable-9').catch(() => {});
+  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261113-module-recovery-1').catch(() => {});
 }
 let legacyEarn: Promise<void> | undefined;
 export async function showLegacyEarn(tab: string, isCurrent = () => true) {
