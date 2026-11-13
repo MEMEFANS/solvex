@@ -254,7 +254,7 @@ export default function AiManagedPage() {
           <div className="aim-vip-body">
             <b>{vip ? 'VIP 量化权益 · 有效中' : expired ? 'VIP 量化权益 · 已到期' : '量化 VIP 权益'}</b>
             <span>{vipDesc}</span>
-            <span style={{ color: '#5f2bd9', fontWeight: 700 }}>SVX 余额 {money(state.aixBalance)} SVX</span>
+            <span style={{ color: '#4d2ab0', fontWeight: 700 }}>SVX 余额 {money(state.aixBalance)} SVX</span>
           </div>
           <button className="aim-vip-btn" type="button" disabled={vip || busy} onClick={unlockVip}>
             {vip ? 'VIP 有效中' : expired ? `续费 VIP · 销毁 ${state.unlockCostA || '100'} SVX` : `开通 VIP · 销毁 ${state.unlockCostA || '100'} SVX`}

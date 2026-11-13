@@ -134,7 +134,7 @@ export default function AssetsPage() {
     {symbol === 'USDT' && <><button onClick={openFunding}>充值</button><button onClick={() => { openUsdtWithdrawal().catch(error => toast.error(error instanceof Error ? error.message : '提现模块加载失败')); }}>提现</button></>}
     {symbol === 'A' && <button onClick={() => { void window.switchTab('a-token-trade'); }}>SVX 交易</button>}
     {symbol === 'A-ALPHA' && <button onClick={() => { void window.switchTab('earn'); }}>投入矿池</button>}
-    {symbol === 'A-BETA' && <button onClick={() => { void window.switchTab('ecosystem'); }}>驱动额度</button>}
+    {symbol === 'A-BETA' && <button onClick={() => { window.earnSwitch?.('matchpool'); }}>驱动额度</button>}
     {symbol !== 'USDT' && !symbol.startsWith('A') && <button onClick={() => { void window.openTradePage('spot', symbol); }}>交易</button>}
   </>;
 
@@ -150,7 +150,7 @@ export default function AssetsPage() {
       <section className="assets-overview">
         <div className="assets-total">
           <span className="assets-label">总资产估值{isPartner && <span className="assets-partner-badge">合伙人</span>}</span>
-          <strong><span>{loading ? '—' : money(totalEquity)}</span> <small>USDT</small></strong>
+          <strong id="assets-total-equity"><span>{loading ? '—' : money(totalEquity)}</span> <small>USDT</small></strong>
           <span className="assets-subvalue">≈ ${loading ? '—' : money(totalEquity)}</span>
           <div className="assets-quick-actions">
             <button className="assets-primary-action" onClick={openFunding}><span>＋</span>充值</button>
@@ -168,7 +168,7 @@ export default function AssetsPage() {
 
       <details className="assets-distribution">
         <summary className="assets-section-heading"><div><h3>账户分布</h3></div><span>展开查看 <span aria-hidden="true">⌄</span></span></summary>
-        <div className="assets-allocation">{parts.map((item, index) => <div className="assets-allocation-item" key={item.name}><div className="assets-allocation-name"><span>{item.name}</span><b>{money(item.value)}</b></div><div className="assets-allocation-track"><div className="assets-allocation-fill" style={{ width: (denominator > 0 ? Math.max(0, Number(item.value) || 0) / denominator * 100 : 0).toFixed(2) + '%', background: ['#7034ef','#8a5cf3','#a788f6','#c3aef9','#ded2fc'][index] }} /></div></div>)}</div>
+        <div className="assets-allocation">{parts.map((item, index) => <div className="assets-allocation-item" key={item.name}><div className="assets-allocation-name"><span>{item.name}</span><b>{money(item.value)}</b></div><div className="assets-allocation-track"><div className="assets-allocation-fill" style={{ width: (denominator > 0 ? Math.max(0, Number(item.value) || 0) / denominator * 100 : 0).toFixed(2) + '%', background: ['#5b3fc0','#8a5cf3','#a788f6','#c3aef9','#ded2fc'][index] }} /></div></div>)}</div>
       </details>
 
       <section className="assets-main">
@@ -182,10 +182,10 @@ export default function AssetsPage() {
             <label className="assets-zero-filter"><input type="checkbox" checked={hideZero} onChange={event => setHideZero(event.target.checked)} />隐藏零资产</label>
           </div>
           <div className="assets-table-wrap">
-            <table className="assets-table no-mobile-stack"><thead><tr><th>币种</th><th>总额</th><th>可用</th><th>冻结</th><th>USDT 估值</th><th>操作</th></tr></thead><tbody>
+            <table className="assets-table no-mobile-stack"><thead><tr><th>币种</th><th>总额</th><th>可用</th><th>冻结</th><th>USDT 估值</th><th>操作</th></tr></thead><tbody id="assets-table-body">
               {visibleRows.map(item => {
                 return <tr key={item.symbol}>
-                  <td><div className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><span className="assets-coin-fallback">{disp(item.symbol).slice(0, 1)}</span><img src={logo(item.symbol)} alt={disp(item.symbol)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b>{item.symbol === 'A' && <small style={{ display:'block', color:'#5f2bd9', fontSize:11, marginTop:2 }}>流通额度 {sellQuota ? formatDecimal(sellQuota, 2) : '—'}</small>}</span></div></td>
+                  <td><div className="assets-coin"><span className={'assets-coin-icon ' + item.symbol.toLowerCase()}><span className="assets-coin-fallback">{disp(item.symbol).slice(0, 1)}</span><img src={logo(item.symbol)} alt={disp(item.symbol)} loading="lazy" onError={event => { event.currentTarget.style.display = 'none'; }} /></span><span><b>{disp(item.symbol)}</b>{item.symbol === 'A' && <small style={{ display:'block', color:'#4d2ab0', fontSize:11, marginTop:2 }}>流通额度 {sellQuota ? formatDecimal(sellQuota, 2) : '—'}</small>}</span></div></td>
                   <td><span className="assets-total-amount">{item.total}</span><small className="assets-mobile-valuation">≈ {money(item.valuation)} USDT</small></td>
                   <td>{item.available}</td><td>{item.frozen}</td><td>{money(item.valuation)}</td>
                   <td className="assets-row-actions">

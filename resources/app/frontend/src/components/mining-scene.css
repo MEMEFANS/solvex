@@ -9,7 +9,7 @@
 .rx-cavern-state i { width:6px; height:6px; border-radius:50%; background:#bd955c; }
 .rx-cavern-state.is-active { color:#067a63; background:#eef8f3; border-color:#cce7db; }.rx-cavern-state.is-active i { background:#169b75; }
 .rx-cavern-state.is-error { color:#a44540; background:#fff5f2; border-color:#f0d5cf; }.rx-cavern-state.is-error i { background:#ba665b; }
-.rx-cavern-toggle { width:34px; height:34px; display:grid; place-items:center; border:1px solid #dedfe6; border-radius:10px; color:#626779; background:#fff; cursor:pointer; transition:background .2s,color .2s; }.rx-cavern-toggle:hover { background:#f4f0fb; color:#7034ef; }
+.rx-cavern-toggle { width:34px; height:34px; display:grid; place-items:center; border:1px solid #dedfe6; border-radius:10px; color:#626779; background:#fff; cursor:pointer; transition:background .2s,color .2s; }.rx-cavern-toggle:hover { background:#f4f0fb; color:#5b3fc0; }
 .rx-cavern-viewport { overflow-x:auto; scrollbar-width:thin; scrollbar-color:#b99b76 #eee8df; }
 .rx-cavern-stage { position:relative; isolation:isolate; width:100%; min-width:640px; aspect-ratio:16/9; overflow:hidden; background:#654d36; }
 .rx-cavern-background { position:absolute; inset:0; display:block; width:100%; height:100%; object-fit:cover; user-select:none; pointer-events:none; }
