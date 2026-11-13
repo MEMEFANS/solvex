@@ -59,6 +59,10 @@ try {
   assert.throws(() => firstService.handleLoginSignature({signature,message:challenge.message}), /登录信息已过期/, '重试挑战不会允许重复使用签名');
 
   assert.equal(firstService.getSession(login.token)?.address, wallet.address);
+  // 登录态默认 30 天 + 活跃访问滑动续期，避免用户每次进站都要重新签名
+  assert.equal(firstService.sessionTtlSeconds, 30 * 86_400, '默认会话有效期应为 30 天');
+  const loginTtlSeconds = (new Date(login.expiresAt).getTime() - Date.now()) / 1000;
+  assert.ok(loginTtlSeconds > 29 * 86_400, `登录令牌有效期应与 Cookie 一致（30 天），实际 ${Math.round(loginTtlSeconds)}s`);
 
   const rewardCreatedAt = Date.now();
   firstService.database.upsertAiBatch({

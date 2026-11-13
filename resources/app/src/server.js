@@ -1563,7 +1563,10 @@ export const server = http.createServer(async (request, res) => {
     // Login only needs the cookie identity; funding/RPC reconciliation belongs to the assets page.
     if (p === '/api/wallet/session' && request.method === 'GET') {
       res.setHeader('Cache-Control', 'no-store');
+      const token = readCookie(request, 'wg_session');
       const session = walletSession(request);
+      // 滑动续期：服务端延长后同步刷新浏览器 Cookie，活跃用户不会掉登录态
+      if (session?.renewed) setSessionCookie(request, res, token, walletService.sessionTtlSeconds);
       return send(res, 200, session
         ? { authenticated:true, address:session.address, expiresAt:new Date(session.expiresAt).toISOString() }
         : { authenticated:false });
@@ -1730,6 +1733,32 @@ export const server = http.createServer(async (request, res) => {
     const full = path.resolve(publicRoot, file);
     if (full !== publicRoot && !full.startsWith(`${publicRoot}${path.sep}`)) {
       return send(res, 403, { error:'拒绝访问该路径' });
+    }
+    // Old browser tabs can request a content-hashed module from a previous
+    // release. Keep module names stable across releases at the HTTP boundary:
+    // if that exact hash is gone, serve the current file with the same logical
+    // chunk prefix (team, partner-plan, ranking, etc.). This avoids a lazy
+    // route turning into the generic page error because a CDN cached an old
+    // 404 response.
+    if (!fs.existsSync(full) && file.startsWith('app/assets/') && ['.js', '.css'].includes(path.extname(full).toLowerCase())) {
+      const requested = path.basename(file);
+      const dash = requested.lastIndexOf('-');
+      const logical = dash > 0 ? requested.slice(0, dash) : '';
+      if (logical && /^[a-z0-9_-]+$/i.test(logical)) {
+        const assetDir = path.dirname(full);
+        const candidates = fs.readdirSync(assetDir)
+          .filter(name => name.startsWith(logical + '-') && path.extname(name).toLowerCase() === path.extname(full).toLowerCase())
+          .sort();
+        if (candidates.length) {
+          const fallback = path.join(assetDir, candidates[candidates.length - 1]);
+          res.writeHead(200, {
+            'Content-Type': MIME[path.extname(fallback)] || 'application/octet-stream',
+            'Cache-Control': 'no-store, max-age=0',
+            'X-Solvex-Asset-Recovered': '1',
+          });
+          return fs.createReadStream(fallback).pipe(res);
+        }
+      }
     }
     if (fs.existsSync(full) && fs.statSync(full).isFile()) {
       // 图片/字体/代码长缓存（配合 ?v= 版本参数失效）；HTML 走 Last-Modified 304 协商缓存

@@ -106,7 +106,8 @@ export function getConfig() {
       { id:'bsc', name:'BNB Smart Chain', chainId:56, rpcUrl:process.env.BSC_RPC_URL || 'https://bsc-rpc.publicnode.com', browserRpcUrl:process.env.BSC_BROWSER_RPC_URL || 'https://bsc-rpc.publicnode.com', nativeSymbol:'BNB', tokenContract:'0x55d398326f99059fF775485246999027B3197955', tokenDecimals:18, confirmations:Number(process.env.BSC_CONFIRMATIONS || 15), explorerUrl:'https://bscscan.com' },
       { id:'optimism', name:'Optimism (平台结算)', chainId:10, rpcUrl:process.env.OPTIMISM_RPC_URL || 'https://optimism-rpc.publicnode.com', browserRpcUrl:process.env.OPTIMISM_RPC_URL || 'https://optimism-rpc.publicnode.com', nativeSymbol:'ETH', tokenContract:process.env.OPTIMISM_USDT_CONTRACT || '0x94b008aA00579c1307B0EF2c499aD98a8ce58e58', tokenDecimals:6, confirmations:Number(process.env.OPTIMISM_CONFIRMATIONS || 20), explorerUrl:'https://optimistic.etherscan.io', public:false },
     ],
-    sessionHours: Number(process.env.WALLET_SESSION_HOURS || 24),
+    // 登录会话有效期：默认 30 天（配合服务端滑动续期），避免用户每次进站都要重新签名。
+    sessionHours: Number(process.env.WALLET_SESSION_HOURS || 720),
     // 同一设备最多可绑定的钱包账号数（第 N+1 个在建立会话时拒绝）
     maxWalletsPerDevice: Number(process.env.DEVICE_MAX_WALLETS || 3),
     // 提现手续费 2% 自动加 LP：链下入队 + 指令生成；执行器默认关闭，建议由运维脚本单独跑，

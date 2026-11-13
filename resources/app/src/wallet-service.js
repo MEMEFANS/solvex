@@ -134,7 +134,7 @@ export function createWalletService(options = {}) {
     saveState();
     return { already: false, wallet: key };
   }
-  const sessionHours = safeInteger(options.sessionHours, 24, 1, 24 * 30);
+  const sessionHours = safeInteger(options.sessionHours, 720, 1, 24 * 30);
   const sessionTtlMs = sessionHours * 60 * 60_000 || SESSION_TTL_MS;
   const depositAddress = isAddress(String(options.depositAddress || ''))
     ? getAddress(String(options.depositAddress))
@@ -510,9 +510,21 @@ export function createWalletService(options = {}) {
   function getSession(token) {
     // 过期会话清理已移至 60s 定时（cleanupAuth）；此处仅做过期判断，避免每个请求全量遍历
     if (!token) return null;
-    const session = state.sessions[sessionKey(token)];
-    if (session && blockedWallets.has(String(session.address || '').toLowerCase())) return null;
-    return session && session.expiresAt > Date.now() ? { ...session } : null;
+    const key = sessionKey(token);
+    const session = state.sessions[key];
+    if (!session) return null;
+    if (blockedWallets.has(String(session.address || '').toLowerCase())) return null;
+    const now = Date.now();
+    if (!(session.expiresAt > now)) return null;
+    // 滑动续期：剩余有效期不足一半时自动延长一个完整周期，
+    // 活跃用户不会再因为会话到期被要求重复签名（浏览器 Cookie 由 /api/wallet/session 同步续期）。
+    if (session.expiresAt - now < sessionTtlMs / 2) {
+      session.expiresAt = now + sessionTtlMs;
+      markAuthChanged();
+      saveState();
+      return { ...session, renewed: true };
+    }
+    return { ...session };
   }
 
   function logout(token) {
@@ -1968,6 +1980,8 @@ export function createWalletService(options = {}) {
     creditBalance,
     debitBalance,
     getSession,
+    // 登录会话有效期（秒）：Cookie Max-Age 与滑动续期共用同一口径
+    sessionTtlSeconds: Math.floor(sessionTtlMs / 1000),
     isAccountBlocked,
     isSilentAccountBlocked,
     isSilentSessionBlocked,
