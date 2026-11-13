@@ -20,7 +20,7 @@ import { A_TOKEN_DECIMALS, USDT_DECIMALS } from './a-token-service.js';
 //
 // 账务与幂等：
 //   · 参与：钱包 USDT -1，写 LP 流水（source='blindbox'，ref_id=盲盒 id，唯一索引防重）；
-//   · 每日产出写统一待领取账本（bizType='blindbox'，payload.target='main'），
+//   · 每日产出写统一待领取账本（bizType='blindbox'，payload.target='alpha' → 进甲区蓄能额度），
 //     领取后由pending服务进入主余额和蓄能额度；
 //   · 发放总额封顶 total_units，过期作废的份额同样计入已发放（当天作废即永久损失）。
 // ─────────────────────────────────────────────────────────────
@@ -302,7 +302,7 @@ export function createATokenBlindBoxService({
       availableAt,
       expiresAt,
       payload: {
-        target: 'main',
+        target: 'alpha',
         dayIndex,
         claimDays: box.claimDays,
         dailyQuotaUnits: base.toString(),

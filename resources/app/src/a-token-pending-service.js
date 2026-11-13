@@ -103,18 +103,25 @@ export function createATokenPendingService({ aTokenService, database, clock = ()
     return transaction(() => {
       // 条件更新失败说明已被其他请求领取/作废（并发点击、领取与作废竞争），直接拒绝
       if (!db.markATokenPendingRewardClaimed(row.id, key, now)) throw new Error('该收益已被领取或已作废');
+      const assetCode = String(row.asset || 'A').toUpperCase();
       if (amount > 0n) {
-        if (String(row.asset || 'A').toUpperCase() === 'USDT') {
+        if (assetCode === 'USDT') {
           // 股东分红等 USDT 收益：直接进主钱包 USDT，不参与甲/乙区与额度逻辑
           aTokenService.creditUsdt(row.wallet, amount);
+        } else if (target === 'alpha') {
+          // 产出进甲区（蓄能额度）：盲盒释放、质押能量、算力节点收益均归蓄能
+          db.creditATokenZone({ wallet: row.wallet, zone: 'alpha', units: amount.toString(), bizType: 'blindbox', refId: row.id, createdAt: now, payload: { source: row.bizType } });
         } else if (target === 'beta' || OUTPUT_TARGET === 'beta') {
           // 产出进乙区（涡轮专用），不可直接提现/卖出，需先过涡轮再产生卖出额度
-          db.creditATokenZone({ wallet: row.wallet, zone: 'beta', units: amount, bizType: 'output', refId: row.id, createdAt: now, payload: { source: row.bizType } });
+          db.creditATokenZone({ wallet: row.wallet, zone: 'beta', units: amount.toString(), bizType: 'output', refId: row.id, createdAt: now, payload: { source: row.bizType } });
         } else {
           aTokenService.creditA(row.wallet, amount);
         }
       }
-      if (quota > 0n) db.addATokenSellQuota(row.wallet, quota);
+      // 旧 sellQuota 账本：仅当产出进主余额时写入；进甲/乙区时分区余额已替代 sellQuota，不再重复记账
+      if (quota > 0n && target !== 'alpha' && target !== 'beta' && OUTPUT_TARGET !== 'beta') {
+        db.addATokenSellQuota(row.wallet, quota);
+      }
       return {
         id: row.id, bizType: row.bizType, bizId: row.bizId, periodKey: row.periodKey,
         asset: row.asset || 'A',
