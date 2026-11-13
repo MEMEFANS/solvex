@@ -12,6 +12,7 @@ import { createMallApi } from '../src/mall-api.js';
 const UNITS = 10n ** 18n;
 const MERCHANT = '0xA11ce00000000000000000000000000000000001';
 const BUYER = '0xB0b00000000000000000000000000000000000002';
+const ESCROW = '0x000000000000000000000000000000000000e5c0';
 
 // ── 测试脚手架：内存账本 + 请求/响应桩 ──
 const ledger = new Map([[MERCHANT.toLowerCase(), 500n * UNITS], [BUYER.toLowerCase(), 1000n * UNITS]]);
@@ -32,7 +33,13 @@ const aTokenService = {
   },
 };
 const wallets = new Set([MERCHANT, BUYER]);
-const walletService = { isAccountBlocked: address => !wallets.has(address) };
+const walletService = {
+  isAccountBlocked: address => !wallets.has(address),
+  // 开店保证金：签名校验与 USDT 扣款在测试中桩化（真实实现见 wallet-service）
+  verifyOperationSignature: () => {},
+  debitBalance: () => {},
+  creditBalance: () => {},
+};
 
 let currentBody = {};
 let currentSession = { address: BUYER };
@@ -89,7 +96,13 @@ await fail('/api/mall/merchant/products', { session: { address: MERCHANT } });
 let state = await ok('/api/mall/merchant/state', { method: 'GET', session: { address: MERCHANT } });
 assert.equal(state.merchant, null);
 await fail('/api/mall/merchant/apply', { session: { address: MERCHANT }, body: { shopName: '' } });
-await ok('/api/mall/merchant/apply', { session: { address: MERCHANT }, body: { shopName: '星辰杂货铺', intro: '好物严选' } });
+const applied = await ok('/api/mall/merchant/apply', {
+  session: { address: MERCHANT },
+  body: { shopName: '星辰杂货铺', intro: '好物严选', depositCurrency: 'USDT', signature: '0xstub', timestamp: Date.now() },
+});
+assert.equal(applied.pending, true, '开店需缴纳保证金并进入审核');
+// 审核通过（后台动作）：直接置为 active，后续用例按正常店铺走
+database.upsertMallMerchant({ ...applied.merchant, status: 'active' });
 
 // ── 3. 上架商品：字段校验 + 成功 ──
 await fail('/api/mall/merchant/products', { session: { address: MERCHANT }, body: { title: '', priceA: '1', stock: 1 } });
@@ -125,7 +138,8 @@ assert.equal(order.quantity, 2);
 assert.equal(A(order.totalUnits), '25', '12.5 × 2 = 25 SVX');
 assert.equal(order.address.receiver, '小明');
 assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore - 25n * UNITS, '买家应被扣 25 SVX');
-assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore + 25n * UNITS, '商户应入账 25 SVX');
+assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore, '下单阶段货款进担保，不直接入商户');
+assert.equal(ledger.get(ESCROW.toLowerCase()), 25n * UNITS, '货款冻结在担保地址');
 // 货款在「确认收货结算」时释放到商户甲区（蓄能额度）；下单阶段只进主余额
 assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 0n, '下单阶段不释放蓄能额度');
 const stateAfterBuy = await ok('/api/mall/state', { method: 'GET' });
@@ -137,7 +151,8 @@ assert.equal(stateAfterBuy.orders.length, 1);
 const { refundA } = await ok('/api/mall/orders/cancel', { body: { orderId: order.id } });
 assert.equal(refundA, '25.0');
 assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore, '取消后买家余额复原');
-assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore, '取消后商户余额复原');
+assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore, '取消后商户余额不变（未结算）');
+assert.equal(ledger.get(ESCROW.toLowerCase()), 0n, '取消后担保资金退回');
 assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 0n, '取消后蓄能额度未释放');
 const stateAfterCancel = await ok('/api/mall/state', { method: 'GET' });
 assert.equal(stateAfterCancel.products[0].stock, 5, '取消后库存回补到 5');
@@ -159,7 +174,9 @@ assert.equal(shipped.shipTracking, 'SF666888999');
 await fail('/api/mall/orders/confirm', { body: { orderId: 'mo_not_exist' } });
 const { order: completed } = await ok('/api/mall/orders/confirm', { body: { orderId: order2.id } });
 assert.equal(completed.status, 'completed');
-// 结算完成 → 货款进入商户甲区（蓄能额度）
+// 结算完成 → 担保资金转商户主余额，货款同时进甲区（蓄能额度）
+assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore + 125n * UNITS / 10n, '结算后货款到商户主余额');
+assert.equal(ledger.get(ESCROW.toLowerCase()), 0n, '结算后担保资金清零');
 assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 125n * UNITS / 10n, '结算后货款进甲区蓄能额度');
 await fail('/api/mall/orders/cancel', { body: { orderId: order2.id } }, '已完成订单不能取消');
 await fail('/api/mall/merchant/orders/ship', { session: { address: MERCHANT }, body: { orderId: order2.id, company: '顺丰', tracking: 'X' } }, '不能重复发货');
