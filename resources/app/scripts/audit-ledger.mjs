@@ -28,7 +28,7 @@ export function auditLedger(filename) {
       zones.delete(key);
     }
     for (const [key, balance] of zones) if (balance !== 0n) issue('zone_balance_missing', key);
-    for (const table of ['a_token_sell_quotas', 'a_token_usable_quotas']) {
+    for (const table of ['a_token_usable_quotas']) {
       for (const row of db.prepare('SELECT wallet,released_units,used_units FROM ' + table).iterate()) {
         const released = BigInt(row.released_units), used = BigInt(row.used_units);
         if (used < 0n || released < used) issue('quota_bounds', table + ':' + row.wallet);

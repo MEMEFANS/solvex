@@ -126,8 +126,8 @@ assert.equal(A(order.totalUnits), '25', '12.5 × 2 = 25 SVX');
 assert.equal(order.address.receiver, '小明');
 assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore - 25n * UNITS, '买家应被扣 25 SVX');
 assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore + 25n * UNITS, '商户应入账 25 SVX');
-// 商城货款全额释放商户可卖额度：商家收到的 SVX 可直接在 SVX 交易大厅卖出
-assert.equal(database.getATokenSellQuota(MERCHANT).releasedUnits, (25n * UNITS).toString(), '货款应全额释放可卖额度');
+// 货款在「确认收货结算」时释放到商户甲区（蓄能额度）；下单阶段只进主余额
+assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 0n, '下单阶段不释放蓄能额度');
 const stateAfterBuy = await ok('/api/mall/state', { method: 'GET' });
 assert.equal(stateAfterBuy.products[0].stock, 3, '库存 5 → 3');
 assert.equal(stateAfterBuy.products[0].sold, 2);
@@ -138,7 +138,7 @@ const { refundA } = await ok('/api/mall/orders/cancel', { body: { orderId: order
 assert.equal(refundA, '25.0');
 assert.equal(ledger.get(BUYER.toLowerCase()), buyerBefore, '取消后买家余额复原');
 assert.equal(ledger.get(MERCHANT.toLowerCase()), merchantBefore, '取消后商户余额复原');
-assert.equal(database.getATokenSellQuota(MERCHANT).releasedUnits, '0', '取消后可卖额度同步收回');
+assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 0n, '取消后蓄能额度未释放');
 const stateAfterCancel = await ok('/api/mall/state', { method: 'GET' });
 assert.equal(stateAfterCancel.products[0].stock, 5, '取消后库存回补到 5');
 assert.equal(stateAfterCancel.orders[0].status, 'cancelled');
@@ -159,6 +159,8 @@ assert.equal(shipped.shipTracking, 'SF666888999');
 await fail('/api/mall/orders/confirm', { body: { orderId: 'mo_not_exist' } });
 const { order: completed } = await ok('/api/mall/orders/confirm', { body: { orderId: order2.id } });
 assert.equal(completed.status, 'completed');
+// 结算完成 → 货款进入商户甲区（蓄能额度）
+assert.equal(BigInt(database.getATokenZoneBalance(MERCHANT, 'alpha').units), 125n * UNITS / 10n, '结算后货款进甲区蓄能额度');
 await fail('/api/mall/orders/cancel', { body: { orderId: order2.id } }, '已完成订单不能取消');
 await fail('/api/mall/merchant/orders/ship', { session: { address: MERCHANT }, body: { orderId: order2.id, company: '顺丰', tracking: 'X' } }, '不能重复发货');
 

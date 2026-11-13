@@ -38,7 +38,6 @@ const wallet = Wallet.createRandom().address.toLowerCase();
 const zone = key => BigInt(database.getATokenZoneBalance(wallet, key).units);
 const quota = () => database.getATokenUsableQuota(wallet);
 const availableQuota = () => BigInt(quota().releasedUnits) - BigInt(quota().usedUnits);
-const turboQuota = () => BigInt(database.getATokenTurboQuota(wallet).units);
 const fail = msg => { throw new Error(`FAIL: ${msg}`); };
 
 try {
@@ -68,7 +67,6 @@ try {
   assert.equal(zone('beta'), A(5000), '乙区一键买的币应留在乙区余额');
   assert.equal(zone('alpha'), A(10000), '甲区不应变化（分区隔离）');
   assert.equal(at.balanceA(wallet), 0n, '乙区买入不进主 A 余额');
-  assert.equal(turboQuota(), 0n, '乙区买入不直接产生驱动额度（需进涡轮后释放）');
   assert.equal(availableQuota(), 0n, '乙区买入不直接产生卖出额度');
   assert.equal(walletService.balanceUnits(wallet, 'USDT'), U(1500), 'USDT 应再扣 500');
 

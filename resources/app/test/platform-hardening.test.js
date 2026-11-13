@@ -58,12 +58,16 @@ try {
   assert.equal(reward.availableAt, boundary);
   assert.throws(() => pending.claim(user, reward.id), /尚未/);
   now = boundary;
-  const failingPending = createATokenPendingService({ database: db, clock, aTokenService: { ...at, creditA(...args) { at.creditA(...args); throw Error('injected claim failure'); } } });
+  // 注入甲区入账失败：真实事务应回滚，待领取记录保持 pending
+  const failingDb = { ...db, creditATokenZone() { throw Error('injected claim failure'); } };
+  const failingPending = createATokenPendingService({ database: failingDb, clock, aTokenService: at });
   assert.throws(() => failingPending.claim(user, reward.id), /injected/);
   assert.equal(db.getATokenPendingReward(reward.id).status, 'pending');
   assert.equal(at.balanceA(user), 0n);
+  assert.equal(db.listATokenZoneBalances(user).alpha, alpha);
   pending.claim(user, reward.id);
-  assert.equal(at.balanceA(user), A(10));
+  assert.equal(at.balanceA(user), 0n);
+  assert.equal(BigInt(db.listATokenZoneBalances(user).alpha) - BigInt(alpha), A(10));
 
   const driver = '0x' + '2'.repeat(40);
   wallet.ensureUser(driver);
@@ -80,7 +84,7 @@ try {
   const expiring = pending.createReward({ wallet: user, bizType: 'team', bizId: 'expiry', periodKey: 'd1', amountUnits: A(5), availableAt: boundary });
   now = boundary + 86400000;
   assert.throws(() => pending.claim(user, expiring.id), /过期/);
-  assert.equal(at.balanceA(user), A(10));
+  assert.equal(at.balanceA(user), 0n, '产出进甲区，主余额不变');
 
   at.setFreeTradingEnabled(true);
   db.insertATokenLpPoolEntryRow({ id: 'lp-near', source: 'adjustment', refId: 'lp-near', usdtUnits: U('499999.999999'), direction: 'in' });
@@ -123,7 +127,7 @@ try {
   at = createATokenService({ database: db, walletService: wallet, clock });
   assert.equal(db.db.prepare("SELECT amount_units FROM a_token_team_perf_events WHERE id='preserved'").get().amount_units, '123');
   assert.ok(db.db.prepare("SELECT sql FROM sqlite_master WHERE name='a_token_team_perf_events'").get().sql.includes("'upgrade'"));
-  assert.equal(at.balanceA(user), A(10));
+  assert.equal(at.balanceA(user), 0n);
   assert.equal(at.balanceUsdt(user), balance);
   assert.equal(db.getATokenPendingReward(reward.id).status, 'claimed');
   assert.equal(db.db.prepare('PRAGMA integrity_check').get().integrity_check, 'ok');

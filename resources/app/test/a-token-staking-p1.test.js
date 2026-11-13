@@ -64,11 +64,12 @@ try {
   staking.processAll();
   assert.equal(pending.list(u1, 'pending').length, 1, '重复巡检不重复挂账');
 
-  // 领取 → 进主 A 余额并增加卖出额度
+  // 领取 → 进甲区蓄能额度
   const before = at.balanceA(u1);
+  const zoneBefore = BigInt(db.getATokenZoneBalance(u1, 'alpha').units);
   pending.claim(u1, p[0].id);
-  assert.equal(at.balanceA(u1) - before, A(10));
-  assert.equal(BigInt(db.getATokenSellQuota(u1).releasedUnits), A(10));
+  assert.equal(at.balanceA(u1) - before, 0n);
+  assert.equal(BigInt(db.getATokenZoneBalance(u1, 'alpha').units) - zoneBefore, A(10));
 
   // 连续 9 个结算日：每天一条 10 枚，互不合并
   now += 9 * DAY;

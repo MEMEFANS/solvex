@@ -94,7 +94,7 @@ try {
   assert.equal(alicePending.length, 1, '首个结算日生成 1 条额度');
   assert.equal(alicePending[0].periodKey, 'd0', '首日为 d0');
   assert.equal(alicePending[0].amountUnits, A(10).toString(), '300 / 30 = 10 枚固定额度');
-  assert.equal(alicePending[0].target, 'main', '盲盒产出目标为主余额');
+  assert.equal(alicePending[0].target, 'alpha', '盲盒产出进甲区蓄能额度');
   assert.equal(alicePending[0].availableAt, nextSettlementAt(first.startedAt), '结算日当天可领');
   assert.equal(alicePending[0].expiresAt, nextSettlementAt(first.startedAt) + DAY, '次日结算日未领作废');
   for (const w of [bob, carol, dave]) {
@@ -105,12 +105,12 @@ try {
     assert.equal(w.directCount === undefined, true, '盲盒返回不再含直推人数字段');
   }
 
-  // 领取 → 进主 A 余额并增加卖出额度
+  // 领取 → 进甲区蓄能额度（不再进主余额，也不能直接挂卖）
   const aliceA0 = at.balanceA(alice);
-  const aliceQuota0 = BigInt(db.getATokenSellQuota(alice).releasedUnits);
+  const aliceZone0 = BigInt(db.getATokenZoneBalance(alice, 'alpha').units);
   pending.claim(alice, alicePending[0].id);
-  assert.equal(at.balanceA(alice) - aliceA0, A(10), '领取进主 A 余额');
-  assert.equal(BigInt(db.getATokenSellQuota(alice).releasedUnits) - aliceQuota0, A(10), '领取同时增加卖出额度');
+  assert.equal(at.balanceA(alice) - aliceA0, 0n, '领取不再进主 A 余额');
+  assert.equal(BigInt(db.getATokenZoneBalance(alice, 'alpha').units) - aliceZone0, A(10), '领取进甲区蓄能额度');
 
   // ── 次日结算日：未领当天作废，同时生成下一天固定额度 ──
   now = alicePending[0].expiresAt;
@@ -294,7 +294,7 @@ try {
   console.log('  ✓ 滚动 24h 未领当天作废，不滚存');
   console.log('  ✓ 累计发放封顶总币数，发满即结束且不再新增');
   console.log('  ✓ 不整除时最后一天补余数，累计仍等于总币数');
-  console.log('  ✓ 产出进主余额并增加卖出额度、不计团队业绩');
+  console.log('  ✓ 产出进甲区蓄能额度、不进主余额、不计团队业绩');
   console.log('  ✓ 概率配置校验：权重合计 ≠ 100%、币数越界/非整数、重复币数、空档位均被拒');
   console.log('  ✓ 按权重抽档：固定随机源下边界命中正确，配置存 service_settings(bps)');
   console.log('  ✓ 后台分布统计与确定性抽取一致，历史均匀结果单独计数');

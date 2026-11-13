@@ -14,11 +14,11 @@ import { nextSettlementAt } from './a-token-time.js';
 
 const BIZ_TYPES = new Set(['miner', 'stake', 'node', 'blindbox', 'team', 'dividend']);
 
-// 待用户确认（2026-11-09，可回退默认）：甲区/乙区「产出归属」。
-//   'main'：领取后进主 A 余额（沿用现状，质押/节点从甲区扣币，产出回主余额）；
-//   'beta'：领取后进乙区（涡轮专用币），不再进主余额。
-// 只改这一个常量即可切换；切换前需确认甲区扣币、乙区出币与提现闸门的配套关系。
-export const OUTPUT_TARGET = 'main';
+// 2026-11-13：旧「可卖额度 / 驱动额度」账本已下线，产出统一进甲区蓄能额度。
+//   'alpha'（默认）：领取后进甲区（蓄能额度），不能直接挂卖，需与驱动额度 1:1 进协议池；
+//   'beta'：进乙区（驱动额度专用）；
+//   'main'：直接进主 A 余额，理论上不再使用（提现/挂卖均受流通额度闸门限制）。
+export const OUTPUT_TARGET = 'alpha';
 
 function walletKey(wallet) {
   const key = String(wallet || '').toLowerCase();
@@ -97,8 +97,7 @@ export function createATokenPendingService({ aTokenService, database, clock = ()
     }
     const amount = BigInt(row.amountUnits || '0');
     const quota = BigInt(row.quotaUnits || '0');
-    // 产出归属：blindbox 等业务显式指定 target='beta'（进乙区，涡轮专用），
-    // 其余沿用 OUTPUT_TARGET（默认主余额）。
+    // 产出归属：blindbox 等业务显式指定 target（进甲/乙区），其余沿用 OUTPUT_TARGET（默认甲区蓄能额度）。
     const target = String(row.target || '').toLowerCase();
     return transaction(() => {
       // 条件更新失败说明已被其他请求领取/作废（并发点击、领取与作废竞争），直接拒绝
@@ -108,19 +107,15 @@ export function createATokenPendingService({ aTokenService, database, clock = ()
         if (assetCode === 'USDT') {
           // 股东分红等 USDT 收益：直接进主钱包 USDT，不参与甲/乙区与额度逻辑
           aTokenService.creditUsdt(row.wallet, amount);
-        } else if (target === 'alpha') {
-          // 产出进甲区（蓄能额度）：盲盒释放、质押能量、算力节点收益均归蓄能
-          db.creditATokenZone({ wallet: row.wallet, zone: 'alpha', units: amount.toString(), bizType: 'blindbox', refId: row.id, createdAt: now, payload: { source: row.bizType } });
-        } else if (target === 'beta' || OUTPUT_TARGET === 'beta') {
-          // 产出进乙区（涡轮专用），不可直接提现/卖出，需先过涡轮再产生卖出额度
+        } else if (target === 'beta') {
+          // 进乙区（驱动额度专用）
           db.creditATokenZone({ wallet: row.wallet, zone: 'beta', units: amount.toString(), bizType: 'output', refId: row.id, createdAt: now, payload: { source: row.bizType } });
-        } else {
+        } else if (target === 'main') {
           aTokenService.creditA(row.wallet, amount);
+        } else {
+          // 默认进甲区（蓄能额度）：矿池、质押、算力节点、盲盒、团队、分红产出
+          db.creditATokenZone({ wallet: row.wallet, zone: 'alpha', units: amount.toString(), bizType: 'output', refId: row.id, createdAt: now, payload: { source: row.bizType } });
         }
-      }
-      // 旧 sellQuota 账本：仅当产出进主余额时写入；进甲/乙区时分区余额已替代 sellQuota，不再重复记账
-      if (quota > 0n && target !== 'alpha' && target !== 'beta' && OUTPUT_TARGET !== 'beta') {
-        db.addATokenSellQuota(row.wallet, quota);
       }
       return {
         id: row.id, bizType: row.bizType, bizId: row.bizId, periodKey: row.periodKey,

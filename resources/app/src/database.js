@@ -474,31 +474,12 @@ export function openDatabase(dataRoot) {
     CREATE INDEX IF NOT EXISTS a_token_team_levels_level_idx
       ON a_token_team_levels(level);
 
-    -- SVX 蓄能额度（原可卖额度，2026-10-31 改名）：质押释放产出 / 商城货款计入。
-    -- 蓄能额度不能直接挂卖，必须与驱动额度 1:1 进匹配池，到期转成「流通额度」才能卖出。
-    -- released_units = 累计发放的蓄能额度；used_units = 已进匹配池消耗。
-    CREATE TABLE IF NOT EXISTS a_token_sell_quotas (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      released_units TEXT NOT NULL DEFAULT '0',
-      used_units TEXT NOT NULL DEFAULT '0',
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-
     -- SVX 流通额度（2026-10-31）：挂卖唯一消耗对象，仅来自匹配池到期释放。
     -- released_units = 匹配池累计放出；used_units = 已挂单占用（撤单返还）。
     CREATE TABLE IF NOT EXISTS a_token_usable_quotas (
       wallet TEXT PRIMARY KEY COLLATE NOCASE,
       released_units TEXT NOT NULL DEFAULT '0',
       used_units TEXT NOT NULL DEFAULT '0',
-      updated_at INTEGER NOT NULL,
-      FOREIGN KEY(wallet) REFERENCES wallet_users(address)
-    ) STRICT;
-
-    -- SVX 驱动额度（2026-10-31）：USDT 按 SVX 实时价格折算购买，与蓄能额度 1:1 进匹配池。
-    CREATE TABLE IF NOT EXISTS a_token_turbo_quotas (
-      wallet TEXT PRIMARY KEY COLLATE NOCASE,
-      units TEXT NOT NULL DEFAULT '0',
       updated_at INTEGER NOT NULL,
       FOREIGN KEY(wallet) REFERENCES wallet_users(address)
     ) STRICT;
@@ -2207,12 +2188,6 @@ export function openDatabase(dataRoot) {
   const getATokenTeamLevelStmt = db.prepare(`SELECT payload_json FROM a_token_team_levels
     WHERE wallet=? COLLATE NOCASE`);
 
-  const getATokenSellQuotaStmt = db.prepare(`SELECT released_units,used_units,updated_at
-    FROM a_token_sell_quotas WHERE wallet=? COLLATE NOCASE`);
-  const upsertATokenSellQuotaStmt = db.prepare(`INSERT INTO a_token_sell_quotas
-    (wallet,released_units,used_units,updated_at) VALUES(?,?,?,?)
-    ON CONFLICT(wallet) DO UPDATE SET released_units=excluded.released_units,
-    used_units=excluded.used_units,updated_at=excluded.updated_at`);
   // 流通额度（匹配池产出，挂卖消耗）
   const getATokenUsableQuotaStmt = db.prepare(`SELECT released_units,used_units,updated_at
     FROM a_token_usable_quotas WHERE wallet=? COLLATE NOCASE`);
@@ -2220,12 +2195,6 @@ export function openDatabase(dataRoot) {
     (wallet,released_units,used_units,updated_at) VALUES(?,?,?,?)
     ON CONFLICT(wallet) DO UPDATE SET released_units=excluded.released_units,
     used_units=excluded.used_units,updated_at=excluded.updated_at`);
-  // 驱动额度（USDT 购买的单币余额）
-  const getATokenTurboQuotaStmt = db.prepare(`SELECT units,updated_at
-    FROM a_token_turbo_quotas WHERE wallet=? COLLATE NOCASE`);
-  const upsertATokenTurboQuotaStmt = db.prepare(`INSERT INTO a_token_turbo_quotas
-    (wallet,units,updated_at) VALUES(?,?,?)
-    ON CONFLICT(wallet) DO UPDATE SET units=excluded.units,updated_at=excluded.updated_at`);
   // 匹配池状态 + 条目
   const getATokenMatchPoolStateStmt = db.prepare(`SELECT first_pool_at,updated_at
     FROM a_token_match_pool_state WHERE wallet=? COLLATE NOCASE`);
@@ -2925,48 +2894,6 @@ export function openDatabase(dataRoot) {
   function getATokenTeamLevel(wallet) {
     const row = getATokenTeamLevelStmt.get(wallet);
     return row ? parse(row.payload_json, null) : null;
-  }
-  // SVX 可卖额度：released 累计发放，used 已占用，可用 = released - used
-  function getATokenSellQuota(wallet) {
-    const row = getATokenSellQuotaStmt.get(String(wallet || ''));
-    return row
-      ? { releasedUnits: row.released_units, usedUnits: row.used_units, updatedAt: row.updated_at }
-      : { releasedUnits: '0', usedUnits: '0', updatedAt: 0 };
-  }
-  function addATokenSellQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenSellQuota(wallet);
-    const cur = getATokenSellQuota(wallet);
-    const released = (BigInt(cur.releasedUnits) + delta).toString();
-    upsertATokenSellQuotaStmt.run(String(wallet || '').toLowerCase(), released, cur.usedUnits, Date.now());
-    return { releasedUnits: released, usedUnits: cur.usedUnits };
-  }
-  // 回退已释放的可卖额度（如商城订单取消：货款已释放额度需同步收回，released 下限 0）
-  function reduceATokenSellQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenSellQuota(wallet);
-    const cur = getATokenSellQuota(wallet);
-    let released = BigInt(cur.releasedUnits) - delta;
-    if (released < 0n) released = 0n;
-    upsertATokenSellQuotaStmt.run(String(wallet || '').toLowerCase(), released.toString(), cur.usedUnits, Date.now());
-    return { releasedUnits: released.toString(), usedUnits: cur.usedUnits };
-  }
-  function consumeATokenSellQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenSellQuota(wallet);
-    const cur = getATokenSellQuota(wallet);
-    const used = (BigInt(cur.usedUnits) + delta).toString();
-    upsertATokenSellQuotaStmt.run(String(wallet || '').toLowerCase(), cur.releasedUnits, used, Date.now());
-    return { releasedUnits: cur.releasedUnits, usedUnits: used };
-  }
-  function refundATokenSellQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenSellQuota(wallet);
-    const cur = getATokenSellQuota(wallet);
-    let used = BigInt(cur.usedUnits) - delta;
-    if (used < 0n) used = 0n;
-    upsertATokenSellQuotaStmt.run(String(wallet || '').toLowerCase(), cur.releasedUnits, used.toString(), Date.now());
-    return { releasedUnits: cur.releasedUnits, usedUnits: used.toString() };
   }
   // ── 2026-11-09 P0 地基：待领取 / LP 池 / 团队业绩 / 买币双区 ──
 
@@ -3783,28 +3710,6 @@ export function openDatabase(dataRoot) {
     upsertATokenUsableQuotaStmt.run(String(wallet || '').toLowerCase(), next.toString(), cur.usedUnits, Date.now());
     return { releasedUnits: next.toString(), usedUnits: cur.usedUnits };
   }
-  // SVX 驱动额度：单值余额（units 只增只减，购入+、进池-）
-  function getATokenTurboQuota(wallet) {
-    const row = getATokenTurboQuotaStmt.get(String(wallet || ''));
-    return row ? { units: row.units, updatedAt: row.updated_at } : { units: '0', updatedAt: 0 };
-  }
-  function addATokenTurboQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenTurboQuota(wallet);
-    const cur = getATokenTurboQuota(wallet);
-    const next = (BigInt(cur.units) + delta).toString();
-    upsertATokenTurboQuotaStmt.run(String(wallet || '').toLowerCase(), next, Date.now());
-    return { units: next };
-  }
-  function consumeATokenTurboQuota(wallet, units) {
-    const delta = BigInt(units || '0');
-    if (delta <= 0n) return getATokenTurboQuota(wallet);
-    const cur = getATokenTurboQuota(wallet);
-    let next = BigInt(cur.units) - delta;
-    if (next < 0n) next = 0n;
-    upsertATokenTurboQuotaStmt.run(String(wallet || '').toLowerCase(), next.toString(), Date.now());
-    return { units: next.toString() };
-  }
   // 匹配池状态：首次使用时间（用于每日 +24h 的锁定时长递增）
   function getATokenMatchPoolState(wallet) {
     const row = getATokenMatchPoolStateStmt.get(String(wallet || ''));
@@ -4596,9 +4501,7 @@ export function openDatabase(dataRoot) {
     upsertATokenWithdrawalRow, getATokenWithdrawalById, getATokenWithdrawalByRequestId, listATokenWithdrawalsByWallet, listPendingATokenWithdrawals, listATokenWithdrawalsByStatus, sumATokenWithdrawalsByWalletToday,
     upsertATokenClaimRow, getATokenClaimById, listATokenClaimsByWallet, listPendingATokenClaims, sumATokenClaimsByWalletToday,
     upsertATokenTeamLevelRow, getATokenTeamLevel,
-    getATokenSellQuota, addATokenSellQuota, reduceATokenSellQuota, consumeATokenSellQuota, refundATokenSellQuota,
     getATokenUsableQuota, addATokenUsableQuota, consumeATokenUsableQuota, refundATokenUsableQuota, expireATokenUsableQuota,
-    getATokenTurboQuota, addATokenTurboQuota, consumeATokenTurboQuota,
     insertATokenTurboLock, getATokenTurboLockByRef, listATokenTurboLocks,
     listDueATokenTurboLocks, listExpiringATokenTurboLocks, markATokenTurboLockReleased,
     consumeATokenTurboLockUnits, refundATokenTurboLockUnits, expireATokenTurboLock,

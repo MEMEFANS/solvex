@@ -61,10 +61,11 @@ try {
   const principalRow = rows.find(x => String(x.periodKey) === 'principal');
   assert.ok(principalRow, '本金单独一条');
   const before = at.balanceA(u1);
+  const zoneBefore = BigInt(db.getATokenZoneBalance(u1, 'alpha').units);
   const c = pending.claim(u1, principalRow.id);
   assert.equal(BigInt(c.amountUnits), A(2000));
-  assert.equal(at.balanceA(u1) - before, A(2000));
-  assert.equal(BigInt(db.getATokenSellQuota(u1).releasedUnits), A(2000));
+  assert.equal(at.balanceA(u1) - before, 0n);
+  assert.equal(BigInt(db.getATokenZoneBalance(u1, 'alpha').units) - zoneBefore, A(2000));
   assert.throws(() => pending.claim(u1, principalRow.id), /已处理|已被领取/);
 
   const firstInterest = rows.find(x => String(x.periodKey).startsWith('interest_'));

@@ -67,11 +67,12 @@ fixture(({db,at,stake,pending,revenue,fund,addAlpha,setNow,root}) => {
   stake.processAll();
   assert.equal(pending.list(child,'pending').length,1,'同刻重复巡检不重复挂账');
 
-  // 领取 → 主余额 + 卖出额度
+  // 领取 → 进甲区蓄能额度
   const before=at.balanceA(child);
+  const zoneBefore=BigInt(db.getATokenZoneBalance(child,'alpha').units);
   pending.claim(child,p[0].id);
-  assert.equal(at.balanceA(child)-before,A(8));
-  assert.equal(BigInt(db.getATokenSellQuota(child).releasedUnits),A(8));
+  assert.equal(at.balanceA(child)-before,0n);
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units)-zoneBefore,A(8));
 
   // 100 天累计释放 = 本金，能量不产生利息
   setNow(Number(s.expiresAt)); stake.processAll();
@@ -85,14 +86,15 @@ fixture(({db,at,stake,pending,revenue,fund,addAlpha,setNow,root}) => {
   assert.equal(row.interestEarned,'0','能量只释放本金，不额外产生利息');
 
   const persisted=JSON.parse(db.db.prepare('SELECT balances_json FROM wallet_users WHERE address=? COLLATE NOCASE').get(child).balances_json);
-  assert.equal(BigInt(persisted.A),A(8));
+  assert.equal(BigInt(persisted.A),0n,'产出不再进主余额');
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units),A(8),'领取累计进甲区蓄能额度');
   closeDatabase(root);
   const reopened=createWalletService({dataRoot:root,depositAddress:user(999),networks:[]});
-  assert.equal(reopened.balanceUnits(child,'A'),A(8),'committed credits survive reopening');
+  assert.equal(reopened.balanceUnits(child,'A'),0n,'committed credits survive reopening');
 });
 
 // 2026-11-10：能量按 UTC 00:00（北京 08:00）结算，未到结算日不折算零头，满一个结算日释放一天
-fixture(({at,stake,pending,fund,addAlpha,setNow}) => {
+fixture(({db,at,stake,pending,fund,addAlpha,setNow}) => {
   const child=fund(41);
   addAlpha(child,800);
   const s=stake.stake(child,'energy','800');
@@ -103,13 +105,14 @@ fixture(({at,stake,pending,fund,addAlpha,setNow}) => {
   setNow(first); stake.processAll();
   assert.equal(pending.list(child,'pending').length,1,'满结算日释放一天');
   pending.claim(child,pending.list(child,'pending')[0].id);
-  assert.equal(at.balanceA(child),A(8));
-  const mid=at.balanceA(child);
+  assert.equal(at.balanceA(child),0n);
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units),A(8),'产出进甲区蓄能额度');
+  const mid=BigInt(db.getATokenZoneBalance(child,'alpha').units);
   stake.processAll();
-  assert.equal(at.balanceA(child),mid,'同刻重复巡检不重复发放');
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units),mid,'同刻重复巡检不重复发放');
   setNow(first+DAY); stake.processAll();
   pending.claim(child,pending.list(child,'pending')[0].id);
-  assert.equal(at.balanceA(child)-mid,A(8),'之后每个 UTC 结算日释放一天');
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units)-mid,A(8),'之后每个 UTC 结算日释放一天');
 });
 
 fixture(({db,at,team,stake,pending,fund,link,addAlpha,advance}) => {
@@ -145,7 +148,8 @@ fixture(({db,at,stake,pending,fund,addAlpha,setNow}) => {
   assert.equal(rows.filter(r=>r.bizId===second.id).length,1);
   assert.equal(rows.reduce((sum,r)=>sum+BigInt(r.amountUnits),0n),A(20),'两笔各释放 10');
   pending.claim(child,rows.find(r=>r.bizId===first.id).id);
-  assert.equal(at.balanceA(child),A(10),'领取一笔不影响另一笔');
+  assert.equal(at.balanceA(child),0n);
+  assert.equal(BigInt(db.getATokenZoneBalance(child,'alpha').units),A(10),'领取一笔不影响另一笔');
 
   setNow(Math.max(Number(first.expiresAt),Number(second.expiresAt))); stake.processAll();
   const all=[...pending.list(child,'pending',500),...pending.list(child,'claimed',500)]

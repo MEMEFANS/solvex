@@ -52,12 +52,12 @@ async function seed() {
   const balances = { USDT: U(2000).toString(), A: A(200000).toString(), BTC: '0', ETH: '0', BNB: '0' };
   const user = { address: tester.address, balances, createdAt: iso, updatedAt: iso, level: 1 };
   upsert.run(tester.address.toLowerCase(), JSON.stringify(balances), now, now, JSON.stringify(user));
-  // 蓄能额度（原可卖额度账本）：质押产出语义，直接种 2000 SVX released
-  db.db.prepare(`INSERT INTO a_token_sell_quotas(wallet,released_units,used_units,updated_at)
-    VALUES(?,?,?,?) ON CONFLICT(wallet) DO UPDATE SET released_units=excluded.released_units, used_units='0', updated_at=excluded.updated_at`)
-    .run(tester.address.toLowerCase(), A(2000).toString(), '0', now);
-  // 清掉历史匹配池状态/条目/涡轮，保证测试可重复
-  for (const t of ['a_token_match_pool_state', 'a_token_match_pool_entries', 'a_token_turbo_quotas', 'a_token_turbo_purchases', 'a_token_usable_quotas']) {
+  // 蓄能额度 = 甲区余额，直接种 2000 SVX
+  db.db.prepare(`INSERT INTO a_token_zone_balances(wallet,zone,units,updated_at)
+    VALUES(?,'alpha',?,?) ON CONFLICT(wallet,zone) DO UPDATE SET units=excluded.units, updated_at=excluded.updated_at`)
+    .run(tester.address.toLowerCase(), A(2000).toString(), now);
+  // 清掉历史匹配池状态/条目，保证测试可重复
+  for (const t of ['a_token_match_pool_state', 'a_token_match_pool_entries', 'a_token_turbo_purchases', 'a_token_usable_quotas']) {
     db.db.prepare(`DELETE FROM ${t} WHERE wallet=?`).run(tester.address.toLowerCase());
   }
   console.log('已写入测试钱包（服务重启后生效）：');
@@ -117,13 +117,13 @@ async function test() {
   console.log('[5] 放入匹配池（1:1 配比）');
   const overMatch = await api('/api/a-token/match-pool/enter', { method: 'POST', cookie, body: { amount: '2500' } });
   check('蓄能额度不足被拦截', overMatch.status === 400 && String(overMatch.data.error || '').includes('蓄能额度不足'), `got ${overMatch.status} ${overMatch.data.error || ''}`);
-  // 1:1 消耗下两额度差恒定，正常流程撞不到涡轮不足分支 → 临时把涡轮改小验证该校验
+  // 正常流程两者同步扣减撞不到驱动额度不足分支 → 临时把乙区改小验证该校验
   const dbFix = openDatabase(DATA_ROOT);
-  const turboRow = dbFix.db.prepare(`SELECT units FROM a_token_turbo_quotas WHERE wallet=?`).get(addr);
-  dbFix.db.prepare(`UPDATE a_token_turbo_quotas SET units=? WHERE wallet=?`).run(A(100).toString(), addr);
+  const turboRow = dbFix.db.prepare(`SELECT units FROM a_token_zone_balances WHERE wallet=? AND zone='beta'`).get(addr);
+  dbFix.db.prepare(`UPDATE a_token_zone_balances SET units=? WHERE wallet=? AND zone='beta'`).run(A(100).toString(), addr);
   const overTurbo = await api('/api/a-token/match-pool/enter', { method: 'POST', cookie, body: { amount: '150' } });
   check('涡轮不足被拦截', overTurbo.status === 400 && String(overTurbo.data.error || '').includes('驱动额度不足'), `got ${overTurbo.status} ${overTurbo.data.error || ''}`);
-  dbFix.db.prepare(`UPDATE a_token_turbo_quotas SET units=? WHERE wallet=?`).run(turboRow.units, addr);
+  dbFix.db.prepare(`UPDATE a_token_zone_balances SET units=? WHERE wallet=? AND zone='beta'`).run(turboRow.units, addr);
   const enter = await api('/api/a-token/match-pool/enter', { method: 'POST', cookie, body: { amount: '150' } });
   check('放入成功', enter.status === 200 && enter.data.entry?.status === 'locked', JSON.stringify(enter.data).slice(0, 150));
   check('首次使用锁定 24 小时', Number(enter.data.entry?.durationHours) === 24, `got ${enter.data.entry?.durationHours}`);

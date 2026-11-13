@@ -45,8 +45,9 @@ try {
  assert.equal(rewards.reduce((n,r)=>n+BigInt(r.amountUnits),0n),A(10));
  assert.equal(pending.list(grand).length,0);assert.equal(pending.list(top).length,0,'equal-level link stops higher ancestors');
  assert.equal(at.balanceA(parent),before);
+ const zoneBefore=BigInt(db.getATokenZoneBalance(parent,'alpha').units);
  for(const r of rewards)pending.claim(parent,r.id);
- assert.equal(at.balanceA(parent),before+A(10));assert.equal(BigInt(db.getATokenSellQuota(parent).releasedUnits),A(10));
+ assert.equal(at.balanceA(parent),before);assert.equal(BigInt(db.getATokenZoneBalance(parent,'alpha').units)-zoneBefore,A(10));
  team.distributeStakeReward(child,A(100),'interest_only',now);assert.equal(pending.list(parent).length,0);
  upgrade.redeem({wallet:parent,positionId:pos.id});assert.equal(team.getLevel(parent),0,'warehouse redemption drops rank immediately');
  assert.throws(()=>team.setManualLevel(parent,10),/双条件|自动计算/);
@@ -58,7 +59,6 @@ try {
  const buy=trade.buy({wallet:buyer,zone:'beta',usdtAmount:'10',requestId:'drive_buy'});
  assert.equal(buy.aOut,'100.0');assert.equal(at.balanceUsdt(buyer),U('9990'));
  assert.equal(BigInt(db.listATokenZoneBalances(buyer).beta),A(100),'乙区买入的币应留在乙区');
- assert.equal(BigInt(db.getATokenTurboQuota(buyer).units),0n,'乙区买入不再直接发放超速驱动驱动额度');
  trade.buy({wallet:buyer,zone:'beta',usdtAmount:'10',requestId:'drive_buy'});assert.equal(at.balanceUsdt(buyer),U('9990'));
  const badTrade=createATokenZoneTradeService({...options,shareholderService:{recordFee(){throw Error('injected fee failure');}}});
  db.addATokenUsableQuota(buyer,A(50));
