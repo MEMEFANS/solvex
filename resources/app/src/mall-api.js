@@ -187,7 +187,7 @@ export function createMallApi({ aTokenService, database, walletService = null, s
       try { aTokenService.creditA(ESCROW_WALLET, totalUnits); } catch (e2) { console.error(`[SVX商城] ${order.id} 结算回滚担保资金失败，需人工处理:`, e2?.message || e2); }
       throw apiError(`商户结算失败，请稍后重试：${e?.message || e}`);
     }
-    try { db.addATokenSellQuota(order.merchantWallet, totalUnits); }
+    try { db.creditATokenZone({ wallet: order.merchantWallet, zone: 'alpha', units: totalUnits.toString(), bizType: 'mall_settle', refId: order.id, createdAt: Date.now(), payload: { source: 'mall_payment' } }); }
     catch (e) { console.error(`[SVX商城] ${order.merchantWallet} 货款额度释放失败（金额已到账，需人工补发）:`, e?.message || e); }
     const updated = db.completeMallOrder(order.id);
     if (!updated) {

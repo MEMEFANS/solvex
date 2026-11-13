@@ -463,8 +463,8 @@ export function createATokenOrderService({ aTokenService, database, teamService,
 
     // 1) 买家收 A（冻结的 USDT 直接核销给卖家）
     at.creditA(bWallet, aFill);
-    // 2026-11-02 交易大厅买到的 SVX 同步计入驱动额度（1:1 数量），矿机匹配池可直接使用
-    try { db.addATokenTurboQuota(bWallet, aFill); }
+    // 2026-11-13: 交易大厅买到的 SVX 同步计入乙区驱动额度（1:1 数量），供协议池直接使用
+    try { db.creditATokenZone({ wallet: bWallet, zone: 'beta', units: aFill.toString(), bizType: 'trade_buy', refId: groupId, createdAt: now0, payload: { source: 'match_fill' } }); }
     catch (e) { console.error(`[交易] ${bWallet} 驱动额度累加失败:`, e?.message || e); }
     // 2) 卖家收全额 USDT（手续费改扣 SVX，不再从 USDT 中扣）
     at.creditUsdt(sWallet, sellerNet);
