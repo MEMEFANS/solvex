@@ -395,6 +395,19 @@ async function loadWalletProfile() {
   return null;
 }
 
+// 进站会话探测：冷启动/移动网络下首个请求偶发超时，不能因此判定未登录
+// （否则每次进站都会弹签名）。超时或 5xx 自动重试一次，401/403 直接视为未登录。
+async function probeExistingSession() {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await walletApi('/api/wallet/session', { timeoutMs: attempt ? 6000 : 3500, cache:'no-store' });
+    } catch (error) {
+      if (!error?.retryable) return null;
+    }
+  }
+  return null;
+}
+
 async function ensurePlatformSession(triggerButton = null, options = {}) {
   const force = Boolean(options?.force);
   console.log('[wallet] ensurePlatformSession called', { force, hasProfile: !!walletProfile?.authenticated, hasPromise: !!platformLoginPromise, hasAddr: !!connectedWalletAddress });
@@ -412,7 +425,7 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
     if (!force) {
       try {
         const revision = walletStateRevision;
-        const existing = await walletApi('/api/wallet/session', { timeoutMs:2500, cache:'no-store' });
+        const existing = await probeExistingSession();
         if (revision === walletStateRevision && existing?.authenticated
           && (!connectedWalletAddress || existing.address?.toLowerCase() === connectedWalletAddress.toLowerCase())) {
           renderWalletProfile(existing);
@@ -657,7 +670,7 @@ async function prepareWalletConnector() {
       pendingWalletSwitch = connection;
       return;
     }
-    const profile = await walletApi('/api/wallet/session', { timeoutMs:2500, cache:'no-store' }).catch(() => null);
+    const profile = await probeExistingSession().catch(() => null);
     if (profile?.authenticated && profile.address?.toLowerCase() === connectedWalletAddress.toLowerCase()) renderWalletProfile(profile);
     // 切换/新连接钱包后旧会话已登出：未登录则自动发起签名（与首次进站的恢复流程同口径），
     // 否则页面停留在「已连接未登录」，矿机等页面不会自动进入已登录视图。

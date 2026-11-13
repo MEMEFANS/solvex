@@ -365,7 +365,9 @@ function setSessionCookie(req, res, token, maxAgeSeconds) {
   const forwardedProto = cfg.trustProxy ? String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim() : '';
   const secure = Boolean(req.socket.encrypted) || forwardedProto === 'https';
   const value = token ? encodeURIComponent(token) : '';
-  res.setHeader('Set-Cookie', `wg_session=${value}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, maxAgeSeconds)}${secure ? '; Secure' : ''}`);
+  // Domain 让 www 与主域共用同一登录态，避免用户换域名进站时被要求重复签名
+  const domain = cfg.wallet?.sessionCookieDomain ? `; Domain=${cfg.wallet.sessionCookieDomain}` : '';
+  res.setHeader('Set-Cookie', `wg_session=${value}; Path=/${domain}; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, maxAgeSeconds)}${secure ? '; Secure' : ''}`);
 }
 
 function setAdminSessionCookie(req, res, token, maxAgeSeconds) {
