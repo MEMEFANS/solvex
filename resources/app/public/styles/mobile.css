@@ -234,7 +234,7 @@
   .pool-table tbody { display: block !important; width: 100% !important; }
   /* base.css 的通用 table:not(.no-mobile-stack) 规则优先级更高，需明确覆盖，
      否则 tr/td 会被重新变成 display:block，卡片就会退化为单列长串。 */
-  .pool-table tr { display: grid !important; width: 100% !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; padding: 12px; margin-bottom: 8px; border: 1px solid #d9e4e0; border-radius: 10px; background: #ffffff; }
+  .pool-table tr { display: grid !important; width: 100% !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 10px; padding: 12px; margin-bottom: 8px; border: 1px solid #d9e4e0; border-radius: 10px; background:#f7f8fc; }
   .pool-table td { display: flex !important; width: auto !important; flex-direction: column; align-items: flex-start; gap: 2px; min-height: 0; padding: 0; border: 0; text-align: left !important; font-size: 12px; }
   .pool-table td::before { content: attr(data-label); color: #5b6b66; font-size: 9px; }
   .pool-table td:first-child { grid-column: 1 / -1; width: auto !important; padding-bottom: 5px; border-bottom: 1px solid #d9e4e0; font-size: 14px; }
@@ -349,9 +349,9 @@
     padding: 11px 12px;
     border: 1px solid #d9e4e0;
     border-radius: 8px;
-    background: #ffffff;
+    background:#f7f8fc;
   }
-  .referrals-table tr.referral-row:hover { background: #ffffff; }
+  .referrals-table tr.referral-row:hover { background:#f7f8fc; }
   .referrals-table tr.referral-row td {
     display: flex !important;
     flex-direction: column;
@@ -554,7 +554,7 @@
   .leaderboard-table { display: block !important; width: 100% !important; min-width: 0 !important; }
   .leaderboard-table thead { display: none !important; }
   .leaderboard-table tbody { display: block !important; }
-  .leaderboard-table tr { display: grid !important; grid-template-columns: 1fr 1fr; gap: 0 14px; margin: 8px 0; padding: 12px; border: 1px solid #d9e4e0; border-radius: 10px; background: #ffffff; }
+  .leaderboard-table tr { display: grid !important; grid-template-columns: 1fr 1fr; gap: 0 14px; margin: 8px 0; padding: 12px; border: 1px solid #d9e4e0; border-radius: 10px; background:#f7f8fc; }
   .leaderboard-table tr.leaderboard-current { background: #e8f3f2; border-color: #c2d6d3; }
   .leaderboard-table th, .leaderboard-table td { display: flex !important; }
   .leaderboard-table th, .leaderboard-table td {

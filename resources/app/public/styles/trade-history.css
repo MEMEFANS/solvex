@@ -15,7 +15,7 @@
 .th-list-heading { margin-bottom:10px; color:#5b6b66; font-size:12px; }
 .th-list-heading small { color:#5b6b66; font-size:11px; }
 .th-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr)); gap:12px; align-items:start; }
-.th-card { min-width:0; padding:15px 16px 12px; border:1px solid #c4cfd4; border-radius:8px; background:#ffffff; }
+.th-card { min-width:0; padding:15px 16px 12px; border:1px solid #c4cfd4; border-radius:8px; background:#f7f8fc; }
 .th-card header { flex-wrap:wrap; gap:6px; }
 .th-market { display:flex; align-items:baseline; gap:7px; }
 .th-market strong { font-size:14px; font-weight:600; }

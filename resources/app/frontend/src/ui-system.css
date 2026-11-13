@@ -59,7 +59,7 @@ body.solvex-react::before {
 .solvex-react .rx-sidebar {
   width: 224px;
   padding: 22px 14px 16px;
-  background: linear-gradient(180deg, #ffffff 0, #fdfdff 100%);
+  background: linear-gradient(180deg, #f7f8fc 0, #fdfdff 100%);
   border-right: 1px solid #e7ebf3;
   box-shadow: 1px 0 0 #ffffff;
 }
@@ -221,7 +221,7 @@ body.solvex-react::before {
   padding-inline: 14px;
   border-color: #e2e7f0;
   color: #4a5266;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172808;
 }
 .solvex-react .rx-heading-actions .ui-button:hover { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
@@ -251,7 +251,7 @@ body.solvex-react::before {
 .solvex-react .ui-tab:hover { color: #33285a; background: #e6e9f2; }
 .solvex-react .ui-tab[data-state=active] {
   color: #3f1c9e;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
 }
 .solvex-react .rx-earn-tabs { margin-top: 2px; }
@@ -366,7 +366,7 @@ body.solvex-react::before {
   box-shadow: 0 8px 18px -12px #4d21b8cc;
 }
 .solvex-react .ui-button.bg-primary:hover { background: linear-gradient(110deg, #6330d8, #4b38d2); }
-.solvex-react .ui-button.border { border-color: #e2e7f0; color: #454d61; background: #fff; }
+.solvex-react .ui-button.border { border-color: #e2e7f0; color: #454d61; background:#f7f8fc; }
 .solvex-react .ui-button.border:hover { border-color: #cbb9f2; color: #4d2ab0; background: #fbfaff; }
 
 /* 8. 矿池：账户概览 ------------------------------------------------------ */
@@ -374,7 +374,7 @@ body.solvex-react::before {
   display: grid;
   grid-template-columns: minmax(360px, 1.02fr) minmax(0, 1.6fr);
   gap: 0;
-  background: #fff;
+  background:#f7f8fc;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
@@ -389,7 +389,7 @@ body.solvex-react::before {
   border: 0;
   border-right: 1px solid #eef1f7;
   border-radius: 0;
-  background: linear-gradient(135deg, #f7f2ff 0, #fbf9ff 58%, #ffffff 100%);
+  background: linear-gradient(135deg, #f7f2ff 0, #fbf9ff 58%, #f7f8fc 100%);
   box-shadow: none;
 }
 .solvex-react .rx-claim-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
@@ -398,7 +398,7 @@ body.solvex-react::before {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: #fff;
+  background:#f7f8fc;
   border: 1px solid #e7ddff;
   color: #4d2ab0;
 }
@@ -441,7 +441,7 @@ body.solvex-react::before {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 0;
-  background: #fff;
+  background:#f7f8fc;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
@@ -484,7 +484,7 @@ body.solvex-react::before {
 .solvex-react .rx-tier {
   padding: 20px;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   border: 1px solid #e6eaf2;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
   overflow: hidden;
@@ -601,7 +601,7 @@ body.solvex-react::before {
 .solvex-react .rx-cavern {
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
 }
 .solvex-react .rx-cavern-heading { padding: 14px 18px; }
@@ -669,7 +669,7 @@ body.solvex-react::before {
   padding: 4px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
 }
 .solvex-react .rx-getting-started > div {
@@ -714,7 +714,7 @@ body.solvex-react::before {
   font-weight: 600;
   color: #171d31;
 }
-.solvex-react .rx-input-group { height: 48px; border-color: #e2e7f0; border-radius: 10px; background: #fff; }
+.solvex-react .rx-input-group { height: 48px; border-color: #e2e7f0; border-radius: 10px; background:#f7f8fc; }
 .solvex-react .rx-input-group:focus-within { border-color: #9d7cf0; box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .rx-input-group input { font-size: 15px; }
 .solvex-react .rx-input-group button { color: #4d2ab0; font-size: 11px; font-weight: 650; }
@@ -730,7 +730,7 @@ body.solvex-react::before {
   padding: 6px;
   border: 1px solid #e6eaf2;
   border-radius: 12px;
-  background: #fff;
+  background:#f7f8fc;
 }
 .solvex-react .rx-play-nav button {
   min-height: 34px;
@@ -750,7 +750,7 @@ body.solvex-react::before {
   padding: 22px;
   border: 1px solid #e6dcfb;
   border-radius: 16px;
-  background: linear-gradient(135deg, #f8f4ff, #fff 58%);
+  background: linear-gradient(135deg, #f8f4ff, #f7f8fc 58%);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #4d21b866;
 }
 .solvex-react .rx-blindbox-hero h3 { font-size: 20px; font-weight: 650; }
@@ -769,7 +769,7 @@ body.solvex-react::before {
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 88% 8%, #5b3fc014 0, transparent 58%),
-    linear-gradient(118deg, #f7f3ff, #fff 58%);
+    linear-gradient(118deg, #f7f3ff, #f7f8fc 58%);
   box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
 }
 .solvex-react .rx-team-hero .rx-kicker { color: #6b53a6; }
@@ -812,7 +812,7 @@ body.solvex-react::before {
 .solvex-react .rx-team-next .rx-next-level { margin-top: 4px; font-size: 40px; }
 .solvex-react .rx-team-next .rx-target { margin: 17px 0; }
 .solvex-react .rx-invite-grid { grid-template-columns: minmax(0, .95fr) minmax(0, 1.35fr); gap: 20px; }
-.solvex-react .rx-invite-hero { padding: 30px; background: linear-gradient(130deg, #f7f4ff, #fff 62%); }
+.solvex-react .rx-invite-hero { padding: 30px; background: linear-gradient(130deg, #f7f4ff, #f7f8fc 62%); }
 .solvex-react .rx-invite-hero h2 { font-size: 29px; line-height: 1.42; color: #171d30; letter-spacing: -.4px; }
 .solvex-react .rx-invite-hero p { font-size: 12.5px; }
 .solvex-react .rx-invite-code { margin: 26px 0 14px; font-size: 27px; letter-spacing: 4px; color: #4d2ab0; }
@@ -843,7 +843,7 @@ body.solvex-react::before {
 .solvex-react .assets-wallet { flex: 0 1 auto; max-width: 100%; margin-top: 8px; font-size: 11.5px; color: #6b7488; }
 .solvex-react .assets-wallet code { font-family: "Bahnschrift", ui-monospace, monospace; font-size: 11.5px; color: #4d566c; letter-spacing: .02em; }
 .solvex-react .assets-wallet-dot { background: #5b3fc0; box-shadow: 0 0 0 3px #5b3fc01f; }
-.solvex-react .assets-uid { display: inline-flex; align-items: center; gap: 6px; width: auto; margin-top: 8px; padding: 3px 9px; border: 1px solid #e3e8f1; border-radius: 7px; background: #fff; color: #4d2ab0; font-size: 11px; }
+.solvex-react .assets-uid { display: inline-flex; align-items: center; gap: 6px; width: auto; margin-top: 8px; padding: 3px 9px; border: 1px solid #e3e8f1; border-radius: 7px; background:#f7f8fc; color: #4d2ab0; font-size: 11px; }
 .solvex-react .assets-uid-label { color: #8a93a8; font-size: 10.5px; }
 .solvex-react .assets-uid-copy { color: #4d2ab0; font-size: 11px; font-weight: 600; }
 .solvex-react .partner-badge { margin-top: 8px; padding: 4px 10px; border: 1px solid #e0d3ff; border-radius: 999px; background: #f5f1ff; color: #4d2ab0; font-size: 11px; font-weight: 600; }
@@ -854,7 +854,7 @@ body.solvex-react::before {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
@@ -863,7 +863,7 @@ body.solvex-react::before {
   border-right: 1px solid #eef1f7;
   background:
     radial-gradient(ellipse at 84% 0, #5b3fc012 0, transparent 62%),
-    linear-gradient(120deg, #f7f4ff, #fff 72%);
+    linear-gradient(120deg, #f7f4ff, #f7f8fc 72%);
 }
 .solvex-react .assets-header > div { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
 .solvex-react .assets-header > div > div:first-child { width: 100%; }
@@ -885,7 +885,7 @@ body.solvex-react::before {
 .solvex-react .assets-overview .assets-total .assets-subvalue span { margin-top: 6px; font-size: 12px; color: #6b7488; }
 .solvex-react .assets-overview .assets-total .assets-subvalue b { color: #3d465c; font-weight: 600; }
 .solvex-react .assets-overview .assets-total strong small { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: #6b7488; }
-.solvex-react .assets-overview .assets-total .assets-secondary-action { color: #4a5266; background: #fff; border-color: #e2e7f0; }
+.solvex-react .assets-overview .assets-total .assets-secondary-action { color: #4a5266; background:#f7f8fc; border-color: #e2e7f0; }
 .solvex-react .assets-overview .assets-metrics span { font-size: 11px; color: #6b7488; }
 .solvex-react .assets-overview .assets-metrics small { font-size: 10.5px; color: #8a93a8; }
 .solvex-react .assets-overview .assets-metrics b {
@@ -915,7 +915,7 @@ body.solvex-react::before {
   padding-inline: 16px;
   border: 1px solid #e2e7f0;
   border-radius: 10px;
-  background: #fff;
+  background:#f7f8fc;
   color: #4a5266;
   font-size: 12.5px;
   font-weight: 550;
@@ -929,7 +929,7 @@ body.solvex-react::before {
   border: 0;
   border-right: 1px solid #eef1f7;
   border-bottom: 1px solid #eef1f7;
-  background: #fff;
+  background:#f7f8fc;
 }
 .solvex-react .assets-metrics > div:nth-child(2n) { border-right: 0; }
 .solvex-react .assets-metrics > div:nth-child(n+3) { border-bottom: 0; }
@@ -950,7 +950,7 @@ body.solvex-react::before {
   padding: 22px 26px 24px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
 .solvex-react .assets-section-heading h3 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; color: #171d30; }
@@ -971,7 +971,7 @@ body.solvex-react::before {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
   overflow: hidden;
 }
@@ -998,7 +998,7 @@ body.solvex-react::before {
 .solvex-react .assets-tabs button:hover { color: #33285a; background: #e6e9f2; }
 .solvex-react .assets-tabs button.active {
   color: #3f1c9e;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
 }
 .solvex-react .assets-tabs button::after { display: none; }
@@ -1012,7 +1012,7 @@ body.solvex-react::before {
   color: #8a93a8;
 }
 .solvex-react .assets-search input { font-size: 12.5px; color: #3d465c; }
-.solvex-react .assets-search:focus-within { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .assets-search:focus-within { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .assets-zero-filter { font-size: 11.5px; color: #6b7488; }
 .solvex-react .assets-zero-filter input { accent-color: #5b3fc0; }
 .solvex-react .assets-table-wrap { margin: 0 22px 22px; border: 1px solid #e8ecf4; border-radius: 12px; overflow-x: auto; }
@@ -1076,7 +1076,7 @@ body.solvex-react::before {
   padding: 20px 24px;
   border: 1px solid #e6dcfb;
   border-radius: 14px;
-  background: linear-gradient(118deg, #f7f3ff, #fff 65%);
+  background: linear-gradient(118deg, #f7f3ff, #f7f8fc 65%);
 }
 .solvex-react .aix-rev-total .lbl { font-size: 12px; color: #6b7488; }
 .solvex-react .aix-rev-total .val {
@@ -1088,7 +1088,7 @@ body.solvex-react::before {
   font-variant-numeric: tabular-nums;
 }
 .solvex-react .aix-rev-total .val small { color: #8a93a8; }
-.solvex-react .aix-rev-item { padding: 16px 18px; border: 1px solid #e8ecf4; border-radius: 12px; background: #fff; }
+.solvex-react .aix-rev-item { padding: 16px 18px; border: 1px solid #e8ecf4; border-radius: 12px; background:#f7f8fc; }
 .solvex-react .aix-rev-item .lbl { margin-bottom: 8px; font-size: 11px; color: #6b7488; }
 .solvex-react .aix-rev-item .val {
   font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
@@ -1113,7 +1113,7 @@ body.solvex-react::before {
 .solvex-react .support-chat-card {
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
@@ -1130,7 +1130,7 @@ body.solvex-react::before {
 .solvex-react .support-chat-title strong { font-size: 14.5px; font-weight: 650; color: #161d31; }
 .solvex-react .support-chat-title small { font-size: 11.5px; color: #6b7488; }
 .solvex-react .support-online-dot { width: 6px; height: 6px; background: #12a06f; box-shadow: none; }
-.solvex-react .support-chat-quick { gap: 8px; padding: 12px 22px; background: #fff; border-bottom: 1px solid #edf0f7; }
+.solvex-react .support-chat-quick { gap: 8px; padding: 12px 22px; background:#f7f8fc; border-bottom: 1px solid #edf0f7; }
 .solvex-react .support-chat-quick button { padding: 6px 12px; border: 1px solid #e2d9fb; border-radius: 999px; background: #faf8ff; color: #4d2ab0; font-size: 11.5px; }
 .solvex-react .support-chat-quick button:hover { background: #f2ecff; border-color: #cdbdf5; }
 .solvex-react .support-chat-messages { gap: 16px; height: 442px; padding: 22px; background: #f7f9fc; }
@@ -1142,11 +1142,11 @@ body.solvex-react::before {
   font-weight: 500;
   box-shadow: 0 10px 20px -16px #4d21b8cc;
 }
-.solvex-react .support-msg.them .support-msg-bubble { background: #fff; color: #2c3448; border: 1px solid #e8ecf4; border-bottom-left-radius: 4px; }
+.solvex-react .support-msg.them .support-msg-bubble { background:#f7f8fc; color: #2c3448; border: 1px solid #e8ecf4; border-bottom-left-radius: 4px; }
 .solvex-react .support-msg-time { font-size: 10.5px; color: #8a93a8; }
-.solvex-react .support-chat-input { gap: 12px; padding: 14px 22px; background: #fff; border-top: 1px solid #edf0f7; }
+.solvex-react .support-chat-input { gap: 12px; padding: 14px 22px; background:#f7f8fc; border-top: 1px solid #edf0f7; }
 .solvex-react .support-chat-input textarea { min-height: 42px; padding: 11px 13px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
-.solvex-react .support-chat-input textarea:focus { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .support-chat-input textarea:focus { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .support-chat-input .ui-button {
   height: 42px;
   padding-inline: 22px;
@@ -1168,7 +1168,7 @@ body.solvex-react::before {
   padding: 10px 14px;
   border: 1px solid #e6eaf2;
   border-radius: 12px;
-  background: #fff;
+  background:#f7f8fc;
   font-size: 12px;
   color: #6b7488;
   box-shadow: 0 1px 2px #10172805;
@@ -1184,7 +1184,7 @@ body.solvex-react::before {
   font-size: 12px;
 }
 .solvex-react .cc-shell > .cc-toolbar > span:last-child { margin-left: auto; font-size: 11px; color: #8a93a8; }
-.solvex-react .cc-ghost { height: 34px; padding: 0 13px; border: 1px solid #e2e7f0; border-radius: 9px; background: #fff; color: #4a5266; font-size: 11.5px; font-weight: 550; }
+.solvex-react .cc-ghost { height: 34px; padding: 0 13px; border: 1px solid #e2e7f0; border-radius: 9px; background:#f7f8fc; color: #4a5266; font-size: 11.5px; font-weight: 550; }
 .solvex-react .cc-ghost:hover { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
 .solvex-react .cc-layout { grid-template-columns: minmax(0, 1fr) 292px; gap: 16px; }
 .solvex-react .cc-main { border: 1px solid #e6eaf2; border-radius: 16px; box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d; }
@@ -1207,7 +1207,7 @@ body.solvex-react::before {
   padding: 9px 13px;
   border: 1px solid #e8ecf4;
   border-radius: 12px;
-  background: #fff;
+  background:#f7f8fc;
   color: #2c3448;
   font-size: 12.5px;
   line-height: 1.75;
@@ -1218,9 +1218,9 @@ body.solvex-react::before {
   color: #fff;
   box-shadow: 0 10px 20px -16px #4d21b8cc;
 }
-.solvex-react .cc-composer { gap: 10px; padding: 12px 16px; border-top: 1px solid #edf0f7; background: #fff; }
+.solvex-react .cc-composer { gap: 10px; padding: 12px 16px; border-top: 1px solid #edf0f7; background:#f7f8fc; }
 .solvex-react .cc-composer textarea { min-height: 42px; padding: 10px 12px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
-.solvex-react .cc-composer textarea:focus { border-color: #cdbdf5; background: #fff; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .cc-composer textarea:focus { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .cc-composer button {
   height: 42px;
   padding: 0 20px;
@@ -1265,7 +1265,7 @@ body.solvex-react::before {
 .solvex-react .cc-packet-title small { margin-top: 3px; font-size: 10.5px; color: #ffffffc4; }
 .solvex-react .cc-packet-foot { padding: 10px 16px 13px; border-top: 1px dashed #ffffff3d; }
 .solvex-react .cc-packet-total { font-size: 13.5px; color: #fff; }
-.solvex-react .cc-packet-grab { padding: 6px 14px; background: #fff; color: #c31c41; font-size: 11px; font-weight: 650; }
+.solvex-react .cc-packet-grab { padding: 6px 14px; background:#f7f8fc; color: #c31c41; font-size: 11px; font-weight: 650; }
 .solvex-react .cc-packet-grab:disabled { background: #ffffff26; color: #ffffffb8; }
 .solvex-react .cc-red-btn {
   height: 42px;
@@ -1292,7 +1292,7 @@ body.solvex-react::before {
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 86% 0, #5b3fc012 0, transparent 60%),
-    linear-gradient(118deg, #f7f3ff, #fff 60%);
+    linear-gradient(118deg, #f7f3ff, #f7f8fc 60%);
   box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
 }
 .solvex-react .aim-topbar h1 {
@@ -1315,7 +1315,7 @@ body.solvex-react::before {
 }
 .solvex-react .aim-topbar p { margin-top: 8px; font-size: 12.5px; line-height: 1.7; color: #667086; }
 .solvex-react .aim-title-row { gap: 12px; }
-.solvex-react .aim-status { padding: 4px 11px; border: 1px solid #e2e7f0; border-radius: 999px; background: #fff; color: #6b7488; font-size: 11px; font-weight: 600; }
+.solvex-react .aim-status { padding: 4px 11px; border: 1px solid #e2e7f0; border-radius: 999px; background:#f7f8fc; color: #6b7488; font-size: 11px; font-weight: 600; }
 .solvex-react .aim-status.running { border-color: #c9eadf; background: #ecf8f3; color: #056b56; }
 .solvex-react .aim-robot { opacity: .42; }
 .solvex-react .aim-metrics {
@@ -1325,11 +1325,11 @@ body.solvex-react::before {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
-.solvex-react .aim-metrics > div { padding: 20px 24px; border: 0; border-left: 1px solid #eef1f7; background: #fff; }
+.solvex-react .aim-metrics > div { padding: 20px 24px; border: 0; border-left: 1px solid #eef1f7; background:#f7f8fc; }
 .solvex-react .aim-metrics > div:first-child { border-left: 0; }
 .solvex-react .aim-metrics span { font-size: 11px; letter-spacing: .04em; color: #6b7488; }
 .solvex-react .aim-metrics strong {
@@ -1348,7 +1348,7 @@ body.solvex-react::before {
   padding: 24px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background: #fff;
+  background:#f7f8fc;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
 .solvex-react .aim-panel-head { align-items: flex-start; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid #edf0f7; }
@@ -1361,7 +1361,7 @@ body.solvex-react::before {
   padding: 16px 18px;
   border: 1px solid #e6dcfb;
   border-radius: 14px;
-  background: linear-gradient(118deg, #f7f3ff, #fff 68%);
+  background: linear-gradient(118deg, #f7f3ff, #f7f8fc 68%);
 }
 .solvex-react .aim-vip-badge { padding: 4px 9px; border-radius: 999px; background: #5b3fc0; color: #fff; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; }
 .solvex-react .aim-vip-body b { font-size: 13px; font-weight: 650; color: #171d30; }
@@ -1386,7 +1386,7 @@ body.solvex-react::before {
   box-shadow: 0 10px 22px -14px #4d21b8cc;
 }
 .solvex-react .aim-primary:disabled { background: #ece9f6; color: #9ba3b6; box-shadow: none; }
-.solvex-react .aim-secondary { height: 42px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fff; color: #4a5266; font-size: 13px; font-weight: 550; }
+.solvex-react .aim-secondary { height: 42px; border: 1px solid #e2e7f0; border-radius: 10px; background:#f7f8fc; color: #4a5266; font-size: 13px; font-weight: 550; }
 .solvex-react .aim-secondary:hover:not(:disabled) { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
 .solvex-react .aim-notice { gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; font-size: 11.5px; color: #6b7488; }
 .solvex-react .aim-notice b { color: #3d465c; }
@@ -1533,7 +1533,7 @@ body.solvex-react::before {
   .solvex-react .rx-claim-strip { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; border-radius: 0; }
   .solvex-react .rx-claim-actions { width: 100%; gap: 8px; }
   .solvex-react .rx-claim-actions .ui-button { flex: 1; justify-content: center; }
-  .solvex-react .rx-claim-actions .ui-button:last-child { border: 1px solid #e7ddff; background: #fff; }
+  .solvex-react .rx-claim-actions .ui-button:last-child { border: 1px solid #e7ddff; background:#f7f8fc; }
   .solvex-react .rx-claim-icon { width: 32px; height: 32px; border-radius: 9px; }
   .solvex-react .rx-claim-copy > strong { font-size: 22px; }
   .solvex-react .rx-claim-actions .ui-button { min-height: 32px; font-size: 11.5px; padding-inline: 10px; }

@@ -35,13 +35,13 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .ui-card { border-style:solid; box-shadow:0 3px 16px #2d345302; }
 .ui-tabs { max-width:100%; overflow-x:auto; scrollbar-width:none; }
 .ui-tab { border:0; background:transparent; white-space:nowrap; }
-.ui-tab[data-state=active] { background:#fff; color:#6336cd; }
+.ui-tab[data-state=active] { background:#f7f8fc; color:#6336cd; }
 .ui-dialog { overflow:visible; max-height:90dvh; overflow-y:auto; }
 .ui-dialog-close { background:transparent; border:0; cursor:pointer; }
 .rx-dialog-title { font-size:21px; font-weight:650; padding-right:26px; }
 .rx-dialog-description { font-size:14px; line-height:1.9; color:#656c8c; margin:20px 0 28px; white-space:pre-wrap; }
 .rx-dialog-actions { display:flex; gap:10px; justify-content:flex-end; }
-.rx-sidebar { position:fixed; inset:0 auto 0 0; width:224px; padding:28px 18px 18px; z-index:110; background:#fff; border-right:1px solid #e7e9f2; display:flex; flex-direction:column; overflow-y:auto; }
+.rx-sidebar { position:fixed; inset:0 auto 0 0; width:224px; padding:28px 18px 18px; z-index:110; background:#f7f8fc; border-right:1px solid #e7e9f2; display:flex; flex-direction:column; overflow-y:auto; }
 .rx-brand { display:flex; gap:11px; align-items:center; text-decoration:none; color:#21263c; padding:0 12px; margin:0 0 40px; }
 .rx-brand img { width:35px; height:40px; object-fit:contain; }
 .rx-brand strong { font-size:26px; letter-spacing:-1px; font-weight:700; line-height:1.2; }
@@ -68,10 +68,10 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-session-state { display:flex; align-items:center; gap:7px; color:#656c8b; font-size:10px; }
 .rx-status-dot { display:inline-block; width:6px; height:6px; flex-shrink:0; border-radius:50%; background:#a2a7bc; }
 .rx-status-dot.is-live { background:#24a88a; box-shadow:0 0 0 3px #24a88a12; }
-.rx-wallet #wallet-connect-btn,.rx-wallet #wallet-connect-btn.connected { background:#fff; border:1px solid #dfe2ee; border-radius:10px; color:#454a5f; min-height:38px; padding:9px 15px; font-size:11px; font-weight:600; letter-spacing:.2px; }
+.rx-wallet #wallet-connect-btn,.rx-wallet #wallet-connect-btn.connected { background:#f7f8fc; border:1px solid #dfe2ee; border-radius:10px; color:#454a5f; min-height:38px; padding:9px 15px; font-size:11px; font-weight:600; letter-spacing:.2px; }
 .rx-wallet #wallet-connect-btn:hover { background:#f6f7fa; border-color:#d0c4ec; }
-.rx-wallet .wallet-account-menu { overflow:visible; box-shadow:0 10px 35px #272d4821; background:#fff; }
-.rx-locale button { display:flex; align-items:center; justify-content:center; border:1px solid #dfe2ee; border-radius:10px; height:36px; width:36px; color:#666d8d; background:#fff; }
+.rx-wallet .wallet-account-menu { overflow:visible; box-shadow:0 10px 35px #272d4821; background:#f7f8fc; }
+.rx-locale button { display:flex; align-items:center; justify-content:center; border:1px solid #dfe2ee; border-radius:10px; height:36px; width:36px; color:#666d8d; background:#f7f8fc; }
 .rx-heading { display:flex; align-items:center; justify-content:space-between; gap:18px; margin:0 0 24px; }
 .rx-kicker { font-size:9px; letter-spacing:2.3px; font-weight:650; color:#646b8b; }
 .rx-heading h1 { font-size:28px; letter-spacing:-1px; line-height:1.3; margin-top:6px; font-weight:650; }
@@ -124,7 +124,7 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-tier-top { display:flex; align-items:center; justify-content:space-between; gap:6px; margin-bottom:17px; }
 .rx-tier-top>span:last-child { font-size:9px; color:#646b8b; }
 .rx-tier-icon { display:flex; align-items:center; justify-content:center; width:37px; height:37px; border-radius:11px; background:#f4f5f9; color:#6c7495; }
-.rx-tier-1 { background:linear-gradient(145deg,#f9f9fb,#fff 70%); border-color:#d9dcea; }
+.rx-tier-1 { background:linear-gradient(145deg,#f9f9fb,#f7f8fc 70%); border-color:#d9dcea; }
 .rx-tier-1 .rx-tier-icon { background:#f1f2f7; color:#7957c9; }
 .rx-tier-2 .rx-tier-icon { background:#f5f6fa; color:#6c7495; }
 .rx-tier h3 { font-size:13px; font-weight:550; color:#666d8d; }
@@ -142,7 +142,7 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-form-balance>span { font-size:10px; color:#646b8a; }
 .rx-form-balance>strong { display:block; font-size:22px; font-weight:550; margin-top:5px; color:#484d63; overflow-wrap:anywhere; }
 .rx-form-balance>strong>small { font-size:9px; color:#656c8c; margin-left:6px; font-weight:400; }
-.rx-input-group { display:flex; border:1px solid #e1e4ef; border-radius:9px; background:#fff; align-items:center; height:47px; padding-right:12px; }
+.rx-input-group { display:flex; border:1px solid #e1e4ef; border-radius:9px; background:#f7f8fc; align-items:center; height:47px; padding-right:12px; }
 .rx-input-group:focus-within { border-color:#a187dd; box-shadow:0 0 0 3px #744ad50c; }
 .rx-input-group input { width:100%; min-width:0; background:transparent; border:0; box-shadow:none; padding:12px; color:#333b5f; font-size:14px; outline:none!important; }
 .rx-input-group input::placeholder { color:#646b8a; font-size:12px; }
@@ -192,7 +192,7 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-numeric { font-variant-numeric:tabular-nums; color:#4d536b!important; font-weight:550; }
 .rx-numeric small { font-weight:400; color:#656c8b; font-size:9px; }
 .rx-energy-grid { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1fr); gap:22px; }
-.rx-energy-story { background:linear-gradient(125deg,#f4f5f9,#fff); padding:30px; position:relative; overflow:hidden; }
+.rx-energy-story { background:linear-gradient(125deg,#f4f5f9,#f7f8fc); padding:30px; position:relative; overflow:hidden; }
 .rx-energy-story>.rx-icon { position:absolute; right:30px; top:30px; width:50px; height:50px; background:#f0f1f6; color:#6d7596; }
 .rx-energy-story h2 { font-size:27px; font-weight:550; line-height:1.6; margin-top:20px; color:#525872; }
 .rx-energy-rate { font-size:60px; letter-spacing:-2px; color:#8a6dcc; font-weight:500; margin:15px 0; }
@@ -205,7 +205,7 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-level-orbit { position:relative; display:grid; place-items:center; width:270px; height:220px; flex-shrink:0; }
 .rx-level-orbit>span { position:absolute; width:230px; height:125px; border:1px solid #d8d2e8; border-radius:50%; transform:rotate(-32deg); }
 .rx-level-orbit>span:nth-child(2) { transform:rotate(32deg); width:260px; height:140px; opacity:.5; }
-.rx-level-orbit>div { width:132px; height:160px; display:flex; align-items:center; justify-content:center; flex-direction:column; background:linear-gradient(130deg,#fff,#eeeff5); border:1px solid #dad2eb; border-radius:55px 55px 60px 60px; box-shadow:0 18px 36px #6b739416,inset 0 0 0 6px #ffffff80; z-index:1; color:#8c70ce; }
+.rx-level-orbit>div { width:132px; height:160px; display:flex; align-items:center; justify-content:center; flex-direction:column; background:linear-gradient(130deg,#f7f8fc,#eeeff5); border:1px solid #dad2eb; border-radius:55px 55px 60px 60px; box-shadow:0 18px 36px #6b739416,inset 0 0 0 6px #ffffff80; z-index:1; color:#8c70ce; }
 .rx-level-orbit strong { font-size:43px; font-weight:500; letter-spacing:-2px; line-height:1.5; }
 .rx-level-orbit small { font-size:9px; letter-spacing:3px; color:#666e8e; }
 .rx-team-grid { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; }
@@ -220,7 +220,7 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .rx-target .rx-progress { margin-top:12px; }
 .rx-upgrade-grid { display:grid; grid-template-columns:300px minmax(0,1fr); gap:22px; }
 .rx-invite-grid { display:grid; grid-template-columns:1fr 1.3fr; gap:22px; }
-.rx-invite-hero { padding:32px; background:linear-gradient(130deg,#f4f5f9,#fff); }
+.rx-invite-hero { padding:32px; background:linear-gradient(130deg,#f4f5f9,#f7f8fc); }
 .rx-invite-hero>svg { color:#697091; margin-bottom:25px; display:block; }
 .rx-invite-hero h2 { font-size:32px; color:#5c6380; margin:18px 0; line-height:1.5; font-weight:550; }
 .rx-invite-hero p { font-size:12px; color:#656c8b; }

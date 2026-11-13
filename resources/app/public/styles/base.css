@@ -50,7 +50,7 @@ html {
   overflow-x: hidden;
   width: 100%;
   /* 手机双指缩小页面时，页面外露出的区域也用深色背景，不出现白屏 */
-  background: #ffffff;
+  background:#f7f8fc;
 }
 body {
   background: var(--bg);
@@ -96,7 +96,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
   color: #5b6b66;
   padding: 2px 8px;
   border-radius: 999px;
-  background: #ffffff;
+  background:#f7f8fc;
   border: 1px solid #c1d4d7;
   line-height: 1.5;
   white-space: nowrap;
@@ -365,10 +365,10 @@ th { color: var(--mut2); font-weight: 600; font-size: 10px; text-transform: uppe
 .account-history { overflow: auto; max-height: 460px; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .account-history table { min-width: 690px; }
 .account-history td { padding: 8px 6px; }
-.account-history thead th { position: sticky; top: 0; z-index: 2; background: #ffffff; }
+.account-history thead th { position: sticky; top: 0; z-index: 2; background:#f7f8fc; }
 /* 账本（成交记录）页：固定高度内部滚动，表头吸顶 */
 #tab-ledger .trade-table-wrap { overflow: auto; max-height: 70vh; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
-#tab-ledger .ledger-table thead th { position: sticky; top: 0; z-index: 2; background: #ffffff; }
+#tab-ledger .ledger-table thead th { position: sticky; top: 0; z-index: 2; background:#f7f8fc; }
 .admin-withdraw-toolbar { display: flex; align-items: end; gap: 10px; margin-bottom: 10px; }
 .admin-withdraw-toolbar > div { flex: 1; }
 .admin-withdraw-toolbar label { display: block; color: var(--mut2); font-size: 11px; margin-bottom: 5px; }
