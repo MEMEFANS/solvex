@@ -54,6 +54,10 @@
 .sx-message-meta { display:flex; align-items:center; gap:8px; font-size:10px; color:#969bae; margin:0 2px 6px; }
 .sx-message-meta button { color:#ac8b9d; font-size:10px; border:0; background:none; padding:0; }
 .sx-message-bubble { padding:11px 15px; font-size:13px; line-height:1.8; border:1px solid #ebedf3; border-radius:3px 13px 13px 13px; background:var(--panel); color:#40465c; box-shadow:0 2px 4px #29324b03; white-space:pre-wrap; overflow-wrap:anywhere; }
+/* 图片消息 */
+.sx-message-bubble-image { padding:4px; white-space:normal; }
+.sx-message-image { display:block; max-width:220px; max-height:280px; border-radius:10px; cursor:zoom-in; }
+.sx-image-pending { display:block; padding:8px 12px; font-size:11px; color:#8d93a6; }
 .sx-message.is-mine .sx-message-bubble { background:#ebe2ff; color:#4f3780; border-color:#e5dafa; border-radius:13px 3px 13px 13px; }
 .sx-message.is-deleted .sx-message-bubble { color:#989daf; font-size:11px; background:transparent; border:1px dashed #dbdce7; box-shadow:none; }
 .sx-message-delivery { display:flex; align-items:center; gap:3px; margin-top:5px; color:#9e9bb2; font-size:9px; }
@@ -186,8 +190,10 @@
   .sx-mobile-chat-hidden { display:none; }
   /* 聊天已打开时，顶部"当前群"胶囊与聊天页头重复，隐藏上方那个 */
   body.sx-chat-focused .sx-mobile-group-control { display:none; }
-  /* 输入框整体下移：给底部手势条留出安全距离 */
-  .sx-chat-composer { padding:8px 13px calc(12px + env(safe-area-inset-bottom, 0px)); }
+  /* 聊天全屏：输入框贴到手机屏幕底部 */
+  body.sx-chat-focused .solvex-react .rx-page.sx-chat-page { padding:0; max-width:none; }
+  body.sx-chat-focused .sx-chat-window { height:100dvh; min-height:0; border:0; border-radius:0; box-shadow:none; }
+  .sx-chat-composer { padding:8px 13px calc(10px + env(safe-area-inset-bottom, 0px)); }
   .sx-mobile-back { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; flex-shrink:0; border:0; border-radius:8px; background:transparent; color:#707889; }
   .sx-mobile-back:hover { background:#e4e6eb; }
   .sx-chat-main:not(.sx-mobile-chat-hidden) { display:flex; }

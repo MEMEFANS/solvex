@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowDown, ArrowLeft, Check, ChevronRight, Copy, Gift, Hash, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Check, ChevronRight, Copy, Gift, Hash, ImagePlus, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useWallet } from '@/hooks/use-wallet';
@@ -86,9 +86,13 @@ function MessageRow({ message, isAdmin, onDelete, compact = false }: { message: 
     <div className="sx-message-main">
       {!compact && <div className="sx-message-meta">
         <span>{message.nickname || shortAddress(message.address)}</span>
-        {isAdmin && message.id > 0 && <button type="button" onClick={onDelete}>删除</button>}
+        {isAdmin && message.id > 0 && <button type="button" onClick={onDelete}>撤回</button>}
       </div>}
-      <div className="sx-message-bubble">{message.deleted ? '该消息已被管理员删除' : String(message.body ?? '')}</div>
+      {message.deleted
+        ? <div className="sx-message-bubble">该消息已被管理员撤回</div>
+        : message.kind === 'image'
+          ? <div className="sx-message-bubble sx-message-bubble-image">{message.pending ? <span className="sx-image-pending">图片发送中…</span> : <img className="sx-message-image" src={`/api/community/message-image/${message.id}`} alt="图片消息" loading="lazy" onClick={() => window.open(`/api/community/message-image/${message.id}`, '_blank', 'noopener')} />}</div>
+          : <div className="sx-message-bubble">{String(message.body ?? '')}</div>}
       {mine && <small className="sx-message-delivery">{message.pending ? <><LoaderCircle size={11} className="sx-spin" />发送中</> : <><Check size={11} />已发送</>}</small>}
     </div>
   </div>;
@@ -145,6 +149,8 @@ export default function CommunityPage() {
   const [unread, setUnread] = useState(0);
   const [draft, setDraft] = useState('');
   const [sending, setSending] = useState(false);
+  const [imageSending, setImageSending] = useState(false);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const [busyPacket, setBusyPacket] = useState('');
   const [error, setError] = useState('');
   const [packetOpen, setPacketOpen] = useState(false);
@@ -390,6 +396,66 @@ export default function CommunityPage() {
     } finally { setSending(false); }
   }
 
+  // 发送图片：本地压缩到最长边 1280 / JPEG 82% 再上传，所有人可用
+  async function pickImage(file?: File | null) {
+    if (!file) return;
+    if (imageSending || sending) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { toast.error('仅支持 JPG、PNG、WebP 图片'); return; }
+    const current = overviewRef.current;
+    if (!current?.authenticated) { toast.error('请先连接钱包并完成身份验证'); return; }
+    setImageSending(true);
+    const target = groupRef.current, scope = scopeRef.current;
+    const tempId = -Date.now();
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result));
+        reader.onerror = () => reject(new Error('读取图片失败'));
+        reader.readAsDataURL(file);
+      });
+      const compressed = await new Promise<string>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          try {
+            const max = 1280;
+            const scale = Math.min(1, max / Math.max(img.width, img.height, 1));
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(img.width * scale));
+            canvas.height = Math.max(1, Math.round(img.height * scale));
+            const ctx = canvas.getContext('2d');
+            if (!ctx || canvas.width === img.width && canvas.height === img.height && file.type === 'image/jpeg') return resolve(dataUrl);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            resolve(canvas.toDataURL('image/jpeg', 0.82));
+          } catch { resolve(dataUrl); }
+        };
+        img.onerror = () => resolve(dataUrl);
+        img.src = dataUrl;
+      });
+      const base64 = compressed.split(',')[1] || '';
+      if (!base64) throw new Error('图片处理失败');
+      if (base64.length > 550_000) throw new Error('图片过大，请换一张再发');
+      const temp: CommunityMessage = { id: tempId, address: current.me?.address, nickname: current.me?.nickname, avatar: current.me?.avatar, body: '', kind: 'image', createdAt: Date.now(), pending: true };
+      const withTemp = [...messagesRef.current, temp];
+      messagesRef.current = withTemp;
+      setMessages(withTemp);
+      requestAnimationFrame(scrollToBottom);
+      await ensureSession();
+      if (scopeRef.current !== scope) return;
+      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: { mime: compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg', data: base64 }, clientId: newId('c') }) });
+      if (scopeRef.current !== scope) return;
+      commitMessage(result.message, tempId);
+      latestId.current = Math.max(latestId.current, Number(result.message.id) || 0);
+      queueMarkRead();
+    } catch (caught) {
+      if (scopeRef.current === scope) {
+        const reverted = messagesRef.current.filter(message => message.id !== tempId);
+        messagesRef.current = reverted;
+        setMessages(reverted);
+        toast.error(caught instanceof Error ? caught.message : '图片发送失败，请重试');
+      }
+    } finally { setImageSending(false); if (imageInputRef.current) imageInputRef.current.value = ''; }
+  }
+
   async function grabPacket(packetId: string) {
     if (busyPacket) return;
     const target = groupRef.current, scope = scopeRef.current;
@@ -519,14 +585,14 @@ export default function CommunityPage() {
     void runAdminAction('admin/kick', { address: member.address }, `已将 ${member.nickname} 移出群聊`);
   }
   async function deleteMessage(id: number) {
-    if (!window.confirm('确定删除这条消息？内容将对所有人隐藏，并记录操作日志。')) return;
+    if (!window.confirm('确定撤回这条消息？撤回后对所有人群内不可见，并记录操作日志。')) return;
     try {
       await ensureSession();
       await api(path('admin/message-delete'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id }) });
       const next = messagesRef.current.map(message => message.id === id ? { ...message, deleted: true, body: '' } : message);
       messagesRef.current = next;
       setMessages(next);
-      toast.success('消息已删除');
+      toast.success('消息已撤回');
     } catch (caught) { toast.error(caught instanceof Error ? caught.message : '删除失败'); }
   }
 
@@ -674,7 +740,7 @@ export default function CommunityPage() {
           {!overview?.authenticated
             ? <div className="sx-chat-gate"><span>连接钱包，加入大家的聊天</span><button type="button" className="sx-chat-primary" onClick={() => connectWallet()}>连接钱包</button></div>
             : <>
-              <div className="sx-composer-tools"><div className="sx-emoji-anchor"><button type="button" className="sx-icon-button" aria-label="选择表情" aria-expanded={emojiOpen} disabled={blocked} onClick={() => setEmojiOpen(!emojiOpen)}><Smile size={21} /></button>{emojiOpen && <div className="sx-emoji-picker" role="group" aria-label="表情">{emojis.map(emoji => <button type="button" key={emoji} aria-label={`插入${emoji}`} onClick={() => { const input = inputRef.current, start = input?.selectionStart ?? draft.length, end = input?.selectionEnd ?? draft.length; setDraft((draft.slice(0, start) + emoji + draft.slice(end)).slice(0, 500)); setEmojiOpen(false); requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}</div>}</div><button type="button" className="sx-red-packet-button" onClick={openPacketModal} disabled={blocked}><Gift size={19} />发红包</button><span>{overview.me?.nickname || shortAddress(overview.me?.address)}</span></div>
+              <div className="sx-composer-tools"><div className="sx-emoji-anchor"><button type="button" className="sx-icon-button" aria-label="选择表情" aria-expanded={emojiOpen} disabled={blocked} onClick={() => setEmojiOpen(!emojiOpen)}><Smile size={21} /></button>{emojiOpen && <div className="sx-emoji-picker" role="group" aria-label="表情">{emojis.map(emoji => <button type="button" key={emoji} aria-label={`插入${emoji}`} onClick={() => { const input = inputRef.current, start = input?.selectionStart ?? draft.length, end = input?.selectionEnd ?? draft.length; setDraft((draft.slice(0, start) + emoji + draft.slice(end)).slice(0, 500)); setEmojiOpen(false); requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}</div>}</div><button type="button" className="sx-icon-button" aria-label="发送图片" disabled={blocked || imageSending} onClick={() => imageInputRef.current?.click()}>{imageSending ? <LoaderCircle size={19} className="sx-spin" /> : <ImagePlus size={21} />}</button><input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void pickImage(file); }} /><button type="button" className="sx-red-packet-button" onClick={openPacketModal} disabled={blocked}><Gift size={19} />发红包</button><span>{overview.me?.nickname || shortAddress(overview.me?.address)}</span></div>
               <textarea ref={inputRef} rows={2} maxLength={500} aria-label="消息内容" placeholder={composerHint} disabled={blocked} value={draft} onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={event => { if (event.key === 'Escape') setEmojiOpen(false); if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }} />
               <div className="sx-composer-bottom"><span><span className="sx-keyboard-hint">Enter 发送 · Shift + Enter 换行 · 禁止发送链接</span>{draft.length > 400 && <span>{draft.length}/500</span>}</span><button type="button" className="sx-chat-primary" disabled={sending || !draft.trim() || blocked} onClick={() => void send()}>{sending ? <LoaderCircle size={15} className="sx-spin" /> : <Send size={15} />}{sending ? '发送中' : '发送'}</button></div>
             </>}

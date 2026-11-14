@@ -104,7 +104,7 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
       nickname: member?.nickname || row.nickname,
       avatar: avatarUrl(member),
       body: deleted ? '' : row.body,
-      kind: row.kind === 'red_packet' ? 'red_packet' : 'text',
+      kind: row.kind === 'red_packet' ? 'red_packet' : row.kind === 'image' ? 'image' : 'text',
       refId: row.ref_id || '',
       deleted,
       createdAt: Number(row.created_at),
@@ -155,17 +155,30 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
     };
   }
 
-  function postMessage(address, { body, clientId } = {}) {
+  function postMessage(address, { body, clientId, image } = {}) {
     const member = ensureMember(address);
     if (member.status === 'kicked') throw fail('你已被移出群聊，暂时无法发言', 403);
     if (Number(member.muted_until || 0) > clock()) throw fail('你当前处于禁言状态，暂时无法发言', 403);
-    const text = normalizeBody(body);
-    const matched = findSensitiveWord(text);
-    if (matched) throw fail(`消息包含敏感词：${matched}`, 400);
-    const url = findUrl(text);
-    if (url) throw fail('群聊内禁止发送链接，请移除后再发送', 400);
-    const script = findScript(text);
-    if (script) throw fail('群聊内禁止发送脚本或代码片段', 400);
+    // 图片消息：所有人可发，存 payload_json；文字消息走原有的敏感词/链接/脚本校验
+    const isImage = Boolean(image && image.data);
+    let text = '';
+    let payloadJson = '{}';
+    if (isImage) {
+      const mime = String(image.mime || '');
+      const data = String(image.data || '');
+      if (!/^image\/(png|jpeg|webp)$/.test(mime)) throw fail('仅支持 JPG、PNG、WebP 图片', 400);
+      if (data.length > 560_000) throw fail('图片过大，请压缩后再发送', 400);
+      if (!/^[A-Za-z0-9+/=]+$/.test(data)) throw fail('图片数据格式无效', 400);
+      payloadJson = JSON.stringify({ mime, data });
+    } else {
+      text = normalizeBody(body);
+      const matched = findSensitiveWord(text);
+      if (matched) throw fail(`消息包含敏感词：${matched}`, 400);
+      const url = findUrl(text);
+      if (url) throw fail('群聊内禁止发送链接，请移除后再发送', 400);
+      const script = findScript(text);
+      if (script) throw fail('群聊内禁止发送脚本或代码片段', 400);
+    }
     const stableId = normalizeClientId(clientId);
     if (stableId) {
       const existing = database.getCommunityMessageByClient(member.address, stableId);
@@ -182,7 +195,9 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
         nickname: member.nickname,
         body: text,
         clientId: stableId,
+        kind: isImage ? 'image' : 'text',
         createdAt: now,
+        payloadJson,
       });
     } catch (error) {
       // 并发重复提交：唯一键兜底，返回已落库的那一条
@@ -192,6 +207,16 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
     }
     database.touchCommunityMember(member.address, now);
     return { message: publicMessage(row), idempotent: false };
+  }
+
+  // 图片消息原图读取：仅 visible 的图片消息可取，撤回后 404
+  function getMessageImage(id) {
+    const row = database.getCommunityMessage(Number(id));
+    if (!row || row.kind !== 'image' || row.status !== 'visible') return null;
+    let payload = {};
+    try { payload = JSON.parse(row.payload_json || '{}'); } catch { payload = {}; }
+    if (!payload.mime || !payload.data) return null;
+    return { mime: String(payload.mime), data: String(payload.data) };
   }
 
   function setProfile(address, input = {}) {
@@ -268,5 +293,5 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
     return '';
   }
 
-  return { overview, listMessages, postMessage, setNickname, setProfile, getAvatar, markRead, listMembers, ensureMember, findSensitiveWord };
+  return { overview, listMessages, postMessage, getMessageImage, setNickname, setProfile, getAvatar, markRead, listMembers, ensureMember, findSensitiveWord };
 }

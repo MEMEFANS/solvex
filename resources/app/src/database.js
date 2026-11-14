@@ -2014,7 +2014,7 @@ export function openDatabase(dataRoot) {
   const listCommunityMembersStmt = db.prepare(`SELECT * FROM community_members WHERE status='active' ORDER BY joined_at DESC LIMIT ?`);
   const countCommunityMembersStmt = db.prepare(`SELECT COUNT(*) AS n FROM community_members WHERE status='active'`);
   const insertCommunityMessageStmt = db.prepare(`INSERT INTO community_messages
-    (wallet,nickname,body,client_id,kind,ref_id,status,created_at) VALUES(?,?,?,?,?,?, 'visible',?)`);
+    (wallet,nickname,body,client_id,kind,ref_id,status,created_at,payload_json) VALUES(?,?,?,?,?,?,'visible',?,?)`);
   const getCommunityMessageStmt = db.prepare(`SELECT * FROM community_messages WHERE id=? LIMIT 1`);
   const getCommunityMessageByRefStmt = db.prepare(`SELECT * FROM community_messages
     WHERE kind=? AND ref_id=? AND status='visible' LIMIT 1`);
@@ -4187,9 +4187,9 @@ export function openDatabase(dataRoot) {
   function countCommunityMembers() {
     return Number(countCommunityMembersStmt.get()?.n || 0);
   }
-  function insertCommunityMessage({ wallet, nickname, body, clientId = '', kind = 'text', refId = '', createdAt }) {
+  function insertCommunityMessage({ wallet, nickname, body, clientId = '', kind = 'text', refId = '', createdAt, payloadJson = '{}' }) {
     const result = insertCommunityMessageStmt.run(String(wallet).toLowerCase(), String(nickname),
-      String(body), String(clientId || ''), String(kind || 'text'), String(refId || ''), Number(createdAt));
+      String(body), String(clientId || ''), String(kind || 'text'), String(refId || ''), Number(createdAt), String(payloadJson || '{}'));
     return getCommunityMessageStmt.get(Number(result.lastInsertRowid)) || null;
   }
   function getCommunityMessage(id) {

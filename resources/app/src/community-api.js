@@ -120,6 +120,22 @@ export function createCommunityApi({
       }
       const scoped=groupService?.scoped(params.get('group')||'100001',address);
       const service=scoped?.service||baseService, redPacketService=scoped?.redPacketService||basePackets;
+      // GET /api/community/message-image/:id?group=100001 — 图片消息原图（撤回后 404）
+      const messageImageMatch = request.method === 'GET' && pathname.match(/^\/api\/community\/message-image\/(\d{1,12})$/);
+      if (messageImageMatch) {
+        const image = service.getMessageImage ? service.getMessageImage(messageImageMatch[1]) : null;
+        if (!image) return send(res, 404, { error: '图片不存在或已被撤回' });
+        const body = Buffer.from(image.data, 'base64');
+        res.writeHead(200, {
+          'Content-Type': image.mime,
+          'Content-Length': body.length,
+          'Cache-Control': 'public, max-age=86400',
+          'X-Content-Type-Options': 'nosniff',
+          'Cross-Origin-Resource-Policy': 'same-origin',
+        });
+        res.end(body);
+        return true;
+      }
       if(groupService && request.method==='POST' && pathname.startsWith('/api/community/admin/')) {
         guardWrite(request);const actor=requireSession(request).address;const input=await readBody(request,8000);
         return send(res,200,groupService.moderate(scoped.group.number,actor,pathname.split('/').pop(),input));
@@ -146,14 +162,15 @@ export function createCommunityApi({
         const data = service.listMembers();
         return send(res, 200, { ...data, members: adminFlaggedMembers(data.members, scoped?.group) });
       }
-      // POST /api/community/messages { body, clientId }
+      // POST /api/community/messages { body, clientId, image?{mime,data} }
       if (request.method === 'POST' && pathname === '/api/community/messages') {
         guardWrite(request);
         const session = requireSession(request);
-        const payload = await readBody(request, 16_000);
+        const payload = await readBody(request, 600_000);
         return send(res, 200, service.postMessage(session.address, {
           body: payload.body,
           clientId: payload.clientId,
+          image: payload.image,
         }));
       }
       // POST /api/community/profile { nickname, avatar? }

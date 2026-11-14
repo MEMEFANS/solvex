@@ -367,7 +367,9 @@ function setSessionCookie(req, res, token, maxAgeSeconds) {
   const value = token ? encodeURIComponent(token) : '';
   // Domain 让 www 与主域共用同一登录态，避免用户换域名进站时被要求重复签名
   const domain = cfg.wallet?.sessionCookieDomain ? `; Domain=${cfg.wallet.sessionCookieDomain}` : '';
-  res.setHeader('Set-Cookie', `wg_session=${value}; Path=/${domain}; HttpOnly; SameSite=Strict; Max-Age=${Math.max(0, maxAgeSeconds)}${secure ? '; Secure' : ''}`);
+  // 每次进站都要求钱包签名：会话 Cookie 不落盘（关闭浏览器即失效），下次打开网站必须重新签名
+  const maxAge = token ? '' : '; Max-Age=0';
+  res.setHeader('Set-Cookie', `wg_session=${value}; Path=/${domain}; HttpOnly; SameSite=Strict${maxAge}${secure ? '; Secure' : ''}`);
 }
 
 function setAdminSessionCookie(req, res, token, maxAgeSeconds) {
