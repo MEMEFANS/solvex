@@ -184,6 +184,10 @@
   .sx-mobile-group-control:has(+ .sx-mobile-group-home) { justify-content:flex-end; }
   .sx-mobile-group-home + .sx-mobile-group-picker { display:none; }
   .sx-mobile-chat-hidden { display:none; }
+  /* 聊天已打开时，顶部"当前群"胶囊与聊天页头重复，隐藏上方那个 */
+  body.sx-chat-focused .sx-mobile-group-control { display:none; }
+  /* 输入框整体下移：给底部手势条留出安全距离 */
+  .sx-chat-composer { padding:8px 13px calc(12px + env(safe-area-inset-bottom, 0px)); }
   .sx-mobile-back { display:inline-flex; align-items:center; justify-content:center; width:30px; height:30px; flex-shrink:0; border:0; border-radius:8px; background:transparent; color:#707889; }
   .sx-mobile-back:hover { background:#e4e6eb; }
   .sx-chat-main:not(.sx-mobile-chat-hidden) { display:flex; }

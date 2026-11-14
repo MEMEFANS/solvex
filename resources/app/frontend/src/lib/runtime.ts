@@ -39,7 +39,7 @@ function runtimeScriptReady(name: string) {
 
 function loadScript(name: string) {
   const path = '/js/' + name + '.js';
-  const version = name === 'theme' ? '20261114-logo-palette-1' : '20261113-session-persist-1';
+  const version = name === 'theme' ? '20261114-logo-palette-1' : '20261114-market-retry-1';
   const src = path + '?v=' + version;
   // Match by pathname as well as the full URL. A tab opened before a deploy
   // can still contain the same classic script with the previous query string;

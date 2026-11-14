@@ -166,6 +166,7 @@ function setTradeMarketScope(scope) {
 let tradeIntervalSec = 3600;
 let tradeMarketRequest = 0;
 let tradeMarketStream = null;
+let tradeMarketRetryTimer = 0;
 let tradeOrderBookRequest = null;
 let tradeMarketCategory = 'product';
 let tradeMarketScope = 'crypto'; // 'crypto' 普通币种 | 'stock' 美股代币
@@ -692,6 +693,7 @@ async function refreshTradeTerminal(intervalSec = tradeIntervalSec) {
   tradeIntervalSec = intervalSec;
   const product = tradeProduct, symbol = tradeSymbol;
   const requestId = ++tradeMarketRequest;
+  clearTimeout(tradeMarketRetryTimer);
   try {
     const payload = await Portal.readJSON(`/api/market/candles?product=${product}&symbol=${symbol}&intervalSec=${intervalSec}`);
     if (requestId !== tradeMarketRequest || product !== tradeProduct || symbol !== tradeSymbol || !Portal.active('trade')) return;
@@ -725,6 +727,12 @@ async function refreshTradeTerminal(intervalSec = tradeIntervalSec) {
     console.error('[trade] market refresh failed:', error.message);
     $('trade-mark-price').textContent = '行情不可用';
     $('trade-high').textContent = '—'; $('trade-low').textContent = '—'; $('trade-change').textContent = '—';
+    // 弱网/切换基站的手机首次拉行情可能失败：5 秒后自动重试，直到数据恢复（页面隐藏时暂停）
+    clearTimeout(tradeMarketRetryTimer);
+    tradeMarketRetryTimer = setTimeout(() => {
+      if (requestId === tradeMarketRequest && product === tradeProduct && symbol === tradeSymbol
+        && !document.hidden && $('tab-trade')?.classList.contains('active')) refreshTradeTerminal(tradeIntervalSec);
+    }, 5000);
   }
 }
 
