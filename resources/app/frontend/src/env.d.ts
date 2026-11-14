@@ -18,6 +18,8 @@ declare global {
     LegacyEarn?: { show: (name: string) => void; deactivate?: () => void };
     ReferralRewards?: { load: (context: { isCurrent: () => boolean }) => Promise<void>; reset: () => void };
     Portal?: { invalidate: () => void; load: (page: string, force?: boolean) => Promise<void>; register: (name: string, page: { load?: () => void; reset?: () => void }) => void };
+    I18n?: { current?: string };
+    WGTheme?: { current?: () => string };
     copyTextSmart?: (value: string) => Promise<boolean>;
     __solvexTestWallet?: (wallet: WalletState) => void;
     solvexWalletBridge?: {

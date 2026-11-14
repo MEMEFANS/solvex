@@ -137,7 +137,16 @@ export function createCommunityGroupService({database, walletService, teamServic
     return match ? { mime: match[1], data: match[2] } : null;
   }
   function list(wallet) {
-    return {groups:db.prepare('SELECT * FROM community_groups ORDER BY number').all().filter(g=>entitled(g,wallet)&&membership(g.number,wallet)?.status!=='kicked').map(g=>view(g,wallet)),canCreate:Boolean(wallet)&&Number(teamService.snapshot(wallet).level)>=3};
+    const latestStmt = db.prepare("SELECT body, nickname, created_at FROM community_messages WHERE group_number=? AND status='visible' ORDER BY id DESC LIMIT 1");
+    const unreadStmt = db.prepare("SELECT COUNT(*) AS n FROM community_messages WHERE group_number=? AND status='visible' AND id>? AND lower(wallet)<>lower(?)");
+    const result = db.prepare('SELECT * FROM community_groups ORDER BY number').all()
+      .filter(g=>entitled(g,wallet)&&membership(g.number,wallet)?.status!=='kicked')
+      .map(g=>{
+        const item=view(g,wallet), member=wallet?membership(g.number,wallet):null, latest=latestStmt.get(g.number);
+        return {...item, latestMessage: latest ? { body:String(latest.body||'').slice(0,80), nickname:latest.nickname, createdAt:Number(latest.created_at||0) } : null,
+          unread: wallet ? Number(unreadStmt.get(g.number,Number(member?.last_read_id||0),wallet)?.n||0) : 0};
+      });
+    return {groups:result,canCreate:Boolean(wallet)&&Number(teamService.snapshot(wallet).level)>=3};
   }
   function create(wallet,{name}) {
     if (Number(teamService.snapshot(wallet).level)<3) fail('V3及以上才可创建私人群');

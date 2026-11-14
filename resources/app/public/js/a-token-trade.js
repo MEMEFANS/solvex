@@ -1,4 +1,4 @@
-﻿﻿﻿﻿(() => {
+﻿﻿﻿﻿﻿﻿(() => {
   const P = Portal;
   let poolStats = null;
   let profile = null;

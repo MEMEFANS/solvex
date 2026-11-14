@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowDown, Check, ChevronRight, Copy, Gift, Hash, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Check, ChevronRight, Copy, Gift, Hash, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useWallet } from '@/hooks/use-wallet';
@@ -33,6 +33,7 @@ const fmtTime = (ts?: number) => {
     ? { hour: '2-digit', minute: '2-digit', hour12: false }
     : { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 };
+const groupPreview = (item: CommunityGroup) => item.latestMessage?.body || (item.kind === 'private' ? '私人群聊' : '暂无消息，进去打个招呼');
 // 合并消息：已存在的按 id 原位更新，新消息追加到末尾（保留临时消息的底部位置）
 function mergeMessages(base: CommunityMessage[], incoming: CommunityMessage[]) {
   const result = base.slice(), index = new Map(result.map((message, at) => [message.id, at]));
@@ -151,6 +152,8 @@ export default function CommunityPage() {
   const [packetError, setPacketError] = useState('');
   const [packetBusy, setPacketBusy] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
+  const [mobileGroupsOpen, setMobileGroupsOpen] = useState(false);
+  const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [membersOpen, setMembersOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [selectedPacketId, setSelectedPacketId] = useState('');
@@ -187,6 +190,11 @@ export default function CommunityPage() {
   const detailRequest = useRef(0);
   const scopeRef = useRef('');
   scopeRef.current = `${group}:${identity}`;
+
+  useEffect(() => {
+    document.body.classList.toggle('sx-chat-focused', mobileChatOpen);
+    return () => document.body.classList.remove('sx-chat-focused');
+  }, [mobileChatOpen]);
 
   const path = (name: string, target = groupRef.current) => `community/${name}${name.includes('?') ? '&' : '?'}group=${encodeURIComponent(target)}`;
   const scrollToBottom = () => { const box = listRef.current; if (box) { pinnedToBottom.current = true; box.scrollTop = box.scrollHeight; } };
@@ -237,7 +245,7 @@ export default function CommunityPage() {
     overviewRef.current = null; messagesRef.current = []; unreadRef.current = 0;
     setOverview(null); setMessages([]); setHasMore(false); setUnread(0); setError(''); setPacketOpen(false);
     setSelectedPacketId(''); setPacketDetail(null); setDetailError(''); detailRequest.current += 1;
-    setDraft(''); setEmojiOpen(false); setMembersOpen(false); setAction(null);
+    setDraft(''); setEmojiOpen(false); setMembersOpen(false); setAction(null); setMobileGroupsOpen(false);
     let cancelled = false;
     (async () => {
       const sessionPath = `community/session?group=${encodeURIComponent(group)}`;
@@ -623,18 +631,20 @@ export default function CommunityPage() {
   return <div className="rx-page sx-chat-page"><div className="sx-chat">
     <div className="sx-chat-window">
       <aside className="sx-group-rail" aria-label="群聊列表">
-        <div className="sx-mobile-group-control"><label><span>切换群聊</span><select aria-label="切换群聊" value={group} onChange={event => setGroup(event.target.value)}>{groups.map(item => <option key={item.number} value={item.number}>{item.name} · {item.number}</option>)}</select></label><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={19} /></button>{canCreate && <button type="button" className="sx-chat-secondary" onClick={() => openAction('create')}>建群</button>}</div>
+        <div className="sx-mobile-group-control"><button type="button" className="sx-mobile-current-group" aria-expanded={mobileGroupsOpen} onClick={() => setMobileGroupsOpen(open => !open)}><span className="sx-group-icon">{overview?.group?.avatar ? <img src={overview.group.avatar} alt="" /> : <UsersRound size={17} />}</span><span><strong>{groupName}</strong><small>{memberCount} 位成员 · 群号 {group}</small></span><ChevronRight size={16} /></button><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={19} /></button>{canCreate && <button type="button" className="sx-chat-secondary" onClick={() => openAction('create')}>建群</button>}</div>
+        {!mobileChatOpen && <div className="sx-mobile-group-home"><div className="sx-mobile-home-heading"><strong>我的群聊</strong><span>{visibleGroups.length} 个群</span></div><label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label><div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} onClick={() => { setGroup(item.number); setMobileChatOpen(true); }}><span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" /> : <UsersRound size={19} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{groupPreview(item)} · {item.latestMessage?.createdAt ? fmtTime(item.latestMessage.createdAt) : '暂无消息'}</small></span>{Number(item.unread || 0) > 0 && <b className="sx-group-unread">{Number(item.unread) > 99 ? '99+' : item.unread}</b>}<ChevronRight size={15} /></button>)}{!visibleGroups.length && <p className="sx-rail-empty">没有找到这个群聊</p>}</div></div>}
+        {mobileGroupsOpen && <div className="sx-mobile-group-picker"><label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label><div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} onClick={() => { setGroup(item.number); setMobileGroupsOpen(false); setMobileChatOpen(true); }}><span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" /> : <UsersRound size={19} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{item.kind === 'private' ? '私人群' : '社区群'} · {item.number}</small></span></button>)}{!visibleGroups.length && <p className="sx-rail-empty">没有找到这个群聊</p>}</div></div>}
         <div className="sx-group-rail-title"><strong>我的群聊</strong><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={18} /></button></div>
         <label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label>
         <div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} aria-current={group === item.number ? 'true' : undefined} onClick={() => setGroup(item.number)}>
-          <span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" loading="lazy" /> : <UsersRound size={21} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{item.kind === 'private' ? '私人群' : '社区群'} · {item.number}</small></span>{group === item.number && <span className="sx-group-dot" />}
+          <span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" loading="lazy" /> : <UsersRound size={21} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{groupPreview(item)}</small></span>{Number(item.unread || 0) > 0 ? <b className="sx-group-unread">{Number(item.unread) > 99 ? '99+' : item.unread}</b> : group === item.number && <span className="sx-group-dot" />}
         </button>)}{!visibleGroups.length && <p className="sx-rail-empty">{groupSearch ? '没有找到这个群聊' : '正在加载群聊…'}</p>}</div>
         <div className="sx-group-rail-bottom"><button type="button" onClick={() => openAction('join')}><Hash size={15} />通过群号加入</button>{canCreate && <button type="button" onClick={() => openAction('create')}><Plus size={15} />创建私人群</button>}</div>
       </aside>
-      <section className="sx-chat-main" aria-label={`${groupName}聊天区`}>
+      <section className={'sx-chat-main' + (!mobileChatOpen ? ' sx-mobile-chat-hidden' : '')} aria-label={`${groupName}聊天区`}>
         <header className="sx-chat-header">
           <div className="sx-group-icon">{overview?.group?.avatar ? <img src={overview.group.avatar} alt="" /> : <UsersRound size={22} />}</div>
-          <div className="sx-chat-header-copy"><h2>{groupName}<span>{memberCount}</span></h2><button type="button" className="sx-group-number" title="复制群号" onClick={() => void navigator.clipboard.writeText(group).then(() => toast.success('群号已复制')).catch(() => toast.error('复制失败，请手动复制群号'))}>群号 {group}<Copy size={11} /></button></div>
+          <button type="button" className="sx-mobile-back" aria-label="返回群聊列表" onClick={() => setMobileChatOpen(false)}><ArrowLeft size={18} /></button><div className="sx-chat-header-copy"><h2>{groupName}<span>{memberCount}</span></h2><button type="button" className="sx-group-number" title="复制群号" onClick={() => void navigator.clipboard.writeText(group).then(() => toast.success('群号已复制')).catch(() => toast.error('复制失败，请手动复制群号'))}>群号 {group}<Copy size={11} /></button></div>
           <div className="sx-chat-header-actions">{overview?.group?.invite && <button type="button" className="sx-chat-secondary" onClick={() => void copyInvite()}><Copy size={14} /><span>邀请</span></button>}{overview?.authenticated && <button type="button" className="sx-chat-secondary" onClick={() => openAction('settings')}><Settings size={14} /><span>设置</span></button>}<button type="button" className="sx-icon-button" aria-label="查看群成员" onClick={() => setMembersOpen(true)}><UsersRound size={20} /></button></div>
         </header>
         <div className="sx-message-area">

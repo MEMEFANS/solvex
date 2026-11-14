@@ -27,7 +27,9 @@ export async function depositUsdt(networkId: string, amount: string, onStatus?: 
 
 export async function openUsdtWithdrawal() {
   await fundsBridge();
-  window.USDTWithdrawal?.open();
+  const withdrawal = window.USDTWithdrawal;
+  if (!withdrawal?.open) throw new Error('提现模块加载失败，请刷新重试');
+  withdrawal.open();
 }
 
 export async function signWalletOperation(message: string) {

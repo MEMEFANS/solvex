@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import type { QueryKey } from '@tanstack/react-query';
 import { ArrowUpRight, CircleAlert, Inbox, LoaderCircle, Wallet } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from './ui/button';
@@ -25,7 +26,7 @@ export function useAction() {
   const close = (value: boolean) => { resolver.current?.(value); resolver.current = null; setConfirmation(null); };
   useEffect(() => { close(false); }, [wallet.address, wallet.revision]);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; resolver.current?.(false); resolver.current = null; }; }, []);
-  async function run(title: string, description: string, operation: () => Promise<string>) {
+  async function run(title: string, description: string, operation: () => Promise<string>, refresh: 'all' | 'none' | readonly QueryKey[] = 'all') {
     if (transactionBusy) return;
     if (!wallet.authenticated) { toast.error('请先连接并确认钱包'); return; }
     transactionBusy = true; setBusy(true);
@@ -36,8 +37,13 @@ export function useAction() {
       const message = await operation();
       if (identity !== walletIdentity()) return;
       toast.success(message);
-      await client.invalidateQueries({ predicate: q => q.queryKey[0] !== 'plans' });
-      window.Portal?.invalidate();
+      if (refresh === 'all') {
+        await client.invalidateQueries({ predicate: q => q.queryKey[0] !== 'plans' });
+        window.Portal?.invalidate();
+      } else if (refresh !== 'none') {
+        await Promise.all(refresh.map(queryKey => client.invalidateQueries({ queryKey })));
+        window.Portal?.invalidate();
+      }
     } catch (error) { if (identity === walletIdentity()) toast.error(error instanceof Error ? error.message : '操作失败'); }
     finally { transactionBusy = false; if (mounted.current) setBusy(false); }
   }

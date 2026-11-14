@@ -14,7 +14,9 @@ export default defineConfig(({ command }) => ({
   resolve: { alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) } },
   server: { host: '127.0.0.1', port: 5173, proxy: { '/api': process.env.SOLVEX_API_TARGET || 'http://127.0.0.1:5174' } },
   build: {
-    outDir: '../public/app', emptyOutDir: true, copyPublicDir: false,
+    // Open browser tabs still import chunks from their original release.
+    // Keep those hashed files available when publishing the next build.
+    outDir: '../public/app', emptyOutDir: false, copyPublicDir: false,
     rollupOptions: {
       output: {
         manualChunks(id) {

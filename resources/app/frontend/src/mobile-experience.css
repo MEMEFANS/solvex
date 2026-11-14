@@ -16,7 +16,7 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
 .solvex-react .assets-deposit-sheet .assets-funding-pane { padding:20px 0 0; }
 .solvex-react .assets-deposit-sheet .account-form-row { display:grid; grid-template-columns:1fr; gap:18px; }
 .solvex-react .assets-deposit-sheet label { display:block; margin-bottom:8px; color:#596079; font-size:13px; }
-.solvex-react .assets-deposit-sheet :is(input,select) { width:100%; min-height:48px; padding:10px 12px; border:1px solid #dce0ec; border-radius:10px; background:#fafbff; color:#29314a; font:inherit; }
+.solvex-react .assets-deposit-sheet :is(input,select) { width:100%; min-height:48px; padding:10px 12px; border:1px solid #dce0ec; border-radius:10px; background:var(--panel); color:#29314a; font:inherit; }
 .solvex-react .assets-deposit-sheet .btn { width:100%; min-height:48px; margin-top:16px; }
 .solvex-react .assets-deposit-rule { color:#76638c; font-size:12px; }
 .solvex-react .rx-team-rules { align-self:start; overflow:hidden; }
@@ -87,9 +87,9 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
   .solvex-react .rx-team-page .rx-invite-hero .ui-button { padding:10px; font-size:12px; }
 
   /* Trading has one site dock; its own views are tabs above the content. */
-  body.solvex-react #tab-trade .mt-bottom-nav { position:static; bottom:auto!important; display:grid; min-height:52px; padding:5px 12px; gap:5px; border:0; border-bottom:1px solid #eeeaf6; background:#f7f8fc; }
+  body.solvex-react #tab-trade .mt-bottom-nav { position:static; bottom:auto!important; display:grid; min-height:52px; padding:5px 12px; gap:5px; border:0; border-bottom:1px solid #eeeaf6; background:var(--panel); }
   body.solvex-react #tab-trade .mt-bottom-nav button { min-height:44px; height:44px; border-radius:9px; font-size:13px; font-weight:550; }
-  body.solvex-react #tab-trade .mt-bottom-nav button.active { background:#f2ecff; color:#7034db; }
+  body.solvex-react #tab-trade .mt-bottom-nav button.active { background:var(--brand-dim); color:var(--brand); }
   body.solvex-react #tab-trade .mt-bottom-nav svg { width:17px; height:17px; }
   body.solvex-react #tab-trade .mt-market-tabs { height:44px; }
   body.solvex-react #tab-trade .mt-market-tabs button { min-height:44px; font-size:13px; }
@@ -138,14 +138,14 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
   .solvex-react #tab-a-token-trade .atrade-chart-tabs button { flex:1; min-height:44px; font-size:12px; }
   .solvex-react #tab-a-token-trade .atrade-chart-toolbar > .muted { display:none; }
   .solvex-react #tab-a-token-trade .atrade-chart-host { min-height:235px; height:clamp(235px,36svh,340px); }
-  .solvex-react .svx-mobile-actions { position:fixed; display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px 14px; bottom:var(--mobile-dock-space); left:0; right:0; z-index:115; background:#fffffff5; backdrop-filter:blur(12px); border-top:1px solid #eae6f2; }
+  .solvex-react .svx-mobile-actions { position:fixed; display:grid; grid-template-columns:1fr 1fr; gap:10px; padding:10px 14px; bottom:var(--mobile-dock-space); left:0; right:0; z-index:115; background:var(--chrome); backdrop-filter:blur(12px); border-top:1px solid #eae6f2; }
   .solvex-react .svx-mobile-actions button { min-height:50px; border:0; border-radius:11px; font-size:14px; font-weight:600; color:#fff; }
   .solvex-react .svx-mobile-buy { background:#7540dd; }
   .solvex-react .svx-mobile-sell { background:#d55a75; }
   .solvex-react .svx-mobile-actions button span { display:block; margin-top:3px; font-size:10px; font-weight:400; opacity:.9; }
-  .solvex-react .svx-order-sheet { position:fixed; inset:auto 0 0; margin:0 auto; padding:0 0 env(safe-area-inset-bottom,0px); width:100%; max-width:560px; max-height:calc(100dvh - 20px); overflow-y:auto; overscroll-behavior:contain; border:1px solid #e5ddef; border-bottom:0; border-radius:22px 22px 0 0; background:#f7f8fc; color:#30364d; box-shadow:0 -15px 70px #28203720; }
+  .solvex-react .svx-order-sheet { position:fixed; inset:auto 0 0; margin:0 auto; padding:0 0 env(safe-area-inset-bottom,0px); width:100%; max-width:560px; max-height:calc(100dvh - 20px); overflow-y:auto; overscroll-behavior:contain; border:1px solid #e5ddef; border-bottom:0; border-radius:22px 22px 0 0; background:var(--panel); color:#30364d; box-shadow:0 -15px 70px #28203720; }
   .solvex-react .svx-order-sheet::backdrop { background:#201c3c55; backdrop-filter:blur(3px); }
-  .solvex-react .svx-order-sheet-head { display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:2; background:#f7f8fc; padding:16px 18px 12px; border-bottom:1px solid #eee9f5; }
+  .solvex-react .svx-order-sheet-head { display:flex; align-items:center; justify-content:space-between; position:sticky; top:0; z-index:2; background:var(--panel); padding:16px 18px 12px; border-bottom:1px solid #eee9f5; }
   .solvex-react .svx-order-sheet-head h2 { margin:0; font-size:18px; }
   .solvex-react .svx-order-sheet-head p { margin:5px 0 0; font-size:12px; color:#7c6f8c; }
   .solvex-react .svx-order-sheet-head button { width:44px; height:44px; background:#f5f1fa; border:0; border-radius:11px; color:#756580; }
@@ -189,7 +189,7 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
   .solvex-react .assets-quick-actions button { display:flex; justify-content:center; align-items:center; gap:5px; min-height:46px; padding:8px 6px; font-size:12px; }
   .solvex-react .assets-total .assets-quick-actions .assets-records-shortcut { display:flex; }
   .solvex-react .assets-overview .assets-metrics { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); padding:0; }
-  .solvex-react .assets-overview .assets-metrics > div { min-height:0; padding:10px 14px; border:0; border-bottom:1px solid #eef0f6; border-right:1px solid #eef0f6; background:#f7f8fc; }
+  .solvex-react .assets-overview .assets-metrics > div { min-height:0; padding:10px 14px; border:0; border-bottom:1px solid #eef0f6; border-right:1px solid #eef0f6; background:var(--panel); }
   .solvex-react .assets-overview .assets-metrics > div:nth-child(2n) { border-right:0; }
   .solvex-react .assets-overview .assets-metrics > div:nth-child(n+3) { border-bottom:0; }
   .solvex-react .assets-overview .assets-metrics b { font-size:17px; line-height:1.3; margin-top:5px; overflow-wrap:anywhere; }
@@ -224,7 +224,7 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
   .solvex-react .assets-mobile-coin-details dt { color:#86768f; flex-shrink:0; }
   .solvex-react .assets-mobile-coin-details dd { margin:0; text-align:right; overflow-wrap:anywhere; color:#5c4e6e; }
   .solvex-react .assets-mobile-coin-actions { display:flex; gap:8px; }
-  .solvex-react .assets-mobile-coin-actions button { min-height:44px; flex:1; border:1px solid #e6dcef; border-radius:9px; background:#f8f4ff; color:#7543ac; font:inherit; font-size:12px; }
+  .solvex-react .assets-mobile-coin-actions button { min-height:44px; flex:1; border:1px solid #e6dcef; border-radius:9px; background:var(--brand-dim); color:#7543ac; font:inherit; font-size:12px; }
   .solvex-react .rx-team-members-desktop { display:none; }
   .solvex-react .rx-team-members-mobile { display:grid; gap:10px; }
   .solvex-react .rx-team-member { border:1px solid #e9e3f1; border-radius:12px; overflow:hidden; }
@@ -252,8 +252,8 @@ body.solvex-react:has(.svx-order-sheet:modal) { overflow:hidden; }
 
   .solvex-react .aim-metrics { grid-template-columns:repeat(2,minmax(0,1fr)); margin-top:12px; border-radius:14px; }
   .solvex-react .aim-metrics > div { min-width:0; padding:13px 15px; border:0; }
-  .solvex-react .aim-metrics > div:first-child { display:grid; grid-column:1/-1; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding-block:14px; border-bottom:1px solid #eef1f7; }
-  .solvex-react .aim-metrics > div:nth-child(2) { border-right:1px solid #eef1f7; }
+  .solvex-react .aim-metrics > div:first-child { display:grid; grid-column:1/-1; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:10px; padding-block:14px; border-bottom:1px solid var(--border-subtle); }
+  .solvex-react .aim-metrics > div:nth-child(2) { border-right:1px solid var(--border-subtle); }
   .solvex-react .aim-metrics span { font-size:11px; }
   .solvex-react .aim-metrics strong { margin:6px 0 3px; overflow:visible; font-size:18px; line-height:1.3; white-space:normal; text-overflow:clip; overflow-wrap:anywhere; }
   .solvex-react .aim-metrics > div:first-child strong { min-width:0; margin:0; font-size:21px; }

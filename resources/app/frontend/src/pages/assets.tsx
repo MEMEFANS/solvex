@@ -39,10 +39,10 @@ function capitalView(item: CapitalRow) {
   let value = '—', positive = true;
   if (isFund) {
     value = item.amount != null ? signed(money(item.amount))
-      : item.size != null ? `${item.type === 'deposit' ? '+' : '−'}${formatDecimal(item.size, 8)} ${String(item.symbol || 'USDT').toUpperCase()}` : '—';
+      : item.size != null ? `${item.type === 'deposit' ? '+' : '−'}${formatDecimal(item.size, String(item.symbol || 'USDT').toUpperCase() === 'A' ? 2 : 6)} ${String(item.symbol || 'USDT').toUpperCase()}` : '—';
     positive = item.type === 'deposit';
   } else if (isAix) {
-    value = item.size != null ? `${item.side === 'buy' ? '+' : '−'}${formatDecimal(item.size, 4)} SVX` : '—';
+    value = item.size != null ? `${item.side === 'buy' ? '+' : '−'}${formatDecimal(item.size, 2)} SVX` : '—';
     positive = item.side === 'buy';
   } else if (net != null) {
     value = signed(money(net)); positive = !String(net).startsWith('-');
@@ -53,9 +53,9 @@ function capitalView(item: CapitalRow) {
     typeLabel: TYPE_LABEL[item.type] || item.type || '账户变动',
     market: isFund ? String(item.symbol || 'USDT').toUpperCase() : item.symbol ? `${item.symbol}/USDT` : '—',
     side: isFund ? (item.type === 'deposit' ? '充入' : '提出') : item.side === 'buy' ? (isAix ? '买入' : '买入/做多') : item.side === 'sell' ? (isAix ? '卖出' : '卖出/做空') : '—',
-    size: item.size == null ? '—' : formatDecimal(item.size, 8),
+    size: item.size == null ? '—' : formatDecimal(item.size, (isAix || String(item.symbol || '').toUpperCase() === 'A') ? 2 : 6),
     price: item.price == null ? '—' : formatDecimal(item.price, isAix ? 6 : 2),
-    fee: item.fee == null || isFund ? '—' : `${formatDecimal(item.fee, isAix ? 4 : 2)} ${isAix ? 'SVX' : 'USDT'}`,
+    fee: item.fee == null || isFund ? '—' : `${formatDecimal(item.fee, 2)} ${isAix ? 'SVX' : 'USDT'}`,
     value, positive,
     status: isFund ? (item.type === 'deposit' ? '已到账' : statusLabel(item.status)) : item.liquidation ? '已强平' : '已完成',
   };
@@ -224,26 +224,26 @@ export default function AssetsPage() {
 
           <RecordBlock title="跟单收益">
             <div className="account-history"><table><thead><tr><th>入账时间</th><th>跟单批次</th><th>资产</th><th>收益</th><th>收益日期</th><th>状态</th></tr></thead><tbody>
-              {rewards.map((row, index) => { const loss = row.status === 'loss' || String(row.amount || '').startsWith('-'); return <tr key={index}><td>{time(row.createdAt)}</td><td>{row.batchId ? row.batchId.slice(-8).toUpperCase() : '-'}</td><td>{row.asset || 'USDT'}</td><td className={loss ? 'down' : 'up'}>{loss ? '-' : '+'}{formatDecimal(row.amount, 8)}</td><td>{row.rewardDate || '-'}</td><td>{statusLabel(row.status)}</td></tr>; })}
+              {rewards.map((row, index) => { const loss = row.status === 'loss' || String(row.amount || '').startsWith('-'); return <tr key={index}><td>{time(row.createdAt)}</td><td>{row.batchId ? row.batchId.slice(-8).toUpperCase() : '-'}</td><td>{row.asset || 'USDT'}</td><td className={loss ? 'down' : 'up'}>{loss ? '-' : '+'}{formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6)}</td><td>{row.rewardDate || '-'}</td><td>{statusLabel(row.status)}</td></tr>; })}
               {!rewards.length && <tr><td colSpan={6} className="account-empty">暂无跟单收益</td></tr>}
             </tbody></table></div>
-            <div className="rec-cards">{rewards.map((row, index) => { const loss = row.status === 'loss' || String(row.amount || '').startsWith('-'); return <RecordCard key={index} title="跟单收益" amount={(loss ? '-' : '+') + formatDecimal(row.amount, 8)} positive={!loss} meta={time(row.createdAt, true)} details={[['批次', row.batchId ? row.batchId.slice(-8).toUpperCase() : '-'], ['资产', row.asset || 'USDT'], ['收益日期', row.rewardDate || '-'], ['状态', statusLabel(row.status)]]} />; })}{!rewards.length && <EmptyCard text="暂无跟单收益" />}</div>
+            <div className="rec-cards">{rewards.map((row, index) => { const loss = row.status === 'loss' || String(row.amount || '').startsWith('-'); return <RecordCard key={index} title="跟单收益" amount={(loss ? '-' : '+') + formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6)} positive={!loss} meta={time(row.createdAt, true)} details={[['批次', row.batchId ? row.batchId.slice(-8).toUpperCase() : '-'], ['资产', row.asset || 'USDT'], ['收益日期', row.rewardDate || '-'], ['状态', statusLabel(row.status)]]} />; })}{!rewards.length && <EmptyCard text="暂无跟单收益" />}</div>
           </RecordBlock>
 
           <RecordBlock title="充值记录">
             <div className="account-history"><table><thead><tr><th>时间</th><th>网络</th><th>资产</th><th>数量</th><th>确认进度</th><th>状态</th><th>交易哈希</th></tr></thead><tbody>
-              {deposits.map((row, index) => <tr key={index}><td>{time(row.createdAt)}</td><td>{row.networkName || row.network}</td><td>{row.asset}</td><td>{row.amount == null ? '检测中' : formatDecimal(row.amount, 8)}</td><td>{row.status === 'confirmed' ? '完成' : `${row.confirmations || 0}/${row.confirmationsRequired || 0}`}</td><td><span className={'status-chip ' + row.status}>{statusLabel(row.status)}</span></td><td>{row.txHash ? <a href={row.explorerUrl || '#'} target="_blank" rel="noopener" style={{ color:'#1c5cad' }}>{shortAddr(row.txHash)}</a> : '-'}</td></tr>)}
+              {deposits.map((row, index) => <tr key={index}><td>{time(row.createdAt)}</td><td>{row.networkName || row.network}</td><td>{row.asset}</td><td>{row.amount == null ? '检测中' : formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6)}</td><td>{row.status === 'confirmed' ? '完成' : `${row.confirmations || 0}/${row.confirmationsRequired || 0}`}</td><td><span className={'status-chip ' + row.status}>{statusLabel(row.status)}</span></td><td>{row.txHash ? <a href={row.explorerUrl || '#'} target="_blank" rel="noopener" style={{ color:'#1c5cad' }}>{shortAddr(row.txHash)}</a> : '-'}</td></tr>)}
               {!deposits.length && <tr><td colSpan={7} className="account-empty">暂无充值记录</td></tr>}
             </tbody></table></div>
-            <div className="rec-cards">{deposits.map((row, index) => <RecordCard key={index} title="充值" amount={'+' + formatDecimal(row.amount, 8) + ' ' + row.asset} positive meta={time(row.createdAt, true)} details={[['网络', row.networkName || row.network], ['状态', statusLabel(row.status)], ['确认', row.status === 'confirmed' ? '完成' : `${row.confirmations || 0}/${row.confirmationsRequired || 0}`], ['交易', row.txHash ? shortAddr(row.txHash) : '-']]} />)}{!deposits.length && <EmptyCard text="暂无充值记录" />}</div>
+            <div className="rec-cards">{deposits.map((row, index) => <RecordCard key={index} title="充值" amount={'+' + formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6) + ' ' + row.asset} positive meta={time(row.createdAt, true)} details={[['网络', row.networkName || row.network], ['状态', statusLabel(row.status)], ['确认', row.status === 'confirmed' ? '完成' : `${row.confirmations || 0}/${row.confirmationsRequired || 0}`], ['交易', row.txHash ? shortAddr(row.txHash) : '-']]} />)}{!deposits.length && <EmptyCard text="暂无充值记录" />}</div>
           </RecordBlock>
 
           <RecordBlock title="提现记录">
             <div className="account-history"><table><thead><tr><th>时间</th><th>网络</th><th>资产</th><th>数量</th><th>状态</th><th>交易哈希</th></tr></thead><tbody>
-              {withdrawals.map((row, index) => <tr key={index}><td>{time(row.createdAt)}</td><td>{row.networkName || row.network || '-'}</td><td>{row.asset}</td><td>{formatDecimal(row.amount, 8)}</td><td><span className={'status-chip ' + row.status} title={row.reason}>{statusLabel(row.status)}</span></td><td>{row.txHash ? <a href={row.explorerUrl || '#'} target="_blank" rel="noopener" style={{ color:'#1c5cad' }}>{shortAddr(row.txHash)}</a> : '-'}</td></tr>)}
+              {withdrawals.map((row, index) => <tr key={index}><td>{time(row.createdAt)}</td><td>{row.networkName || row.network || '-'}</td><td>{row.asset}</td><td>{formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6)}</td><td><span className={'status-chip ' + row.status} title={row.reason}>{statusLabel(row.status)}</span></td><td>{row.txHash ? <a href={row.explorerUrl || '#'} target="_blank" rel="noopener" style={{ color:'#1c5cad' }}>{shortAddr(row.txHash)}</a> : '-'}</td></tr>)}
               {!withdrawals.length && <tr><td colSpan={6} className="account-empty">暂无提现记录</td></tr>}
             </tbody></table></div>
-            <div className="rec-cards">{withdrawals.map((row, index) => <RecordCard key={index} title="提现" amount={'−' + formatDecimal(row.amount, 8) + ' ' + row.asset} positive={false} meta={time(row.createdAt, true)} details={[['网络', row.networkName || row.network || '-'], ['状态', statusLabel(row.status)], ['交易', row.txHash ? shortAddr(row.txHash) : '-']]} />)}{!withdrawals.length && <EmptyCard text="暂无提现记录" />}</div>
+            <div className="rec-cards">{withdrawals.map((row, index) => <RecordCard key={index} title="提现" amount={'−' + formatDecimal(row.amount, String(row.asset || 'USDT').toUpperCase() === 'A' ? 2 : 6) + ' ' + row.asset} positive={false} meta={time(row.createdAt, true)} details={[['网络', row.networkName || row.network || '-'], ['状态', statusLabel(row.status)], ['交易', row.txHash ? shortAddr(row.txHash) : '-']]} />)}{!withdrawals.length && <EmptyCard text="暂无提现记录" />}</div>
           </RecordBlock>
         </>}
 

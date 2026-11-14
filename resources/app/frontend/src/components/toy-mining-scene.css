@@ -2,8 +2,8 @@
 
 .solvex-react .rx-cavern[data-scene-style=toy] { border-color:#e2e2ef; border-radius:20px; box-shadow:0 8px 36px -22px #453a9840; scroll-margin-top:80px; }
 .solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-heading { padding:18px 22px; }
-.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-icon { width:40px; height:40px; border-color:#e6ddfb; border-radius:12px; color:#7445d7; background:linear-gradient(135deg,#f6f1ff,#eef6ff); }
-.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state { color:#7354b2; border-color:#e6ddf6; background:#f8f5ff; }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-icon { width:40px; height:40px; border-color:#e6ddfb; border-radius:12px; color:#7445d7; background:linear-gradient(135deg,var(--brand-dim),var(--panel2)); }
+.solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state { color:#7354b2; border-color:#e6ddf6; background:var(--brand-dim); }
 .rx-cavern[data-scene-style=toy] .rx-cavern-state i { background:#9365e5; }
 .solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-state.is-active { color:#12856b; background:#f1faf7; border-color:#d4ece2; }
 .rx-cavern[data-scene-style=toy] .rx-cavern-state.is-active i { background:#20a080; }
@@ -30,11 +30,11 @@
 .rx-cavern-motes { position:absolute; inset:0; pointer-events:none; }.rx-cavern-motes i { position:absolute; left:12%; top:32%; width:3px; height:3px; border-radius:50%; background:#b7d6ff; box-shadow:0 0 9px #6fafff; opacity:0; animation:rx-toy-mote 6s ease-in-out infinite; animation-play-state:paused; }
 .rx-cavern-motes i:nth-child(2) { left:34%; top:41%; animation-delay:-2s; }.rx-cavern-motes i:nth-child(3) { left:59%; top:26%; animation-delay:-4s; }.rx-cavern-motes i:nth-child(4) { left:68%; top:44%; animation-delay:-1s; }.rx-cavern-motes i:nth-child(5) { left:89%; top:31%; animation-delay:-3s; }.rx-cavern-motes i:nth-child(6) { left:43%; top:56%; animation-delay:-5s; }
 .rx-cavern[data-animation-running=true] .rx-cavern-impact,.rx-cavern[data-animation-running=true] .rx-cavern-motes i { animation-play-state:running; }
-.rx-cavern-zones { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid #ece8f2; border-bottom:1px solid #ece8f2; padding:12px 14px; gap:10px; background:linear-gradient(180deg,#faf9fd,#f7f8fc); }
-.rx-cavern-zones button { --zone:#b67545; --zone-soft:#f8eee4; display:flex; align-items:center; gap:10px; text-align:left; padding:10px 13px; min-width:0; border:1px solid #eae5ef; border-radius:12px; background:#f7f8fc; cursor:pointer; transition:background .2s,border-color .2s,box-shadow .2s; }
+.rx-cavern-zones { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); border-top:1px solid #ece8f2; border-bottom:1px solid #ece8f2; padding:12px 14px; gap:10px; background:linear-gradient(180deg,var(--panel2),var(--panel)); }
+.rx-cavern-zones button { --zone:#b67545; --zone-soft:#f8eee4; display:flex; align-items:center; gap:10px; text-align:left; padding:10px 13px; min-width:0; border:1px solid #eae5ef; border-radius:12px; background:var(--panel); cursor:pointer; transition:background .2s,border-color .2s,box-shadow .2s; }
 .rx-cavern-zones button[data-tone=silver] { --zone:#7e94b4; --zone-soft:#edf2f9; }.rx-cavern-zones button[data-tone=gold] { --zone:#c09a40; --zone-soft:#fbf4e2; }
 .rx-cavern-zones button:hover,.rx-cavern-zones button[aria-pressed=true] { border-color:var(--zone); background:var(--zone-soft); box-shadow:0 2px 6px #3c2e5606; }
-.rx-cavern-zone-gem { display:block; width:24px; height:27px; flex-shrink:0; background:linear-gradient(140deg,#f7f8fc 0%,var(--zone) 40%,var(--zone-soft) 42%,var(--zone) 100%); clip-path:polygon(25% 0,75% 0,100% 40%,50% 100%,0 40%); }
+.rx-cavern-zone-gem { display:block; width:24px; height:27px; flex-shrink:0; background:linear-gradient(140deg,var(--panel) 0%,var(--zone) 40%,var(--zone-soft) 42%,var(--zone) 100%); clip-path:polygon(25% 0,75% 0,100% 40%,50% 100%,0 40%); }
 .rx-cavern-zones button>span:nth-child(2) { min-width:0; flex:1; }.rx-cavern-zones strong { display:block; color:#39344d; font-size:12px; line-height:1.6; font-weight:600; }.rx-cavern-zones small { display:block; color:#8b829a; font-size:10px; line-height:1.6; }.rx-cavern-zones svg { color:var(--zone); flex-shrink:0; }
 .solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-footer { border:0; padding:14px 22px; }.rx-cavern[data-scene-style=toy] .rx-cavern-footer p { color:#7d738d; }.rx-cavern[data-scene-style=toy] .rx-cavern-footer small { color:#a29aac; }.rx-cavern[data-scene-style=toy] .rx-cavern-swipe { color:#9a8eab; }
 @keyframes rx-toy-swing { 0% { background-position:0 0; } 18.181818% { background-position:33.333333% 0; } 30.909091% { background-position:66.666667% 0; } 44.545455% { background-position:100% 0; } 50.909091% { background-position:0 100%; } 60% { background-position:33.333333% 100%; } 68.181818% { background-position:66.666667% 100%; } 79.090909% { background-position:100% 100%; } 100% { background-position:0 0; } }

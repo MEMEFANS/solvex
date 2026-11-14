@@ -1,46 +1,17 @@
 /* ─────────────────────────────────────────────────────────────
    Solvex UI system — layout, rhythm and surface rules.
-   Loaded last. Uses the tokens defined once in brand-theme.css;
+   Layout uses the shared brand-palette.css tokens;
    this file never redefines theme variables.
-   Direction: editorial fintech dashboard — paper-white planes on a
+   Direction: editorial fintech dashboard — muted violet-blue planes on a
    soft tinted canvas, one violet accent, tabular numerals, hairline rules.
    ───────────────────────────────────────────────────────────── */
 
 /* 1. Page canvas --------------------------------------------------------- */
 body.solvex-react {
-  background: #eef1f7;
+  background: var(--panel2);
   background-attachment: fixed;
 }
 
-/* Second pass: a lower-luminance mist palette for users sensitive to bright
-   white surfaces. Keep semantic colors and dark feature panels unchanged. */
-body.solvex-react { background:#e7e9ee; }
-.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f1f2f4 0,#eceef1 100%); border-right-color:#d7dbe1; }
-.solvex-react .rx-topbar { background:#eef0f2f2; border-bottom-color:#d6d9df; }
-.solvex-react .ui-card { background:#f5f6f7; border-color:#d7dbe1; box-shadow:0 3px 16px #3f465218; }
-.solvex-react .ui-card,
-.solvex-react .rx-partner-plan .pp-tier-card,
-.solvex-react .rx-partner-plan .pp-qualification-card,
-.solvex-react .rx-partner-plan .pp-records-card { background:#f5f6f7 !important; }
-.solvex-react .rx-sidebar-help { background:linear-gradient(135deg,#e4e5e9,#dfe1e6); border-color:#d3d6dc; }
-.solvex-react .ui-button.border { background:#eef0f2; border-color:#d2d6dd; }
-.solvex-react .ui-tab[data-state=active] { background:#f1f2f4; }
-
-/* Gentle light palette: soften the white canvas and saturated violet contrast
-   while keeping text and primary actions readable. */
-body.solvex-react { background:#eef0f4; color:#303746; }
-body.solvex-react::before { background-image:radial-gradient(circle at 1px 1px,#7569a00a 1px,transparent 0); }
-.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f8f9fa 0,#f4f5f7 100%); border-right-color:#e0e3e8; }
-.solvex-react .rx-topbar { background:#f6f7f8e8; border-bottom-color:#dfe2e7; }
-.solvex-react .ui-card { background:#fafbfc; border-color:#dfe3e8; box-shadow:0 3px 16px #3f46520b; }
-.solvex-react .ui-tabs { background:#e7e9ed; border-color:#dfe2e7; }
-.solvex-react .ui-tab[data-state=active] { color:#5c5684; background:#f9fafb; }
-.solvex-react .ui-button.bg-primary { background:linear-gradient(110deg,#6f66b4,#5d78b2); box-shadow:0 5px 14px #6873a329; }
-.solvex-react .ui-button.bg-primary:hover { background:linear-gradient(110deg,#665ca7,#5570a8); }
-.solvex-react .rx-nav button.is-active { color:#514c78; background:linear-gradient(100deg,#eeedf8,#f4f3fa); box-shadow:inset 0 0 0 1px #deddec; }
-.solvex-react .rx-nav button:hover { background:#eeeff3; color:#5f5a88; }
-.solvex-react .rx-wallet #wallet-connect-btn,.solvex-react .rx-wallet #wallet-connect-btn.connected { color:#5a5874; background:#f1f2f4; border-color:#dfe2e7; }
-.solvex-react .rx-wallet #wallet-connect-btn:hover { background:#e9ebef; border-color:#cfd4dc; color:#514e6f; }
 body.solvex-react::before {
   content: "";
   position: fixed;
@@ -59,7 +30,7 @@ body.solvex-react::before {
 .solvex-react .rx-sidebar {
   width: 224px;
   padding: 22px 14px 16px;
-  background: linear-gradient(180deg, #f7f8fc 0, #fdfdff 100%);
+  background: linear-gradient(180deg, var(--panel) 0, var(--panel) 100%);
   border-right: 1px solid #e7ebf3;
   box-shadow: 1px 0 0 #ffffff;
 }
@@ -102,11 +73,11 @@ body.solvex-react::before {
   color: #4d566c;
   transition: background .16s ease, color .16s ease;
 }
-.solvex-react .rx-nav button:hover { background: #f4f2fd; color: #4d2ab0; transform: none; }
+.solvex-react .rx-nav button:hover { background: #f4f2fd; color: var(--brand-strong); transform: none; }
 .solvex-react .rx-nav button.is-active {
   position: relative;
   color: #3f1c9e;
-  background: linear-gradient(100deg, #f2ecff, #f7f4ff);
+  background: linear-gradient(100deg, var(--brand-dim), var(--brand-dim));
   box-shadow: inset 0 0 0 1px #e6dcff;
   font-weight: 650;
 }
@@ -118,10 +89,10 @@ body.solvex-react::before {
   bottom: 11px;
   width: 3px;
   border-radius: 3px;
-  background: linear-gradient(180deg, #7758c4, #4d2ab0);
+  background: linear-gradient(180deg, #7758c4, var(--brand-strong));
 }
-.solvex-react .rx-nav button.is-active svg { color: #4d2ab0; }
-.solvex-react .rx-nav-dot { width: 5px; height: 5px; background: #5b3fc0; box-shadow: none; }
+.solvex-react .rx-nav button.is-active svg { color: var(--brand-strong); }
+.solvex-react .rx-nav-dot { width: 5px; height: 5px; background: var(--brand); box-shadow: none; }
 .solvex-react .rx-nav button.is-active .rx-nav-dot { display: none; }
 .solvex-react .rx-nav-separator { margin: 10px 12px; background: #edf0f7; }
 .solvex-react .rx-sidebar-bottom { padding-top: 20px; }
@@ -129,13 +100,13 @@ body.solvex-react::before {
   margin: 0 2px;
   padding: 16px 14px;
   border-radius: 12px;
-  background: linear-gradient(150deg, #f6f2ff, #fbfaff 70%);
+  background: linear-gradient(150deg, var(--brand-dim), var(--panel) 70%);
   border: 1px solid #ece5fb;
 }
 .solvex-react .rx-sidebar-help > svg { margin-bottom: 8px; color: #6d4bd0; }
 .solvex-react .rx-sidebar-help strong { color: #2c2f45; font-size: 12px; line-height: 1.6; }
 .solvex-react .rx-sidebar-help p { color: #6b7288; font-size: 11px; line-height: 1.7; margin: 5px 0 10px; }
-.solvex-react .rx-sidebar-help button { color: #4d2ab0; }
+.solvex-react .rx-sidebar-help button { color: var(--brand-strong); }
 .solvex-react .rx-sidebar-foot { margin: 16px 6px 0; font-size: 10px; color: #8a91a6; }
 
 /* 3. Top bar ------------------------------------------------------------- */
@@ -143,7 +114,7 @@ body.solvex-react::before {
   left: 224px;
   height: 66px;
   padding: 0 32px;
-  background: #ffffffd9;
+  background: var(--chrome);
   border-bottom: 1px solid #e7ebf3;
   backdrop-filter: blur(18px) saturate(1.4);
 }
@@ -153,7 +124,7 @@ body.solvex-react::before {
   padding: 6px 11px;
   border: 1px solid #e8ecf4;
   border-radius: 999px;
-  background: #fbfcfe;
+  background: var(--panel);
   font-size: 11px;
   color: #6b7488;
 }
@@ -166,11 +137,11 @@ body.solvex-react::before {
   font-weight: 600;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   border: 0;
   box-shadow: 0 6px 16px -8px #4d21b899;
 }
-.solvex-react .rx-wallet #wallet-connect-btn:hover { background: linear-gradient(110deg, #6330d8, #4b38d2); }
+.solvex-react .rx-wallet #wallet-connect-btn:hover { background: linear-gradient(110deg, var(--brand-strong), var(--brand-2)); }
 
 /* 4. Page frame + heading ------------------------------------------------ */
 .solvex-react .rx-page {
@@ -200,7 +171,7 @@ body.solvex-react::before {
   width: 18px;
   height: 2px;
   border-radius: 2px;
-  background: linear-gradient(90deg, #5b3fc0, #3d8fc4);
+  background: linear-gradient(90deg, var(--brand), #3d8fc4);
 }
 .solvex-react .rx-heading h1 {
   margin-top: 8px;
@@ -221,10 +192,10 @@ body.solvex-react::before {
   padding-inline: 14px;
   border-color: #e2e7f0;
   color: #4a5266;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172808;
 }
-.solvex-react .rx-heading-actions .ui-button:hover { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
+.solvex-react .rx-heading-actions .ui-button:hover { border-color: #cdbdf5; color: var(--brand-strong); background: var(--panel); }
 .solvex-react .rx-heading-actions .ui-button.size-10 { width: 38px; padding: 0; }
 
 /* 5. Tabs ---------------------------------------------------------------- */
@@ -232,7 +203,7 @@ body.solvex-react::before {
   display: inline-flex;
   gap: 2px;
   padding: 4px;
-  background: #eef1f7;
+  background: var(--panel2);
   border: 1px solid #e4e8f1;
   border-radius: 12px;
   box-shadow: inset 0 1px 2px #10172805;
@@ -248,10 +219,10 @@ body.solvex-react::before {
   color: #5d6579;
   transition: color .16s ease, background .16s ease, box-shadow .16s ease;
 }
-.solvex-react .ui-tab:hover { color: #33285a; background: #e6e9f2; }
+.solvex-react .ui-tab:hover { color: #33285a; background: var(--panel2); }
 .solvex-react .ui-tab[data-state=active] {
   color: #3f1c9e;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
 }
 .solvex-react .rx-earn-tabs { margin-top: 2px; }
@@ -286,7 +257,7 @@ body.solvex-react::before {
   padding: 4px 9px;
   border: 1px solid #e2e7f0;
   border-radius: 999px;
-  background: #f7f9fc;
+  background: var(--panel);
   color: #5f687d;
   font-size: 11px;
   font-weight: 550;
@@ -298,9 +269,9 @@ body.solvex-react::before {
   width: 40px;
   height: 40px;
   border-radius: 11px;
-  background: #f3eeff;
+  background: var(--brand-dim);
   border: 1px solid #e7ddff;
-  color: #4d2ab0;
+  color: var(--brand-strong);
 }
 .solvex-react .rx-muted { font-size: 12px; color: #6e778c; }
 .solvex-react .rx-note { font-size: 12.5px; line-height: 1.85; color: #626b80; }
@@ -318,7 +289,7 @@ body.solvex-react::before {
   text-align: center;
   background:
     radial-gradient(ellipse at 50% 0, #f4efff 0, transparent 62%),
-    #fff;
+    var(--panel);
 }
 .solvex-react .rx-gate .rx-icon { width: 48px; height: 48px; border-radius: 14px; margin-bottom: 18px; }
 .solvex-react .rx-gate h2 { font-size: 20px; font-weight: 650; color: #191f32; letter-spacing: -.2px; }
@@ -338,7 +309,7 @@ body.solvex-react::before {
 .solvex-react .rx-table { width: 100%; border-collapse: collapse; }
 .solvex-react .rx-table th {
   padding: 11px 14px;
-  background: #f7f9fc;
+  background: var(--panel);
   border-bottom: 1px solid #e8ecf4;
   color: #6b7488;
   font-size: 11px;
@@ -349,7 +320,7 @@ body.solvex-react::before {
 }
 .solvex-react .rx-table td {
   padding: 14px;
-  border-bottom: 1px solid #eef1f7;
+  border-bottom: 1px solid var(--border-subtle);
   color: #3a4256;
   font-size: 12.5px;
 }
@@ -357,24 +328,24 @@ body.solvex-react::before {
 .solvex-react .rx-table th + th,
 .solvex-react .rx-table td + td { text-align: right; }
 .solvex-react .rx-table tr:last-child td { border-bottom: 0; }
-.solvex-react .rx-table tbody tr:hover { background: #fafbfe; }
+.solvex-react .rx-table tbody tr:hover { background: var(--panel); }
 
 /* 7. Buttons ------------------------------------------------------------- */
 .solvex-react .ui-button { border-radius: 10px; font-weight: 550; }
 .solvex-react .ui-button.bg-primary {
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   box-shadow: 0 8px 18px -12px #4d21b8cc;
 }
-.solvex-react .ui-button.bg-primary:hover { background: linear-gradient(110deg, #6330d8, #4b38d2); }
-.solvex-react .ui-button.border { border-color: #e2e7f0; color: #454d61; background:#f7f8fc; }
-.solvex-react .ui-button.border:hover { border-color: #cbb9f2; color: #4d2ab0; background: #fbfaff; }
+.solvex-react .ui-button.bg-primary:hover { background: linear-gradient(110deg, var(--brand-strong), var(--brand-2)); }
+.solvex-react .ui-button.border { border-color: #e2e7f0; color: #454d61; background:var(--panel); }
+.solvex-react .ui-button.border:hover { border-color: #cbb9f2; color: var(--brand-strong); background: var(--panel); }
 
 /* 8. 矿池：账户概览 ------------------------------------------------------ */
 .solvex-react .rx-pool-summary {
   display: grid;
   grid-template-columns: minmax(360px, 1.02fr) minmax(0, 1.6fr);
   gap: 0;
-  background:#f7f8fc;
+  background:var(--panel);
   border: 1px solid #e6eaf2;
   border-radius: 16px;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
@@ -387,9 +358,9 @@ body.solvex-react::before {
   gap: 14px;
   padding: 16px 20px;
   border: 0;
-  border-right: 1px solid #eef1f7;
+  border-right: 1px solid var(--border-subtle);
   border-radius: 0;
-  background: linear-gradient(135deg, #f7f2ff 0, #fbf9ff 58%, #f7f8fc 100%);
+  background: linear-gradient(135deg, var(--brand-dim) 0, var(--brand-dim) 58%, var(--panel) 100%);
   box-shadow: none;
 }
 .solvex-react .rx-claim-main { display: flex; align-items: center; gap: 11px; min-width: 0; }
@@ -398,9 +369,9 @@ body.solvex-react::before {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background:#f7f8fc;
+  background:var(--panel);
   border: 1px solid #e7ddff;
-  color: #4d2ab0;
+  color: var(--brand-strong);
 }
 .solvex-react .rx-claim-copy { display: flex; flex: 1 1 auto; flex-direction: column; min-width: 0; }
 .solvex-react .rx-claim-label {
@@ -425,23 +396,23 @@ body.solvex-react::before {
   overflow: hidden;
 }
 .solvex-react .rx-claim-copy > strong small { margin-left: 4px; font-size: 11px; font-weight: 500; color: #6b6386; letter-spacing: 0; }
-.solvex-react .rx-claim-usdt { margin-top: 1px; color: #4d2ab0; font-size: 11px; }
+.solvex-react .rx-claim-usdt { margin-top: 1px; color: var(--brand-strong); font-size: 11px; }
 .solvex-react .rx-claim-actions { display: flex; align-items: center; gap: 6px; }
 .solvex-react .rx-claim-actions .ui-button { min-height: 36px; font-size: 12px; padding-inline: 13px; white-space: nowrap; }
 .solvex-react .rx-claim-actions .ui-button:first-child {
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   border-color: transparent;
   color: #fff;
   box-shadow: 0 8px 16px -12px #4d21b8cc;
 }
-.solvex-react .rx-claim-actions .ui-button:last-child { color: #4d2ab0; background: transparent; }
-.solvex-react .rx-claim-actions .ui-button:last-child:hover { background: #f2ecff; }
+.solvex-react .rx-claim-actions .ui-button:last-child { color: var(--brand-strong); background: transparent; }
+.solvex-react .rx-claim-actions .ui-button:last-child:hover { background: var(--brand-dim); }
 
 .solvex-react .rx-metrics {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: 0;
-  background:#f7f8fc;
+  background:var(--panel);
   border: 1px solid #e6eaf2;
   border-radius: 16px;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
@@ -455,10 +426,10 @@ body.solvex-react::before {
   justify-content: center;
   padding: 14px 18px;
   border: 0;
-  border-right: 1px solid #eef1f7;
+  border-right: 1px solid var(--border-subtle);
   border-bottom: 0;
 }
-.solvex-react .rx-metric:nth-child(2n) { border-right: 1px solid #eef1f7; }
+.solvex-react .rx-metric:nth-child(2n) { border-right: 1px solid var(--border-subtle); }
 .solvex-react .rx-metric:nth-child(4n) { border-right: 0; }
 .solvex-react .rx-metrics:has(> :nth-child(2):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .solvex-react .rx-note + .rx-table-wrap { margin-top: 12px; }
@@ -484,7 +455,7 @@ body.solvex-react::before {
 .solvex-react .rx-tier {
   padding: 20px;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   border: 1px solid #e6eaf2;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
   overflow: hidden;
@@ -512,7 +483,7 @@ body.solvex-react::before {
   padding: 4px 9px;
   border: 1px solid #e8ecf4;
   border-radius: 999px;
-  background: #fafbfd;
+  background: var(--panel);
   font-size: 11px;
   color: #6b7488;
 }
@@ -544,7 +515,7 @@ body.solvex-react::before {
   gap: 5px;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid #eef1f7;
+  border-top: 1px solid var(--border-subtle);
   font-size: 11.5px;
   color: #6b7488;
 }
@@ -563,7 +534,7 @@ body.solvex-react::before {
   font-size: 12.5px;
   font-weight: 600;
   color: #fff;
-  background: var(--metal-btn, #4d2ab0);
+  background: var(--metal-btn, var(--brand-strong));
   border: 0;
   border-radius: 10px;
   box-shadow: inset 0 1px 0 #ffffff2e;
@@ -577,7 +548,7 @@ body.solvex-react::before {
   padding: 10px 14px;
   border: 1px dashed #e4e9f2;
   border-radius: 10px;
-  background: #fafbfd;
+  background: var(--panel);
   font-size: 11.5px;
   line-height: 1.7;
   color: #6b7488;
@@ -601,7 +572,7 @@ body.solvex-react::before {
 .solvex-react .rx-cavern {
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
 }
 .solvex-react .rx-cavern-heading { padding: 14px 18px; }
@@ -623,9 +594,9 @@ body.solvex-react::before {
 .solvex-react .rx-pool-live .rx-positions { grid-template-columns: 1fr; gap: 10px; max-height: 420px; overflow-y: auto; scrollbar-width: thin; }
 .solvex-react .rx-position {
   padding: 14px;
-  border: 1px solid #eef1f7;
+  border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  background: #fbfcfe;
+  background: var(--panel);
 }
 .solvex-react .rx-position:hover { border-color: #dcd2f6; }
 .solvex-react .rx-position-head { gap: 10px; }
@@ -641,11 +612,11 @@ body.solvex-react::before {
   letter-spacing: -.3px;
 }
 .solvex-react .rx-position-principal small { font-size: 10.5px; color: #8a93a8; }
-.solvex-react .rx-position-stats { margin-top: 12px; padding-top: 12px; border-color: #eef1f7; }
+.solvex-react .rx-position-stats { margin-top: 12px; padding-top: 12px; border-color: var(--border-subtle); }
 .solvex-react .rx-position-stats span { font-size: 10.5px; color: #7a8499; }
 .solvex-react .rx-position-stats strong { font-size: 12px; font-weight: 600; color: #333b50; }
 .solvex-react .rx-progress { height: 4px; margin-top: 14px; background: #edf0f7; border-radius: 4px; overflow: hidden; }
-.solvex-react .rx-progress > i { background: linear-gradient(90deg, #9583d0, #5b3fc0); border-radius: 4px; }
+.solvex-react .rx-progress > i { background: linear-gradient(90deg, #9583d0, var(--brand)); border-radius: 4px; }
 .solvex-react .rx-position-foot { margin-top: 8px; font-size: 10.5px; color: #8a93a8; }
 .solvex-react .rx-claim-copy > strong,
 .solvex-react .rx-tier-rate,
@@ -669,14 +640,14 @@ body.solvex-react::before {
   padding: 4px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -28px #1b254a3d;
 }
 .solvex-react .rx-getting-started > div {
   align-items: flex-start;
   gap: 12px;
   padding: 18px 20px;
-  border-right: 1px solid #eef1f7;
+  border-right: 1px solid var(--border-subtle);
 }
 .solvex-react .rx-getting-started > div:last-child { border-right: 0; }
 .solvex-react .rx-getting-started > div > span {
@@ -685,8 +656,8 @@ body.solvex-react::before {
   width: 28px;
   height: 28px;
   border-radius: 8px;
-  background: #f3eeff;
-  color: #4d2ab0;
+  background: var(--brand-dim);
+  color: var(--brand-strong);
   font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
   font-size: 12px;
   font-weight: 600;
@@ -700,12 +671,12 @@ body.solvex-react::before {
 .solvex-react .rx-metrics-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .solvex-react .rx-metrics-3 .rx-metric { border-bottom: 0; }
 .solvex-react .rx-metrics-3 .rx-metric:nth-child(3) { border-right: 0; }
-.solvex-react .rx-metrics-3 .rx-metric:nth-child(2n) { border-right: 1px solid #eef1f7; }
+.solvex-react .rx-metrics-3 .rx-metric:nth-child(2n) { border-right: 1px solid var(--border-subtle); }
 .solvex-react .rx-form-balance {
   padding: 14px 16px;
   border: 1px solid #e8edf5;
   border-radius: 12px;
-  background: #fafbfe;
+  background: var(--panel);
 }
 .solvex-react .rx-form-balance > span { font-size: 11px; color: #6b7488; }
 .solvex-react .rx-form-balance > strong {
@@ -714,10 +685,10 @@ body.solvex-react::before {
   font-weight: 600;
   color: #171d31;
 }
-.solvex-react .rx-input-group { height: 48px; border-color: #e2e7f0; border-radius: 10px; background:#f7f8fc; }
+.solvex-react .rx-input-group { height: 48px; border-color: #e2e7f0; border-radius: 10px; background:var(--panel); }
 .solvex-react .rx-input-group:focus-within { border-color: #9d7cf0; box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .rx-input-group input { font-size: 15px; }
-.solvex-react .rx-input-group button { color: #4d2ab0; font-size: 11px; font-weight: 650; }
+.solvex-react .rx-input-group button { color: var(--brand-strong); font-size: 11px; font-weight: 650; }
 .solvex-react .rx-amount-form label { font-size: 12px; color: #4a5266; }
 .solvex-react .rx-quote, .solvex-react .rx-form-trust { font-size: 11.5px; line-height: 1.7; color: #6b7488; }
 
@@ -730,7 +701,7 @@ body.solvex-react::before {
   padding: 6px;
   border: 1px solid #e6eaf2;
   border-radius: 12px;
-  background:#f7f8fc;
+  background:var(--panel);
 }
 .solvex-react .rx-play-nav button {
   min-height: 34px;
@@ -742,7 +713,7 @@ body.solvex-react::before {
   font-size: 12px;
   font-weight: 550;
 }
-.solvex-react .rx-play-nav button:hover { color: #4d2ab0; background: #f5f1ff; }
+.solvex-react .rx-play-nav button:hover { color: var(--brand-strong); background: var(--brand-dim); }
 .solvex-react .rx-play-section { gap: 12px; }
 .solvex-react .rx-play-section + .rx-play-section { padding-top: 28px; border-top: 1px solid #edf0f7; }
 .solvex-react .rx-play-section > .rx-stack { gap: 16px; }
@@ -750,12 +721,12 @@ body.solvex-react::before {
   padding: 22px;
   border: 1px solid #e6dcfb;
   border-radius: 16px;
-  background: linear-gradient(135deg, #f8f4ff, #f7f8fc 58%);
+  background: linear-gradient(135deg, var(--brand-dim), var(--panel) 58%);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #4d21b866;
 }
 .solvex-react .rx-blindbox-hero h3 { font-size: 20px; font-weight: 650; }
 .solvex-react .rx-blindbox-range { font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 40px; font-weight: 600; }
-.solvex-react .rx-stat-row > div { border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; }
+.solvex-react .rx-stat-row > div { border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--panel); }
 .solvex-react .rx-record-group h4 { font-size: 12px; color: #5d6579; }
 
 /* 15. 团队页 -------------------------------------------------------------- */
@@ -769,12 +740,12 @@ body.solvex-react::before {
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 88% 8%, #5b3fc014 0, transparent 58%),
-    linear-gradient(118deg, #f7f3ff, #f7f8fc 58%);
+    linear-gradient(118deg, var(--brand-dim), var(--panel) 58%);
   box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
 }
 .solvex-react .rx-team-hero .rx-kicker { color: #6b53a6; }
 .solvex-react .rx-sidebar-help > svg,
-.solvex-react .rx-sidebar-help button { color: #4d2ab0; }
+.solvex-react .rx-sidebar-help button { color: var(--brand-strong); }
 .solvex-react .rx-sidebar-help strong { color: #2c2f45; }
 .solvex-react .rx-sidebar-help p { color: #6b7288; }
 .solvex-react .rx-team-hero h2 {
@@ -794,13 +765,13 @@ body.solvex-react::before {
   border: 0;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   box-shadow: 0 10px 22px -14px #4d21b8cc;
 }
 .solvex-react .rx-level-orbit > span { border-color: #ded1fb; box-shadow: none; }
 .solvex-react .rx-level-orbit > div {
   border-color: #c9b6f8;
-  background: linear-gradient(145deg, #7758c4, #4d2ab0 72%);
+  background: linear-gradient(145deg, #7758c4, var(--brand-strong) 72%);
   box-shadow: 0 20px 36px -20px #4d21b8aa, inset 0 0 0 6px #ffffff1f;
 }
 .solvex-react .rx-level-orbit strong { color: #fff; }
@@ -808,14 +779,14 @@ body.solvex-react::before {
 .solvex-react .rx-team-grid { grid-template-columns: minmax(0, 1.42fr) minmax(300px, 1fr); gap: 20px; }
 .solvex-react .rx-team-grid .rx-table th { padding-block: 9px; }
 .solvex-react .rx-team-grid .rx-table td { padding-block: 9px; font-size: 12.5px; }
-.solvex-react .rx-team-grid .rx-table tr.is-current td { background: #faf7ff; }
+.solvex-react .rx-team-grid .rx-table tr.is-current td { background: var(--brand-dim); }
 .solvex-react .rx-team-next .rx-next-level { margin-top: 4px; font-size: 40px; }
 .solvex-react .rx-team-next .rx-target { margin: 17px 0; }
 .solvex-react .rx-invite-grid { grid-template-columns: minmax(0, .95fr) minmax(0, 1.35fr); gap: 20px; }
-.solvex-react .rx-invite-hero { padding: 30px; background: linear-gradient(130deg, #f7f4ff, #f7f8fc 62%); }
+.solvex-react .rx-invite-hero { padding: 30px; background: linear-gradient(130deg, var(--brand-dim), var(--panel) 62%); }
 .solvex-react .rx-invite-hero h2 { font-size: 29px; line-height: 1.42; color: #171d30; letter-spacing: -.4px; }
 .solvex-react .rx-invite-hero p { font-size: 12.5px; }
-.solvex-react .rx-invite-code { margin: 26px 0 14px; font-size: 27px; letter-spacing: 4px; color: #4d2ab0; }
+.solvex-react .rx-invite-code { margin: 26px 0 14px; font-size: 27px; letter-spacing: 4px; color: var(--brand-strong); }
 .solvex-react .rx-invite-link { height: 84px; font-size: 12px; }
 .solvex-react .rx-info-block p { font-size: 12px; line-height: 1.85; }
 
@@ -842,11 +813,11 @@ body.solvex-react::before {
 }
 .solvex-react .assets-wallet { flex: 0 1 auto; max-width: 100%; margin-top: 8px; font-size: 11.5px; color: #6b7488; }
 .solvex-react .assets-wallet code { font-family: "Bahnschrift", ui-monospace, monospace; font-size: 11.5px; color: #4d566c; letter-spacing: .02em; }
-.solvex-react .assets-wallet-dot { background: #5b3fc0; box-shadow: 0 0 0 3px #5b3fc01f; }
-.solvex-react .assets-uid { display: inline-flex; align-items: center; gap: 6px; width: auto; margin-top: 8px; padding: 3px 9px; border: 1px solid #e3e8f1; border-radius: 7px; background:#f7f8fc; color: #4d2ab0; font-size: 11px; }
+.solvex-react .assets-wallet-dot { background: var(--brand); box-shadow: 0 0 0 3px #5b3fc01f; }
+.solvex-react .assets-uid { display: inline-flex; align-items: center; gap: 6px; width: auto; margin-top: 8px; padding: 3px 9px; border: 1px solid #e3e8f1; border-radius: 7px; background:var(--panel); color: var(--brand-strong); font-size: 11px; }
 .solvex-react .assets-uid-label { color: #8a93a8; font-size: 10.5px; }
-.solvex-react .assets-uid-copy { color: #4d2ab0; font-size: 11px; font-weight: 600; }
-.solvex-react .partner-badge { margin-top: 8px; padding: 4px 10px; border: 1px solid #e0d3ff; border-radius: 999px; background: #f5f1ff; color: #4d2ab0; font-size: 11px; font-weight: 600; }
+.solvex-react .assets-uid-copy { color: var(--brand-strong); font-size: 11px; font-weight: 600; }
+.solvex-react .partner-badge { margin-top: 8px; padding: 4px 10px; border: 1px solid #e0d3ff; border-radius: 999px; background: var(--brand-dim); color: var(--brand-strong); font-size: 11px; font-weight: 600; }
 
 .solvex-react .assets-overview {
   grid-template-columns: minmax(320px, .92fr) minmax(0, 1.5fr);
@@ -854,16 +825,16 @@ body.solvex-react::before {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
 .solvex-react .assets-total {
   padding: 26px 30px;
-  border-right: 1px solid #eef1f7;
+  border-right: 1px solid var(--border-subtle);
   background:
     radial-gradient(ellipse at 84% 0, #5b3fc012 0, transparent 62%),
-    linear-gradient(120deg, #f7f4ff, #f7f8fc 72%);
+    linear-gradient(120deg, var(--brand-dim), var(--panel) 72%);
 }
 .solvex-react .assets-header > div { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; }
 .solvex-react .assets-header > div > div:first-child { width: 100%; }
@@ -885,7 +856,7 @@ body.solvex-react::before {
 .solvex-react .assets-overview .assets-total .assets-subvalue span { margin-top: 6px; font-size: 12px; color: #6b7488; }
 .solvex-react .assets-overview .assets-total .assets-subvalue b { color: #3d465c; font-weight: 600; }
 .solvex-react .assets-overview .assets-total strong small { font-size: 12px; font-weight: 600; letter-spacing: .06em; color: #6b7488; }
-.solvex-react .assets-overview .assets-total .assets-secondary-action { color: #4a5266; background:#f7f8fc; border-color: #e2e7f0; }
+.solvex-react .assets-overview .assets-total .assets-secondary-action { color: #4a5266; background:var(--panel); border-color: #e2e7f0; }
 .solvex-react .assets-overview .assets-metrics span { font-size: 11px; color: #6b7488; }
 .solvex-react .assets-overview .assets-metrics small { font-size: 10.5px; color: #8a93a8; }
 .solvex-react .assets-overview .assets-metrics b {
@@ -904,7 +875,7 @@ body.solvex-react::before {
   padding-inline: 16px;
   border: 0;
   border-radius: 10px;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   color: #fff;
   font-size: 12.5px;
   font-weight: 600;
@@ -915,21 +886,21 @@ body.solvex-react::before {
   padding-inline: 16px;
   border: 1px solid #e2e7f0;
   border-radius: 10px;
-  background:#f7f8fc;
+  background:var(--panel);
   color: #4a5266;
   font-size: 12.5px;
   font-weight: 550;
 }
-.solvex-react .assets-secondary-action:hover { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
+.solvex-react .assets-secondary-action:hover { border-color: #cdbdf5; color: var(--brand-strong); background: var(--panel); }
 .solvex-react .assets-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0; }
 .solvex-react .assets-metrics > div {
   display: flex;
   flex-direction: column;
   padding: 21px 26px;
   border: 0;
-  border-right: 1px solid #eef1f7;
-  border-bottom: 1px solid #eef1f7;
-  background:#f7f8fc;
+  border-right: 1px solid var(--border-subtle);
+  border-bottom: 1px solid var(--border-subtle);
+  background:var(--panel);
 }
 .solvex-react .assets-metrics > div:nth-child(2n) { border-right: 0; }
 .solvex-react .assets-metrics > div:nth-child(n+3) { border-bottom: 0; }
@@ -950,7 +921,7 @@ body.solvex-react::before {
   padding: 22px 26px 24px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
 .solvex-react .assets-section-heading h3 { font-size: 17px; font-weight: 650; letter-spacing: -.2px; color: #171d30; }
@@ -964,14 +935,14 @@ body.solvex-react::before {
   color: #161d31;
   font-variant-numeric: tabular-nums;
 }
-.solvex-react .assets-allocation-track { height: 5px; border-radius: 3px; background: #eef1f7; }
+.solvex-react .assets-allocation-track { height: 5px; border-radius: 3px; background: var(--panel2); }
 .solvex-react .assets-allocation-fill { border-radius: 3px; }
 
 .solvex-react .assets-main {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
   overflow: hidden;
 }
@@ -982,7 +953,7 @@ body.solvex-react::before {
   padding: 4px;
   border: 1px solid #e4e8f1;
   border-radius: 12px;
-  background: #eef1f7;
+  background: var(--panel2);
 }
 .solvex-react .assets-tabs button {
   min-width: 84px;
@@ -995,10 +966,10 @@ body.solvex-react::before {
   font-size: 12.5px;
   font-weight: 550;
 }
-.solvex-react .assets-tabs button:hover { color: #33285a; background: #e6e9f2; }
+.solvex-react .assets-tabs button:hover { color: #33285a; background: var(--panel2); }
 .solvex-react .assets-tabs button.active {
   color: #3f1c9e;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #1017280f, 0 6px 14px -10px #3f1c9e66;
 }
 .solvex-react .assets-tabs button::after { display: none; }
@@ -1008,18 +979,18 @@ body.solvex-react::before {
   height: 36px;
   border: 1px solid #e2e7f0;
   border-radius: 10px;
-  background: #fbfcfe;
+  background: var(--panel);
   color: #8a93a8;
 }
 .solvex-react .assets-search input { font-size: 12.5px; color: #3d465c; }
-.solvex-react .assets-search:focus-within { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .assets-search:focus-within { border-color: #cdbdf5; background:var(--panel); box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .assets-zero-filter { font-size: 11.5px; color: #6b7488; }
 .solvex-react .assets-zero-filter input { accent-color: #5b3fc0; }
 .solvex-react .assets-table-wrap { margin: 0 22px 22px; border: 1px solid #e8ecf4; border-radius: 12px; overflow-x: auto; }
 .solvex-react .assets-table { min-width: 720px; }
 .solvex-react .assets-table th {
   padding: 11px 16px;
-  background: #f7f9fc;
+  background: var(--panel);
   border-bottom: 1px solid #e8ecf4;
   color: #7a8499;
   font-size: 10.5px;
@@ -1029,24 +1000,24 @@ body.solvex-react::before {
 .solvex-react .assets-table th:first-child { padding-left: 20px; }
 .solvex-react .assets-table td {
   padding: 13px 16px;
-  border-top: 1px solid #eef1f7;
+  border-top: 1px solid var(--border-subtle);
   color: #3d465c;
   font-size: 12.5px;
   font-variant-numeric: tabular-nums;
 }
 .solvex-react .assets-table td:first-child { padding-left: 20px; }
-.solvex-react .assets-table tbody tr:hover td { background: #fbfcff; }
+.solvex-react .assets-table tbody tr:hover td { background: var(--panel); }
 .solvex-react .assets-coin b { font-size: 12.5px; color: #161d31; }
 .solvex-react .assets-coin small { font-size: 10.5px; color: #8a93a8; }
 .solvex-react .assets-coin-icon { width: 32px; height: 32px; flex-basis: 32px; }
 .solvex-react .assets-row-actions button {
   padding: 4px 8px;
   border-radius: 6px;
-  color: #4d2ab0;
+  color: var(--brand-strong);
   font-size: 11.5px;
   font-weight: 550;
 }
-.solvex-react .assets-row-actions button:hover { background: #f5f1ff; }
+.solvex-react .assets-row-actions button:hover { background: var(--brand-dim); }
 .solvex-react .assets-record-block { padding: 22px 24px; }
 .solvex-react .assets-record-block + .assets-record-block { border-top: 1px solid #edf0f7; }
 .solvex-react .assets-record-block h3 { margin: 0 0 14px; font-size: 15px; font-weight: 650; color: #171d30; }
@@ -1054,7 +1025,7 @@ body.solvex-react::before {
 .solvex-react .account-history table { width: 100%; min-width: 860px; }
 .solvex-react .account-history thead th {
   padding: 11px 14px;
-  background: #f7f9fc;
+  background: var(--panel);
   border-bottom: 1px solid #e8ecf4;
   color: #7a8499;
   font-size: 10.5px;
@@ -1063,12 +1034,12 @@ body.solvex-react::before {
 }
 .solvex-react .account-history td {
   padding: 11px 14px;
-  border-top: 1px solid #eef1f7;
+  border-top: 1px solid var(--border-subtle);
   color: #3d465c;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
-.solvex-react .account-history tbody tr:hover td { background: #fbfcff; }
+.solvex-react .account-history tbody tr:hover td { background: var(--panel); }
 .solvex-react .account-history td.up { color: #0f7b5e; }
 .solvex-react .account-history td.down { color: #c2334a; }
 .solvex-react .aix-revenue-summary { gap: 12px; }
@@ -1076,7 +1047,7 @@ body.solvex-react::before {
   padding: 20px 24px;
   border: 1px solid #e6dcfb;
   border-radius: 14px;
-  background: linear-gradient(118deg, #f7f3ff, #f7f8fc 65%);
+  background: linear-gradient(118deg, var(--brand-dim), var(--panel) 65%);
 }
 .solvex-react .aix-rev-total .lbl { font-size: 12px; color: #6b7488; }
 .solvex-react .aix-rev-total .val {
@@ -1084,11 +1055,11 @@ body.solvex-react::before {
   font-size: 30px;
   font-weight: 600;
   letter-spacing: -.5px;
-  color: #4d2ab0;
+  color: var(--brand-strong);
   font-variant-numeric: tabular-nums;
 }
 .solvex-react .aix-rev-total .val small { color: #8a93a8; }
-.solvex-react .aix-rev-item { padding: 16px 18px; border: 1px solid #e8ecf4; border-radius: 12px; background:#f7f8fc; }
+.solvex-react .aix-rev-item { padding: 16px 18px; border: 1px solid #e8ecf4; border-radius: 12px; background:var(--panel); }
 .solvex-react .aix-rev-item .lbl { margin-bottom: 8px; font-size: 11px; color: #6b7488; }
 .solvex-react .aix-rev-item .val {
   font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif;
@@ -1113,16 +1084,16 @@ body.solvex-react::before {
 .solvex-react .support-chat-card {
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
-.solvex-react .support-chat-head { padding: 15px 22px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; }
+.solvex-react .support-chat-head { padding: 15px 22px; background: var(--panel); border-bottom: 1px solid #edf0f7; }
 .solvex-react .support-chat-avatar {
   width: 42px;
   height: 42px;
   border-radius: 12px;
-  background: linear-gradient(140deg, #7758c4, #4d2ab0);
+  background: linear-gradient(140deg, #7758c4, var(--brand-strong));
   color: #fff;
   font-size: 14px;
   font-weight: 650;
@@ -1130,30 +1101,30 @@ body.solvex-react::before {
 .solvex-react .support-chat-title strong { font-size: 14.5px; font-weight: 650; color: #161d31; }
 .solvex-react .support-chat-title small { font-size: 11.5px; color: #6b7488; }
 .solvex-react .support-online-dot { width: 6px; height: 6px; background: #12a06f; box-shadow: none; }
-.solvex-react .support-chat-quick { gap: 8px; padding: 12px 22px; background:#f7f8fc; border-bottom: 1px solid #edf0f7; }
-.solvex-react .support-chat-quick button { padding: 6px 12px; border: 1px solid #e2d9fb; border-radius: 999px; background: #faf8ff; color: #4d2ab0; font-size: 11.5px; }
-.solvex-react .support-chat-quick button:hover { background: #f2ecff; border-color: #cdbdf5; }
-.solvex-react .support-chat-messages { gap: 16px; height: 442px; padding: 22px; background: #f7f9fc; }
+.solvex-react .support-chat-quick { gap: 8px; padding: 12px 22px; background:var(--panel); border-bottom: 1px solid #edf0f7; }
+.solvex-react .support-chat-quick button { padding: 6px 12px; border: 1px solid #e2d9fb; border-radius: 999px; background: var(--brand-dim); color: var(--brand-strong); font-size: 11.5px; }
+.solvex-react .support-chat-quick button:hover { background: var(--brand-dim); border-color: #cdbdf5; }
+.solvex-react .support-chat-messages { gap: 16px; height: 442px; padding: 22px; background: var(--panel); }
 .solvex-react .support-msg-bubble { padding: 10px 14px; border-radius: 12px; font-size: 12.5px; line-height: 1.78; }
 .solvex-react .support-msg.me .support-msg-bubble {
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   color: #fff;
   border-bottom-right-radius: 4px;
   font-weight: 500;
   box-shadow: 0 10px 20px -16px #4d21b8cc;
 }
-.solvex-react .support-msg.them .support-msg-bubble { background:#f7f8fc; color: #2c3448; border: 1px solid #e8ecf4; border-bottom-left-radius: 4px; }
+.solvex-react .support-msg.them .support-msg-bubble { background:var(--panel); color: #2c3448; border: 1px solid #e8ecf4; border-bottom-left-radius: 4px; }
 .solvex-react .support-msg-time { font-size: 10.5px; color: #8a93a8; }
-.solvex-react .support-chat-input { gap: 12px; padding: 14px 22px; background:#f7f8fc; border-top: 1px solid #edf0f7; }
-.solvex-react .support-chat-input textarea { min-height: 42px; padding: 11px 13px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
-.solvex-react .support-chat-input textarea:focus { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .support-chat-input { gap: 12px; padding: 14px 22px; background:var(--panel); border-top: 1px solid #edf0f7; }
+.solvex-react .support-chat-input textarea { min-height: 42px; padding: 11px 13px; border: 1px solid #e2e7f0; border-radius: 10px; background: var(--panel); font-size: 13px; }
+.solvex-react .support-chat-input textarea:focus { border-color: #cdbdf5; background:var(--panel); box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .support-chat-input .ui-button {
   height: 42px;
   padding-inline: 22px;
   border: 0;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   box-shadow: 0 10px 20px -14px #4d21b8cc;
 }
 .solvex-react .support-empty { color: #6b7488; font-size: 12.5px; }
@@ -1168,7 +1139,7 @@ body.solvex-react::before {
   padding: 10px 14px;
   border: 1px solid #e6eaf2;
   border-radius: 12px;
-  background:#f7f8fc;
+  background:var(--panel);
   font-size: 12px;
   color: #6b7488;
   box-shadow: 0 1px 2px #10172805;
@@ -1179,24 +1150,24 @@ body.solvex-react::before {
   padding: 0 10px;
   border: 1px solid #e2e7f0;
   border-radius: 9px;
-  background: #fbfcfe;
+  background: var(--panel);
   color: #2c3448;
   font-size: 12px;
 }
 .solvex-react .cc-shell > .cc-toolbar > span:last-child { margin-left: auto; font-size: 11px; color: #8a93a8; }
-.solvex-react .cc-ghost { height: 34px; padding: 0 13px; border: 1px solid #e2e7f0; border-radius: 9px; background:#f7f8fc; color: #4a5266; font-size: 11.5px; font-weight: 550; }
-.solvex-react .cc-ghost:hover { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
+.solvex-react .cc-ghost { height: 34px; padding: 0 13px; border: 1px solid #e2e7f0; border-radius: 9px; background:var(--panel); color: #4a5266; font-size: 11.5px; font-weight: 550; }
+.solvex-react .cc-ghost:hover { border-color: #cdbdf5; color: var(--brand-strong); background: var(--panel); }
 .solvex-react .cc-layout { grid-template-columns: minmax(0, 1fr) 292px; gap: 16px; }
 .solvex-react .cc-main { border: 1px solid #e6eaf2; border-radius: 16px; box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d; }
-.solvex-react .cc-main > .cc-toolbar { padding: 12px 18px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
-.solvex-react .cc-unread { border-color: #e0d3ff; background: #f5f1ff; color: #4d2ab0; }
-.solvex-react .cc-messages { gap: 16px; height: 480px; padding: 20px 18px; background: #f7f9fc; }
+.solvex-react .cc-main > .cc-toolbar { padding: 12px 18px; background: var(--panel); border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
+.solvex-react .cc-unread { border-color: #e0d3ff; background: var(--brand-dim); color: var(--brand-strong); }
+.solvex-react .cc-messages { gap: 16px; height: 480px; padding: 20px 18px; background: var(--panel); }
 .solvex-react .cc-avatar {
   width: 34px;
   height: 34px;
   border-radius: 10px;
-  background: #efe8ff;
-  color: #4d2ab0;
+  background: var(--brand-dim);
+  color: var(--brand-strong);
   font-size: 12.5px;
   font-weight: 650;
 }
@@ -1207,40 +1178,40 @@ body.solvex-react::before {
   padding: 9px 13px;
   border: 1px solid #e8ecf4;
   border-radius: 12px;
-  background:#f7f8fc;
+  background:var(--panel);
   color: #2c3448;
   font-size: 12.5px;
   line-height: 1.75;
 }
 .solvex-react .cc-msg.me .cc-msg-body {
   border-color: transparent;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   color: #fff;
   box-shadow: 0 10px 20px -16px #4d21b8cc;
 }
-.solvex-react .cc-composer { gap: 10px; padding: 12px 16px; border-top: 1px solid #edf0f7; background:#f7f8fc; }
-.solvex-react .cc-composer textarea { min-height: 42px; padding: 10px 12px; border: 1px solid #e2e7f0; border-radius: 10px; background: #fbfcfe; font-size: 13px; }
-.solvex-react .cc-composer textarea:focus { border-color: #cdbdf5; background:#f7f8fc; box-shadow: 0 0 0 3px #5b3fc014; }
+.solvex-react .cc-composer { gap: 10px; padding: 12px 16px; border-top: 1px solid #edf0f7; background:var(--panel); }
+.solvex-react .cc-composer textarea { min-height: 42px; padding: 10px 12px; border: 1px solid #e2e7f0; border-radius: 10px; background: var(--panel); font-size: 13px; }
+.solvex-react .cc-composer textarea:focus { border-color: #cdbdf5; background:var(--panel); box-shadow: 0 0 0 3px #5b3fc014; }
 .solvex-react .cc-composer button {
   height: 42px;
   padding: 0 20px;
   border: 0;
   border-radius: 10px;
   color: #fff;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   font-size: 12.5px;
   font-weight: 600;
   box-shadow: 0 10px 20px -14px #4d21b8cc;
 }
 .solvex-react .cc-side { border: 1px solid #e6eaf2; border-radius: 16px; box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d; }
-.solvex-react .cc-side-head { padding: 12px 16px; background: #fbfcfe; border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
-.solvex-react .cc-side-head span { color: #4d2ab0; font-weight: 650; }
+.solvex-react .cc-side-head { padding: 12px 16px; background: var(--panel); border-bottom: 1px solid #edf0f7; font-size: 11.5px; color: #6b7488; }
+.solvex-react .cc-side-head span { color: var(--brand-strong); font-weight: 650; }
 .solvex-react .cc-members { gap: 2px; max-height: 480px; padding: 6px; }
 .solvex-react .cc-member { padding: 8px 10px; border-radius: 10px; }
-.solvex-react .cc-member:hover { background: #faf8ff; }
+.solvex-react .cc-member:hover { background: var(--brand-dim); }
 .solvex-react .cc-member-info strong { font-size: 12.5px; color: #161d31; }
 .solvex-react .cc-member-info small { font-size: 10.5px; color: #8a93a8; }
-.solvex-react .cc-member-tag { border-color: #e0d3ff; color: #4d2ab0; }
+.solvex-react .cc-member-tag { border-color: #e0d3ff; color: var(--brand-strong); }
 .solvex-react .cc-empty, .solvex-react .cc-loading { color: #6b7488; font-size: 12.5px; }
 .solvex-react .cc-packet {
   min-width: 250px;
@@ -1265,7 +1236,7 @@ body.solvex-react::before {
 .solvex-react .cc-packet-title small { margin-top: 3px; font-size: 10.5px; color: #ffffffc4; }
 .solvex-react .cc-packet-foot { padding: 10px 16px 13px; border-top: 1px dashed #ffffff3d; }
 .solvex-react .cc-packet-total { font-size: 13.5px; color: #fff; }
-.solvex-react .cc-packet-grab { padding: 6px 14px; background:#f7f8fc; color: #c31c41; font-size: 11px; font-weight: 650; }
+.solvex-react .cc-packet-grab { padding: 6px 14px; background:var(--panel); color: #c31c41; font-size: 11px; font-weight: 650; }
 .solvex-react .cc-packet-grab:disabled { background: #ffffff26; color: #ffffffb8; }
 .solvex-react .cc-red-btn {
   height: 42px;
@@ -1292,7 +1263,7 @@ body.solvex-react::before {
   border-radius: 18px;
   background:
     radial-gradient(ellipse at 86% 0, #5b3fc012 0, transparent 60%),
-    linear-gradient(118deg, #f7f3ff, #f7f8fc 60%);
+    linear-gradient(118deg, var(--brand-dim), var(--panel) 60%);
   box-shadow: 0 1px 2px #10172805, 0 22px 44px -36px #4d21b866;
 }
 .solvex-react .aim-topbar h1 {
@@ -1315,7 +1286,7 @@ body.solvex-react::before {
 }
 .solvex-react .aim-topbar p { margin-top: 8px; font-size: 12.5px; line-height: 1.7; color: #667086; }
 .solvex-react .aim-title-row { gap: 12px; }
-.solvex-react .aim-status { padding: 4px 11px; border: 1px solid #e2e7f0; border-radius: 999px; background:#f7f8fc; color: #6b7488; font-size: 11px; font-weight: 600; }
+.solvex-react .aim-status { padding: 4px 11px; border: 1px solid #e2e7f0; border-radius: 999px; background:var(--panel); color: #6b7488; font-size: 11px; font-weight: 600; }
 .solvex-react .aim-status.running { border-color: #c9eadf; background: #ecf8f3; color: #056b56; }
 .solvex-react .aim-robot { opacity: .42; }
 .solvex-react .aim-metrics {
@@ -1325,11 +1296,11 @@ body.solvex-react::before {
   margin-top: 20px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   overflow: hidden;
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
-.solvex-react .aim-metrics > div { padding: 20px 24px; border: 0; border-left: 1px solid #eef1f7; background:#f7f8fc; }
+.solvex-react .aim-metrics > div { padding: 20px 24px; border: 0; border-left: 1px solid var(--border-subtle); background:var(--panel); }
 .solvex-react .aim-metrics > div:first-child { border-left: 0; }
 .solvex-react .aim-metrics span { font-size: 11px; letter-spacing: .04em; color: #6b7488; }
 .solvex-react .aim-metrics strong {
@@ -1348,7 +1319,7 @@ body.solvex-react::before {
   padding: 24px;
   border: 1px solid #e6eaf2;
   border-radius: 16px;
-  background:#f7f8fc;
+  background:var(--panel);
   box-shadow: 0 1px 2px #10172805, 0 18px 36px -30px #1b254a3d;
 }
 .solvex-react .aim-panel-head { align-items: flex-start; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid #edf0f7; }
@@ -1361,39 +1332,39 @@ body.solvex-react::before {
   padding: 16px 18px;
   border: 1px solid #e6dcfb;
   border-radius: 14px;
-  background: linear-gradient(118deg, #f7f3ff, #f7f8fc 68%);
+  background: linear-gradient(118deg, var(--brand-dim), var(--panel) 68%);
 }
-.solvex-react .aim-vip-badge { padding: 4px 9px; border-radius: 999px; background: #5b3fc0; color: #fff; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; }
+.solvex-react .aim-vip-badge { padding: 4px 9px; border-radius: 999px; background: var(--brand); color: #fff; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; }
 .solvex-react .aim-vip-body b { font-size: 13px; font-weight: 650; color: #171d30; }
 .solvex-react .aim-vip-body span { margin-top: 4px; font-size: 11.5px; line-height: 1.7; color: #667086; }
-.solvex-react .aim-vip-btn { height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: #4d2ab0; color: #fff; font-size: 11.5px; font-weight: 600; }
+.solvex-react .aim-vip-btn { height: 34px; padding: 0 14px; border: 0; border-radius: 9px; background: var(--brand-strong); color: #fff; font-size: 11.5px; font-weight: 600; }
 .solvex-react .aim-vip-btn:disabled { background: #ece5fb; color: #7a6ba8; }
 .solvex-react .aim-amount-block { margin-top: 20px; }
 .solvex-react .aim-amount-block > label { font-size: 11.5px; color: #6b7488; }
-.solvex-react .aim-amount-field { height: 50px; margin-top: 9px; border: 1px solid #e2e7f0; border-radius: 12px; background: #fbfcfe; }
+.solvex-react .aim-amount-field { height: 50px; margin-top: 9px; border: 1px solid #e2e7f0; border-radius: 12px; background: var(--panel); }
 .solvex-react .aim-amount-field input { padding: 0 16px; font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 19px; font-weight: 600; color: #161d31; font-variant-numeric: tabular-nums; }
 .solvex-react .aim-amount-field > span { font-size: 11.5px; font-weight: 600; letter-spacing: .04em; color: #8a93a8; }
-.solvex-react .aim-amount-field > button { height: 30px; padding: 0 11px; border: 1px solid #e0d3ff; border-radius: 8px; background: #f7f3ff; color: #4d2ab0; font-size: 11.5px; font-weight: 600; }
+.solvex-react .aim-amount-field > button { height: 30px; padding: 0 11px; border: 1px solid #e0d3ff; border-radius: 8px; background: var(--brand-dim); color: var(--brand-strong); font-size: 11.5px; font-weight: 600; }
 .solvex-react .aim-actions { display: grid; grid-template-columns: 1.15fr 1fr; gap: 10px; margin-top: 18px; }
 .solvex-react .aim-primary {
   height: 42px;
   border: 0;
   border-radius: 10px;
-  background: linear-gradient(110deg, #5b3fc0, #4f3dbf);
+  background: linear-gradient(110deg, var(--brand), var(--brand-2));
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   box-shadow: 0 10px 22px -14px #4d21b8cc;
 }
 .solvex-react .aim-primary:disabled { background: #ece9f6; color: #9ba3b6; box-shadow: none; }
-.solvex-react .aim-secondary { height: 42px; border: 1px solid #e2e7f0; border-radius: 10px; background:#f7f8fc; color: #4a5266; font-size: 13px; font-weight: 550; }
-.solvex-react .aim-secondary:hover:not(:disabled) { border-color: #cdbdf5; color: #4d2ab0; background: #fbfaff; }
-.solvex-react .aim-notice { gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; font-size: 11.5px; color: #6b7488; }
+.solvex-react .aim-secondary { height: 42px; border: 1px solid #e2e7f0; border-radius: 10px; background:var(--panel); color: #4a5266; font-size: 13px; font-weight: 550; }
+.solvex-react .aim-secondary:hover:not(:disabled) { border-color: #cdbdf5; color: var(--brand-strong); background: var(--panel); }
+.solvex-react .aim-notice { gap: 8px; margin-top: 18px; padding: 12px 14px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--panel); font-size: 11.5px; color: #6b7488; }
 .solvex-react .aim-notice b { color: #3d465c; }
 .solvex-react .aim-analysis-panel { align-self: start; }
 .solvex-react .aim-analysis-content { gap: 14px; margin-top: 16px; }
 .solvex-react .aim-analysis-grid { gap: 8px; }
-.solvex-react .aim-analysis-grid > div { padding: 11px 13px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; }
+.solvex-react .aim-analysis-grid > div { padding: 11px 13px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--panel); }
 .solvex-react .aim-analysis-grid dt { font-size: 10.5px; color: #8a93a8; }
 .solvex-react .aim-analysis-grid dd {
   margin-top: 4px;
@@ -1403,11 +1374,11 @@ body.solvex-react::before {
   color: #161d31;
   font-variant-numeric: tabular-nums;
 }
-.solvex-react .aim-analysis-summary { padding: 13px 15px; border: 1px solid #eef1f7; border-radius: 10px; background: #fafbfe; font-size: 12px; line-height: 1.8; color: #4d566c; }
+.solvex-react .aim-analysis-summary { padding: 13px 15px; border: 1px solid var(--border-subtle); border-radius: 10px; background: var(--panel); font-size: 12px; line-height: 1.8; color: #4d566c; }
 .solvex-react .aim-card-panel { margin-top: 20px; }
 .solvex-react .aim-card-list { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 16px; }
-.solvex-react .aim-batch-card { padding: 16px 17px; border: 1px solid #eef1f7; border-radius: 12px; background: #fbfcfe; }
-.solvex-react .aim-batch-card:hover { border-color: #e0d3ff; background: #fdfbff; }
+.solvex-react .aim-batch-card { padding: 16px 17px; border: 1px solid var(--border-subtle); border-radius: 12px; background: var(--panel); }
+.solvex-react .aim-batch-card:hover { border-color: #e0d3ff; background: var(--panel); }
 .solvex-react .aim-batch-card h3 { font-size: 12.5px; font-weight: 650; color: #171d30; }
 .solvex-react .aim-batch-card .aim-kv { font-size: 11.5px; color: #6b7488; }
 .solvex-react .aim-batch-card .aim-kv b { font-family: "Bahnschrift", "DIN Alternate", "Segoe UI", sans-serif; font-size: 12px; font-weight: 600; color: #3d465c; font-variant-numeric: tabular-nums; }
@@ -1417,7 +1388,7 @@ body.solvex-react::before {
   .solvex-react .aim-card-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .solvex-react .rx-team-grid { grid-template-columns: minmax(0, 1fr); }
   .solvex-react .assets-overview { grid-template-columns: minmax(0, 1fr); }
-  .solvex-react .assets-total { border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .assets-total { border-right: 0; border-bottom: 1px solid var(--border-subtle); }
   .solvex-react .cc-layout { grid-template-columns: minmax(0, 1fr); }
   .solvex-react .cc-side { order: 2; }
   .solvex-react .cc-members { max-height: 260px; }
@@ -1441,7 +1412,7 @@ body.solvex-react::before {
   .solvex-react .aim-topbar h1 { font-size: 26px; }
   .solvex-react .aim-robot { display: none; }
   .solvex-react .aim-metrics { grid-template-columns: minmax(0, 1fr); }
-  .solvex-react .aim-metrics > div { border-left: 0; border-top: 1px solid #eef1f7; }
+  .solvex-react .aim-metrics > div { border-left: 0; border-top: 1px solid var(--border-subtle); }
   .solvex-react .aim-metrics > div:first-child { border-top: 0; }
   .solvex-react .aim-panel { padding: 18px; }
   .solvex-react .aim-card-list { grid-template-columns: minmax(0, 1fr); }
@@ -1450,7 +1421,7 @@ body.solvex-react::before {
   .solvex-react .assets-overview .assets-total strong span { font-size: 34px; }
   .solvex-react .assets-metrics { grid-template-columns: minmax(0, 1fr); }
   .solvex-react .assets-metrics > div { border-right: 0; border-bottom: 0; }
-  .solvex-react .assets-metrics > div:nth-child(n+2) { border-top: 1px solid #eef1f7; }
+  .solvex-react .assets-metrics > div:nth-child(n+2) { border-top: 1px solid var(--border-subtle); }
   .solvex-react .assets-tabs { margin: 14px 16px 0; width: calc(100% - 32px); }
   .solvex-react .assets-tabs button { flex: 1; min-width: 0; }
   .solvex-react .assets-list-tools { padding: 12px 16px 10px; }
@@ -1488,7 +1459,7 @@ body.solvex-react::before {
 /* 21. 响应式 -------------------------------------------------------------- */
 @media (max-width: 1280px) {
   .solvex-react .rx-pool-summary { grid-template-columns: minmax(0, 1fr); }
-  .solvex-react .rx-claim-strip { border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-claim-strip { border-right: 0; border-bottom: 1px solid var(--border-subtle); }
   .solvex-react .rx-pool-live { grid-template-columns: minmax(0, 1.5fr) minmax(240px, 1fr); }
 }
 @media (max-width: 1100px) {
@@ -1533,12 +1504,12 @@ body.solvex-react::before {
   .solvex-react .rx-claim-strip { grid-template-columns: minmax(0, 1fr); gap: 12px; padding: 14px; border-radius: 0; }
   .solvex-react .rx-claim-actions { width: 100%; gap: 8px; }
   .solvex-react .rx-claim-actions .ui-button { flex: 1; justify-content: center; }
-  .solvex-react .rx-claim-actions .ui-button:last-child { border: 1px solid #e7ddff; background:#f7f8fc; }
+  .solvex-react .rx-claim-actions .ui-button:last-child { border: 1px solid #e7ddff; background:var(--panel); }
   .solvex-react .rx-claim-icon { width: 32px; height: 32px; border-radius: 9px; }
   .solvex-react .rx-claim-copy > strong { font-size: 22px; }
   .solvex-react .rx-claim-actions .ui-button { min-height: 32px; font-size: 11.5px; padding-inline: 10px; }
   .solvex-react .rx-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .solvex-react .rx-metric { padding: 11px 12px; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-metric { padding: 11px 12px; border-bottom: 1px solid var(--border-subtle); }
   .solvex-react .rx-metric:nth-child(2n) { border-right: 0; }
   .solvex-react .rx-metric:nth-last-child(-n+2) { border-bottom: 0; }
   .solvex-react .rx-metric > strong { font-size: 19px; }
@@ -1572,7 +1543,7 @@ body.solvex-react::before {
   .solvex-react .rx-cavern-footer .ui-button { height: 30px; font-size: 10.5px; }
   .solvex-react .rx-cavern-stage { aspect-ratio: 16/10; }
   .solvex-react .rx-getting-started { grid-template-columns: 1fr; }
-  .solvex-react .rx-getting-started > div { padding: 12px 14px; border-right: 0; border-bottom: 1px solid #eef1f7; }
+  .solvex-react .rx-getting-started > div { padding: 12px 14px; border-right: 0; border-bottom: 1px solid var(--border-subtle); }
   .solvex-react .rx-getting-started > div:last-child { border-bottom: 0; }
   .solvex-react .rx-getting-started > div > span { width: 24px; height: 24px; font-size: 11px; }
   .solvex-react .rx-getting-started h3 { font-size: 12.5px; }
@@ -1583,119 +1554,3 @@ body.solvex-react::before {
   .solvex-react .rx-position-principal > strong { font-size: 20px; }
   .solvex-react .rx-pool-live { gap: 12px; }
 }
-
-/* Final mist override: keep the softer surfaces after page-specific rules. */
-body.solvex-react { background:#e7e9ee; }
-.solvex-react .rx-sidebar { background:linear-gradient(180deg,#f1f2f4 0,#eceef1 100%); border-right-color:#d7dbe1; }
-.solvex-react .rx-topbar { background:#eef0f2f2; border-bottom-color:#d6d9df; }
-.solvex-react .ui-card { background:#f5f6f7; border-color:#d7dbe1; box-shadow:0 3px 16px #3f465218; }
-.solvex-react .rx-sidebar-help { background:linear-gradient(135deg,#e4e5e9,#dfe1e6); border-color:#d3d6dc; }
-.solvex-react .ui-button.border { background:#eef0f2; border-color:#d2d6dd; }
-.solvex-react .ui-tab[data-state=active] { background:#f1f2f4; }
-
-/* Low-glare palette: reduce white surfaces and saturated accents across every page. */
-body.solvex-react { background:#dfe2e7; color:#303746; }
-.solvex-react .rx-sidebar { background:linear-gradient(180deg,#e7e9ed 0,#dfe2e7 100%); border-right-color:#c9cdd4; }
-.solvex-react .rx-topbar { background:rgba(228,230,234,.96); border-bottom-color:#c9cdd4; }
-.solvex-react .ui-card,.solvex-react .rx-card,.solvex-react .portal-card { background:#eceef1; border-color:#cdd1d8; box-shadow:0 2px 12px rgba(48,55,70,.10); }
-.solvex-react input,.solvex-react select,.solvex-react textarea,.solvex-react .assets-search { background:#e9ebee; border-color:#c7cbd2; color:#303746; }
-.solvex-react .assets-table th,.solvex-react .rx-table th { background:#e1e4e9; color:#626a79; }
-.solvex-react .assets-text-btn,.solvex-react .mp-empty,.solvex-react .cc-bubble,.solvex-react .support-chat-composer textarea { background:#e5e7eb; border-color:#c7cbd2; }
-.solvex-react .ui-button.border,.solvex-react .ui-tab[data-state=active] { background:#e3e5e9; border-color:#c7cbd2; }
-.solvex-react .ui-button:not(.border),.solvex-react .mp-btn.gold { background:#5f6f9a; border-color:#5f6f9a; box-shadow:none; }
-.solvex-react .ui-button:not(.border):hover,.solvex-react .mp-btn.gold:hover { background:#536284; }
-.solvex-react .rx-kicker,.solvex-react .rx-heading p,.solvex-react .rx-muted,.solvex-react .rx-metric>p,.solvex-react .rx-metric>small { color:#646c7b; }
-.solvex-react .rx-progress>i,.solvex-react .rx-metric-link button,.solvex-react .assets-tabs button.active::after { background:#7382a6; }
-
-/* White-surface reduction: eliminate remaining high-glare panels and dialogs. */
-.solvex-react .ui-card,
-.solvex-react .rx-card,
-.solvex-react .portal-card,
-.solvex-react .rx-tier,
-.solvex-react .rx-position,
-.solvex-react .rx-getting-started,
-.solvex-react .assets-main,
-.solvex-react .assets-distribution,
-.solvex-react .assets-table-wrap,
-.solvex-react .assets-record-block,
-.solvex-react .aim-panel,
-.solvex-react .aim-card,
-.solvex-react .mp-card,
-.solvex-react .mp-quota,
-.solvex-react .mp-empty,
-.solvex-react .support-chat-wrap,
-.solvex-react .cc-shell,
-.solvex-react .rx-dialog,
-.solvex-react [role=dialog] { background:#e3e5e9 !important; }
-.solvex-react .portal-card,
-.solvex-react .rx-tier,
-.solvex-react .mp-empty { border-color:#c8ccd3 !important; }
-.solvex-react .assets-table,
-.solvex-react .rx-table,
-.solvex-react .assets-table tbody,
-.solvex-react .rx-table tbody { background:#e1e3e7 !important; }
-.solvex-react .assets-table td,
-.solvex-react .rx-table td { background:#e1e3e7 !important; border-color:#cdd1d7 !important; }
-.solvex-react .assets-search,
-.solvex-react .rx-input,
-.solvex-react input,
-.solvex-react select,
-.solvex-react textarea { background:#dfe2e6 !important; }
-.solvex-react .assets-text-btn,
-.solvex-react .ui-button.border,
-.solvex-react .ui-tab[data-state=active],
-.solvex-react .cc-bubble,
-.solvex-react .support-chat-composer textarea { background:#dfe2e6 !important; }
-.solvex-react #tab-earn .rx-legacy-earn .portal-card { background:#e3e5e9 !important; }
-
-/* Solvex logo palette: muted violet-blue surfaces with restrained cyan accents. */
-body.solvex-react { background:#e2e6f0; color:#30364a; }
-.solvex-react .rx-sidebar { background:linear-gradient(180deg,#e8eaf3 0%,#dde2ee 100%); border-right-color:#c7cede; }
-.solvex-react .rx-topbar { background:rgba(232,234,243,.96); border-bottom-color:#c8cfdf; }
-.solvex-react .ui-card,.solvex-react .rx-card,.solvex-react .portal-card,.solvex-react .rx-tier { background:#edf0f6 !important; border-color:#cfd5e2 !important; box-shadow:0 3px 14px rgba(50,61,93,.09); }
-.solvex-react .assets-main,.solvex-react .assets-distribution,.solvex-react .assets-table-wrap,.solvex-react .aim-panel,.solvex-react .mp-card,.solvex-react [role=dialog] { background:#e9edf5 !important; }
-.solvex-react input,.solvex-react select,.solvex-react textarea,.solvex-react .assets-search { background:#e4e8f0 !important; border-color:#c6cedd; }
-.solvex-react .ui-button:not(.border),.solvex-react .mp-btn.gold { background:#6873ad; border-color:#6873ad; }
-.solvex-react .ui-button:not(.border):hover,.solvex-react .mp-btn.gold:hover { background:#59649a; }
-.solvex-react .rx-progress>i,.solvex-react .assets-tabs button.active::after,.solvex-react .rx-metric-link button { background:#7884bf; }
-.solvex-react .rx-kicker { color:#62549b; }
-.sx-chat { --chat-ink:#30364a; --chat-muted:#747d94; --chat-line:#d4d9e5; --chat-purple:#6873ad; }
-.sx-chat-window { background:#e9edf5; border-color:#cbd2df; box-shadow:0 8px 30px -24px #34426b45; }
-.sx-group-rail,.sx-chat-header,.sx-chat-composer { background:#e8ecf4; }
-.sx-message-area { background:radial-gradient(ellipse at 100% 0%,#d9dff080,transparent 60%),#e1e6ef; }
-.sx-message-bubble { background:#edf0f5; border-color:#d2d8e3; color:#3f475b; }
-.sx-message.is-mine .sx-message-bubble { background:#dfe2f4; border-color:#cbd0e8; color:#4f5279; }
-.sx-chat-primary { background:#6873ad; box-shadow:0 4px 10px #4d5c9720; }
-.sx-chat-primary:hover:not(:disabled) { background:#59649a; }
-.sx-chat-secondary,.sx-unread { background:#e1e5ee; border-color:#cbd2df; color:#5f6982; }
-.sx-group-search,.sx-chat-composer textarea { background:#e1e5ee; border-color:#cbd2df; }
-.sx-group-item:hover,.sx-group-item.is-active { background:#dce2f0; border-color:#ccd4e5; }
-.sx-group-icon { background:#dcdcf2; color:#626cab; }
-.sx-group-icon.tone-1 { background:#dce9f2; color:#5683a8; }.sx-group-icon.tone-2 { background:#e9e5df; color:#9a7e61; }.sx-group-icon.tone-3 { background:#dcebe9; color:#568f88; }
-.sx-group-unread { background:#6873ad; }
-@media (max-width:760px) { .sx-mobile-group-home .sx-group-item { background:#e5e9f1; }.sx-mobile-group-home .sx-group-item.is-active { background:#dce2f0; }.sx-mobile-back:hover { background:#dce2f0; } }
-
-/* Button polish: consistent logo-violet controls without neon purple or stark white fills. */
-.solvex-react .rx-mobile-menu { background:#dce2f0 !important; border-color:#c2cadd !important; color:#59658f !important; box-shadow:none !important; }
-.solvex-react .rx-mobile-menu:hover { background:#d2d9ea !important; color:#4f5b88 !important; }
-.solvex-react .ui-button.bg-primary,
-.solvex-react .rx-gate .ui-button,
-.solvex-react .rx-invest-actions .ui-button:last-child,
-.solvex-react .rx-cavern-footer .ui-button,
-.solvex-react .rx-play-nav button.is-active { background:linear-gradient(110deg,#7079b4,#647aa9) !important; border-color:#6873ad !important; color:#fff !important; box-shadow:0 4px 10px #59699a24 !important; }
-.solvex-react .ui-button.bg-primary:hover,
-.solvex-react .rx-invest-actions .ui-button:last-child:hover,
-.solvex-react .rx-cavern-footer .ui-button:hover { background:linear-gradient(110deg,#626ca7,#576d9d) !important; }
-.solvex-react .ui-button.border,
-.solvex-react .rx-invest-actions .ui-button:first-child,
-.solvex-react .rx-play-nav button { background:#e3e7f0 !important; border-color:#c5cddd !important; color:#5f6983 !important; }
-.solvex-react .ui-button.border:hover,
-.solvex-react .rx-invest-actions .ui-button:first-child:hover,
-.solvex-react .rx-play-nav button:hover { background:#dbe1ed !important; border-color:#aeb9d1 !important; color:#55618b !important; }
-.solvex-react .rx-source-switch button { background:#e2e6ef; border-color:#c6cedd; color:#626c84; }
-.solvex-react .rx-source-switch button.active { background:#d9def0; border-color:#8995c5; color:#596497; }
-.solvex-react .rx-input-group button,.solvex-react .rx-metric-link button { color:#6873ad; }
-.solvex-react .rx-nav button.is-active { background:linear-gradient(110deg,#e1e3f2,#e8eaf5) !important; color:#5d6395 !important; box-shadow:inset 0 0 0 1px #cbd0e2 !important; }
-.solvex-react .rx-nav button.is-active svg { color:#6873ad !important; }
-.solvex-react .rx-nav button:hover { background:#e1e5ef !important; color:#5d6892 !important; }
-.solvex-react .rx-mobile-dock button[aria-current=page] { color:#6873ad; }

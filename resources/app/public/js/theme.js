@@ -14,12 +14,14 @@
     return SCHEME;
   }
 
-  // Light charts with legible axes and restrained grid lines.
+  // Canvas charts cannot inherit CSS fills, so read the shared logo palette.
+  const palette = getComputedStyle(document.documentElement);
+  const color = (name, fallback) => palette.getPropertyValue(name).trim() || fallback;
   const CHART = {
-    layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#607581' },
-    grid: { vertLines: { color: '#e8eef0' }, horzLines: { color: '#e8eef0' } },
-    rightPriceScale: { borderColor: '#d7e2e5' },
-    timeScale: { borderColor: '#d7e2e5' },
+    layout: { background: { type: 'solid', color: color('--chart-bg', '#e8e8f3') }, textColor: color('--mut', '#515b73') },
+    grid: { vertLines: { color: color('--chart-grid', '#d2d5e5') }, horzLines: { color: color('--chart-grid', '#d2d5e5') } },
+    rightPriceScale: { borderColor: color('--border', '#c4cae0') },
+    timeScale: { borderColor: color('--border', '#c4cae0') },
   };
   const UP = '#067a63';
   const DOWN = '#c02a45';

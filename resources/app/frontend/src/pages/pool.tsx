@@ -1,4 +1,4 @@
-﻿import { useState } from 'react';
+﻿﻿import { useState } from 'react';
 import { ArrowRight, ArrowUpRight, Box, Clock3, Coins, Gem, Pickaxe, Sparkles, Wallet, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';

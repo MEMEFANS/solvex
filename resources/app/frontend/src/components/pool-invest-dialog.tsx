@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+﻿﻿import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';
@@ -43,7 +43,7 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
     : coins < minimum ? '低于起投数量，最少 ' + formatDecimal(minText, 0) + ' SVX'
     : !profile.data && !profile.error ? '正在同步蓄能额度余额，请稍候'
     : !profile.data ? '余额同步失败，请稍后重试'
-    : coins > balanceUnits ? '超过蓄能额度可用余额 ' + formatDecimal(balance, 4) + ' SVX'
+    : coins > balanceUnits ? '超过蓄能额度可用余额 ' + formatDecimal(balance, 2) + ' SVX'
     : '';
   // 实际收益率按接口给出的档位边界推导，输入变化时即时更新。
   const rate = useMemo(() => {
@@ -71,8 +71,8 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
   });
   const fresh = quote.data && debounced === raw ? quote.data : null;
   const shownRate = fresh ? fresh.ratePct : rate;
-  const shownInterest = fresh ? formatDecimal(fresh.interest, 4) : estimate?.interest;
-  const shownPayout = fresh ? formatDecimal(fresh.payout, 4) : estimate?.payout;
+  const shownInterest = fresh ? formatDecimal(fresh.interest, 2) : estimate?.interest;
+  const shownPayout = fresh ? formatDecimal(fresh.payout, 2) : estimate?.payout;
   // 档位只设下限：卡片起投 + 按投入数量自动匹配收益率，不再展示上限区间。
   const cardMin = tier ? formatDecimal(tier.min, 0) : '—';
   async function submit() {
@@ -101,7 +101,7 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
         <div><span>周期</span><strong>{term?.days ?? '—'} 天</strong></div>
         <div><span>收益率</span><strong>{number(shownRate)}%</strong></div>
       </div>
-      <div className="rx-invest-balance"><span>蓄能额度可用余额</span><strong>{profile.data ? formatDecimal(balance, 4) : '—'}<small>SVX</small></strong></div>
+      <div className="rx-invest-balance"><span>蓄能额度可用余额</span><strong>{profile.data ? formatDecimal(balance, 2) : '—'}<small>SVX</small></strong></div>
       <label className="rx-invest-label" htmlFor="pool-invest-amount">投入数量</label>
       <div className="rx-input-group">
         <Input id="pool-invest-amount" inputMode="numeric" autoComplete="off" placeholder={cardMin + ' SVX 起'} value={amount} onChange={event => setAmount(event.target.value)} />

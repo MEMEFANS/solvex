@@ -1,4 +1,4 @@
-﻿import { useEffect, useRef, useState } from 'react';
+﻿﻿import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ArrowRight, ShieldCheck } from 'lucide-react';
 import { toast } from 'sonner';

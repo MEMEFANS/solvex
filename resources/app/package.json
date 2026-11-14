@@ -16,7 +16,7 @@
     "test:local": "npm run test:model && npm run test:frontend && npm run test:runtime && node test/mobile-static-cache.test.js && node test/i18n.test.js",
     "test:asset-reporting": "node test/a-token-asset-reporting.test.js",
     "test:assets-wallet-balance": "node test/assets-wallet-balance.test.js",
-    "test:page-loading": "node test/page-loading.test.js && node test/mobile-wallet-startup.test.js",
+    "test:page-loading": "node scripts/verify-all-page-loading.mjs --fixtures",
     "test:svx-chart": "node test/a-token-chart.test.js",
     "test:admin-speed": "node test/admin-speed.test.js && node test/admin-speed-browser.test.js",
     "build:wallet": "node scripts/build-wallet.js",

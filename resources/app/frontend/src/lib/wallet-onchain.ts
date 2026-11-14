@@ -32,12 +32,14 @@ export async function buyBlindboxOnchain({
   if (payer.toLowerCase() !== identity.toLowerCase()) throw new Error('钱包地址已切换，请重新连接');
   const lpAddress = getAddress(contractAddress), expectedUsdt = getAddress(usdtAddress);
   const lp = new Contract(lpAddress, BLINDBOX_LP_ABI, signer);
-  if ((await lp.usdt()).toLowerCase() !== expectedUsdt.toLowerCase()) throw new Error('LP 合约 USDT 地址与页面配置不一致');
   const usdt = new Contract(expectedUsdt, BLINDBOX_USDT_ABI, signer);
-  const decimals = Number(await usdt.decimals());
+  const [boundUsdt, rawDecimals] = await Promise.all([lp.usdt(), usdt.decimals()]);
+  if (boundUsdt.toLowerCase() !== expectedUsdt.toLowerCase()) throw new Error('LP 合约 USDT 地址与页面配置不一致');
+  const decimals = Number(rawDecimals);
   const amount = parseUnits('1', decimals);
-  if (BigInt(await lp.blindboxPriceUsdt()) !== amount) throw new Error('盲盒合约金额不是 1 USDT，请勿继续');
-  const allowance = BigInt(await usdt.allowance(payer, lpAddress));
+  const [rawPrice, rawAllowance] = await Promise.all([lp.blindboxPriceUsdt(), usdt.allowance(payer, lpAddress)]);
+  if (BigInt(rawPrice) !== amount) throw new Error('盲盒合约金额不是 1 USDT，请勿继续');
+  const allowance = BigInt(rawAllowance);
   if (allowance < amount) {
     if (allowance > 0n) {
       onStatus?.('请在钱包中确认清除不足的旧 USDT 授权');
@@ -47,10 +49,11 @@ export async function buyBlindboxOnchain({
     await (await usdt.approve(lpAddress, amount)).wait();
   }
   if (walletAddress().toLowerCase() !== identity.toLowerCase()) throw new Error('钱包已切换，请重新确认');
-  const quote = await lp.currentSvxPerUsdt();
-  const block = await provider.getBlock('latest');
+  const [quote, block, deadlineSeconds] = await Promise.all([
+    lp.currentSvxPerUsdt(), provider.getBlock('latest'), lp.deadlineSeconds(),
+  ]);
   if (!block) throw new Error('读取链上报价失败，请刷新重试');
-  const deadline = BigInt(block.timestamp) + BigInt(await lp.deadlineSeconds());
+  const deadline = BigInt(block.timestamp) + BigInt(deadlineSeconds);
   onStatus?.('请在钱包中确认：支付 1 USDT，并按约 0.1 USDT/SVX 加入流动性');
   const tx = await lp.buyBlindboxAndAddLiquidity(receiptKey, quote, deadline);
   onStatus?.('盲盒支付与加 LP 交易已提交：' + tx.hash);

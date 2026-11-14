@@ -1,4 +1,4 @@
-﻿(() => {
+﻿﻿(() => {
   // 一次性迁移：旧品牌 axix_activation_* 的激活重试状态 → solvex_activation_*，避免升级后丢失未确认的激活。
   (function migrateLegacyActivationStorage() {
     try {

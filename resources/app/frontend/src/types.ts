@@ -7,7 +7,8 @@ export interface UpgradePosition { id: string; principalA: string; status: strin
 export interface Profile { balances: { A: string; USDT: string }; zones: { alpha: string; beta: string }; nodeTerm: PoolTerm; nodes: Pool[]; stakes: Energy[]; pending: Pending[]; pendingSummary: { claimableUnits: string; waitingUnits: string; expiringSoonUnits: string; claimableUsdtUnits?: string }; upgrade: { activeA: string; redeemingA: string; returnedA: string; positions: UpgradePosition[] } }
 export interface TeamLevel { level: number; label: string; warehouse: string | number; teamPerf: string | number; ratePct: number }
 export interface Team { level: number; teamCount: number; directCount: number; indirectCount: number; teamValidUsers?: number; directValidUsers?: number; teamPerfA: string; upgradeA: string; teamHoldA: string; totalEarnedA: string; nextLevel?: TeamLevel; directReferrerCode?: string | null; TEAM_LEVELS: TeamLevel[]; byKind?: Record<string, string>; directs: { wallet: string; level: number; upgradeA: string; teamPerfA: string; personalA: string; directCount: number; joinedAt: number; validUser?: boolean }[] }
-export interface Referral { code: string; link: string }
+export interface ReferralRow { wallet?: string; shortAddress?: string; level?: number; joinedAt?: number; totalVolume?: string; totalFees?: string; managedAmount?: string; myReward?: string; valid?: boolean }
+export interface Referral { code: string; link: string; directValid?: number; directInvalid?: number; directRate?: number; earned?: string; claimable?: string; rows?: ReferralRow[] }
 export interface Plans { nodes: PoolTerm; staking: { planId: string; minCoins: string; energy?: boolean }[] }
 
 export interface WalletNetwork { id: string; name: string; chainIdHex: string; nativeSymbol: string; browserRpcUrl: string; explorerUrl: string; tokenContract: string; tokenDecimals: number }
@@ -28,7 +29,7 @@ export interface Leaderboard { items?: LeaderboardRow[]; total?: number; current
 export interface SupportTicket { id: string; wallet?: string; status?: string; userUnread?: number; adminUnread?: number; lastMessageAt?: number; lastBody?: string }
 export interface SupportMessage { id?: string | number | null; ticketId?: string; sender?: string; body?: string; createdAt?: number; readAt?: number | null }
 export interface SupportSession { ticket?: SupportTicket | null; messages?: SupportMessage[] }
-export interface CommunityGroup { number: string; name?: string; kind?: string; owner?: string; mutedAll?: number; isAdmin?: boolean; invite?: string; avatar?: string }
+export interface CommunityGroup { number: string; name?: string; kind?: string; owner?: string; mutedAll?: number; isAdmin?: boolean; invite?: string; avatar?: string; unread?: number; latestMessage?: { body?: string; nickname?: string; createdAt?: number } | null }
 export interface CommunityGroupList { groups?: CommunityGroup[]; canCreate?: boolean }
 export interface CommunityMember { address?: string; nickname?: string; avatar?: string; joinedAt?: number; mutedUntil?: number; status?: string; isAdmin?: boolean; isOwner?: boolean; isGroupAdmin?: boolean }
 export interface CommunityPacket { id: string; asset?: string; algorithm?: string; greeting?: string; total?: string; shareCount?: number; remainingCount?: number; claimedTotal?: string; status?: string; createdAt?: number; expiresAt?: number; mine?: boolean; grabbed?: boolean; claimAmount?: string }

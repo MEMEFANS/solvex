@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { localEnvironment } from './local-environment.mjs';
+import { blindboxMainnetEnvironment } from './blindbox-mainnet-config.mjs';
 
 const appRoot = path.resolve(import.meta.dirname, '..');
 const dataRoot = path.join(appRoot, 'data', 'local-dev');
@@ -19,8 +20,9 @@ if (!fs.existsSync(marker)) {
 
 const environment = localEnvironment({ dataRoot, port });
 for (const key of Object.keys(process.env)) delete process.env[key];
-Object.assign(process.env, environment);
+Object.assign(process.env, environment, blindboxMainnetEnvironment);
 console.log('Local application backend: http://127.0.0.1:' + port);
 console.log('Separate development data: ' + dataRoot);
-console.log('No production wallet or funding configuration is loaded.');
+console.log('BSC mainnet blindbox payments enabled: ' + process.env.AUTO_LP_CONTRACT_ADDRESS);
+console.log('No wallet private keys are loaded; blindbox transactions require wallet signatures.');
 await import('../src/server.js');

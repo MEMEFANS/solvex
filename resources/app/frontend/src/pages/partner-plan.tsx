@@ -1,4 +1,4 @@
-﻿import { useEffect, useId, useState } from 'react';
+﻿﻿﻿﻿import { useEffect, useId, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpRight, Check, ChevronRight, Clock3, Coins, Handshake, LockKeyhole, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
@@ -80,7 +80,7 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
     const rows = pending.filter(row => ids.includes(row.id) && canClaim(row, Date.now()));
     if (!rows.length) return;
     const total = sumDecimal(rows.map(row => row.amountSvx), 6), identity = walletIdentity();
-    void action.run('领取合伙人分红', `确认领取 ${rows.length} 笔分红，共 ${formatDecimal(total, 6)} SVX 到主余额？`, async () => {
+    void action.run('领取合伙人分红', `确认领取 ${rows.length} 笔分红，共 ${formatDecimal(total, 2)} SVX 到主余额？`, async () => {
       let completed = 0;
       try {
         // 仅领取用户在合伙人页面选择的分红。
@@ -99,10 +99,10 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
   const showDividends = () => { setRecordTab('dividends'); setDividendFilter('pending'); document.getElementById('partner-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
 
   return <div className="rx-stack pp-content" data-native-ecosystem="shareholder">
-    <Card className="rx-metrics rx-metrics-3"><Metric label="我的身份" value={active ? member.tierLabel : '未加入'} /><Metric label="已领取分红" value={formatDecimal(member?.dividendSvx ?? '0', 6)} unit="SVX" /><Metric label="V3 资格" value={active ? qualified ? '已达标' : '待达标' : !team ? '同步中' : qualified ? '已满足条件' : '待完成'} /></Card>
+    <Card className="rx-metrics rx-metrics-3"><Metric label="我的身份" value={active ? member.tierLabel : '未加入'} /><Metric label="已领取分红" value={formatDecimal(member?.dividendSvx ?? '0', 2)} unit="SVX" /><Metric label="V3 资格" value={active ? qualified ? '已达标' : '待达标' : !team ? '同步中' : qualified ? '已满足条件' : '待完成'} /></Card>
 
     <Card className="pp-dividend-hero" data-partner-dividends>
-      <div className="pp-dividend-copy"><span className="pp-eyebrow"><span className="pp-live-dot" />当前可领取分红</span><div className="pp-dividend-total"><strong>{formatDecimal(readyTotal, 6)}</strong><span>SVX</span></div><p>{ready.length ? <><Clock3 size={13} />{ready.length} 笔待领取 · 最早截止 {date(nextExpiry)}</> : future.length ? <><Clock3 size={13} />下一笔开放 {date(future[0].availableAt)}</> : <><Coins size={13} />暂无可领取分红，结算后会在这里显示</>}</p></div>
+      <div className="pp-dividend-copy"><span className="pp-eyebrow"><span className="pp-live-dot" />当前可领取分红</span><div className="pp-dividend-total"><strong>{formatDecimal(readyTotal, 2)}</strong><span>SVX</span></div><p>{ready.length ? <><Clock3 size={13} />{ready.length} 笔待领取 · 最早截止 {date(nextExpiry)}</> : future.length ? <><Clock3 size={13} />下一笔开放 {date(future[0].availableAt)}</> : <><Coins size={13} />暂无可领取分红，结算后会在这里显示</>}</p></div>
       <div className="pp-dividend-actions"><Button data-partner-claim disabled={action.busy || !ready.length} onClick={() => claimDividends(ready.map(row => row.id))}><ArrowDownToLine size={17} />领取分红{ready.length > 0 && <span>{ready.length}</span>}</Button><button type="button" className="pp-text-button" onClick={showDividends}>查看分红记录 <ChevronRight size={13} /></button></div>
       <div className="pp-dividend-timing"><span>北京时间 08:00 结算 · 次日 08:00 前手动领取</span><span>到账资产 SVX · 进入主余额</span></div>
     </Card>
@@ -139,18 +139,18 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
           {dividendFilter !== 'pending' && history.error ? <ErrorState error={history.error} retry={() => void history.refetch()} /> : dividendFilter !== 'pending' && !history.data ? <Loading /> : !records.length ? <CompactEmpty>{dividendFilter === 'pending' ? '暂无待领取分红' : `暂无${filters[dividendFilter]}分红记录`}</CompactEmpty> : <Table headings={['分红金额', '开放领取', dividendFilter === 'claimed' ? '领取时间' : '领取截止', '状态', ...(dividendFilter === 'pending' ? ['操作'] : [])]}>{records.map(row => {
             const readyNow = readyIds.has(row.id) && canClaim(row, now);
             const status = row.status === 'pending' ? now >= row.expiresAt ? '已过期' : now < row.availableAt ? '待开放' : '待领取' : filters[row.status as DividendFilter] || '已结束';
-            return <tr key={row.id}><td className="pp-numeric">{formatDecimal(row.amountSvx, 6)} <small>SVX</small></td><td>{date(row.availableAt)}</td><td>{date(dividendFilter === 'claimed' && 'claimedAt' in row ? Number(row.claimedAt) : row.expiresAt)}</td><td><span className={'pp-record-status' + (readyNow ? ' is-ready' : '')}>{status}</span></td>{dividendFilter === 'pending' && <td><Button size="sm" variant="outline" disabled={action.busy || !readyNow} onClick={() => claimDividends([row.id])}>领取</Button></td>}</tr>;
+            return <tr key={row.id}><td className="pp-numeric">{formatDecimal(row.amountSvx, 2)} <small>SVX</small></td><td>{date(row.availableAt)}</td><td>{date(dividendFilter === 'claimed' && 'claimedAt' in row ? Number(row.claimedAt) : row.expiresAt)}</td><td><span className={'pp-record-status' + (readyNow ? ' is-ready' : '')}>{status}</span></td>{dividendFilter === 'pending' && <td><Button size="sm" variant="outline" disabled={action.busy || !readyNow} onClick={() => claimDividends([row.id])}>领取</Button></td>}</tr>;
           })}</Table>}
           {dividendFilter !== 'pending' && <p className="pp-history-note">显示近期收益记录中的合伙人分红。</p>}
         </TabsContent>
         <TabsContent value="fees" className="pp-record-panel">
           <p className="pp-fee-rule">卖出手续费按成交 SVX 数量扣 5%：50% 用于销毁，50% 进入合伙人分红池；买入手续费为 0。</p>
           <div className="pp-fee-totals"><div><span>累计手续费</span><strong>{formatDecimal(data.feeBurn?.totalFeeSvx ?? '0')} <small>SVX</small></strong></div><div><span>累计销毁</span><strong>{formatDecimal(data.feeBurn?.totalBurnSvx ?? '0')} <small>SVX</small></strong></div><div><span>分红归集</span><strong>{formatDecimal(data.feeBurn?.totalPoolSvx ?? '0')} <small>SVX</small></strong></div></div>
-          {!data.feeBurn?.entries?.length ? <CompactEmpty>暂无手续费记录</CompactEmpty> : <Table headings={['时间', '手续费', '销毁', '分红归集']}>{data.feeBurn.entries.slice(0, 100).map(row => <tr key={row.id}><td>{date(row.createdAt)}</td><td>{formatDecimal(row.feeSvx, 6)}</td><td>{formatDecimal(row.burnSvx, 6)}</td><td>{formatDecimal(row.poolSvx, 6)}</td></tr>)}</Table>}
+          {!data.feeBurn?.entries?.length ? <CompactEmpty>暂无手续费记录</CompactEmpty> : <Table headings={['时间', '手续费', '销毁', '分红归集']}>{data.feeBurn.entries.slice(0, 100).map(row => <tr key={row.id}><td>{date(row.createdAt)}</td><td>{formatDecimal(row.feeSvx, 2)}</td><td>{formatDecimal(row.burnSvx, 2)}</td><td>{formatDecimal(row.poolSvx, 2)}</td></tr>)}</Table>}
         </TabsContent>
         <TabsContent value="pools" className="pp-record-panel">
           <p className="pp-fee-rule">30% / 70% 为各档在合伙人分红池中的分配占比，个人分红以实际结算为准。</p>
-          {!data.pools?.length ? <CompactEmpty>暂无分红池记录</CompactEmpty> : <Table headings={['档位', '池序号', '归集金额（SVX）', '状态']}>{data.pools.slice(0, 100).map(row => <tr key={row.id}><td>{row.tierLabel}</td><td>#{row.seq}</td><td className="pp-numeric">{formatDecimal(row.fundedSvx, 6)}</td><td><span className="pp-record-status">{row.status === 'settled' ? '已分红' : row.status === 'closed' ? '待分红' : '归集中'}</span></td></tr>)}</Table>}
+          {!data.pools?.length ? <CompactEmpty>暂无分红池记录</CompactEmpty> : <Table headings={['档位', '池序号', '归集金额（SVX）', '状态']}>{data.pools.slice(0, 100).map(row => <tr key={row.id}><td>{row.tierLabel}</td><td>#{row.seq}</td><td className="pp-numeric">{formatDecimal(row.fundedSvx, 2)}</td><td><span className="pp-record-status">{row.status === 'settled' ? '已分红' : row.status === 'closed' ? '待分红' : '归集中'}</span></td></tr>)}</Table>}
         </TabsContent>
       </Tabs>
     </Card>

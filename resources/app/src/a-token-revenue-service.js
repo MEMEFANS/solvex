@@ -25,6 +25,8 @@ const KIND_LABELS = {
   miner_team: '团队奖·矿机',
   miner_level_diff: '级差·矿机',
   miner_parity: '平级·矿机',
+  node_direct: '直推·矿池',
+  node_level_diff: '级差·矿池',
   stake_direct: '直推·质押',
   stake_indirect: '间推·质押',
   stake_team: '团队奖·质押',

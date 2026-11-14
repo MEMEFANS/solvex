@@ -9,27 +9,29 @@ import { ResponsiveAmountForm } from '@/components/responsive-amount-form';
 import { Empty, ErrorState, Gate, Loading, Metric, PageHeading, useAction } from '@/components/common';
 import { useProfile } from '@/hooks/use-profile';
 import { useWallet } from '@/hooks/use-wallet';
-import { api, post, walletIdentity } from '@/lib/api';
+import { api, post } from '@/lib/api';
 import { date, formatDecimal, percent, short, toUnits, units } from '@/lib/utils';
-import { loadLegacyStyles } from '@/lib/runtime';
-import type { Team, Referral } from '@/types';
+import type { Team, Referral, ReferralRow } from '@/types';
 // 团队收益页只在对应 tab 用到，懒加载避免拖慢团队页首屏
 const PendingPage = lazy(() => import('./pending'));
 const tabs: Record<string, string> = { overview:'团队概览', members:'团队成员', rewards:'团队收益', upgrade:'升级舱', invite:'邀请好友', referrals:'交易返佣' };
 function ReferralRewards() {
-  const wallet = useWallet(), [error, setError] = useState<Error | null>(null);
-  useEffect(() => {
-    let mounted = true;
-    const identity = walletIdentity();
-    const isCurrent = () => mounted && identity === walletIdentity();
-    const refresh = () => {
-      void loadLegacyStyles().then(() => window.loadPageFeature('referrals')).then(async () => { if (isCurrent()) await window.ReferralRewards?.load({ isCurrent }); }).catch(e => { if (isCurrent()) setError(e); });
-    };
-    refresh();
-    window.addEventListener('referralrefresh', refresh);
-    return () => { mounted = false; window.removeEventListener('referralrefresh', refresh); window.ReferralRewards?.reset(); };
-  }, [wallet.address, wallet.revision]);
-  return <>{error && <ErrorState error={error} retry={() => window.dispatchEvent(new Event('referralrefresh'))} />}<div id="referrals-rewards-content"><Loading /></div></>;
+  const wallet = useWallet(), [claiming, setClaiming] = useState(false);
+  const query = useQuery({ queryKey:['referral-rewards', wallet.address, wallet.revision], queryFn:({signal}) => api<Referral>('referrals/profile',{signal}), enabled:wallet.authenticated });
+  const data = query.data;
+  async function claim() {
+    if (claiming) return;
+    setClaiming(true);
+    try { const result = await post<{ amount?: string; count?: number }>('referrals/claim', {}); toast.success(result.count ? `已领取 ${result.amount || '0'} USDT` : '暂无可领取奖励'); await query.refetch(); }
+    catch (error) { toast.error(error instanceof Error ? error.message : '领取失败，请重试'); }
+    finally { setClaiming(false); }
+  }
+  if (query.isLoading) return <Loading />;
+  if (query.error) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
+  if (!data) return <Loading />;
+  const rows = (data.rows || []).filter(row => row.level === 1);
+  const amount = (value?: string, digits = 2) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits:digits, maximumFractionDigits:digits });
+  return <div className="rx-stack rx-referral-rewards"><Card className="rx-metrics"><Metric label="有效直推" value={data.directValid ?? 0} unit="人" /><Metric label="无效直推" value={data.directInvalid ?? 0} unit="人" /><Metric label="已获得奖励" value={amount(data.earned)} unit="USDT" /><Metric label="可领取奖励" value={amount(data.claimable)} unit="USDT" /></Card><Card><CardHeader><CardTitle>推荐奖励</CardTitle><span className="rx-muted">直推奖励 {((data.directRate || 0) * 100).toFixed(0)}%</span></CardHeader><CardContent><p className="rx-note">交易手续费和 AI 跟单收益产生的推荐奖励会先进入可领取余额，领取后计入 USDT 账户。</p><Button disabled={claiming || Number(data.claimable || 0) <= 0} onClick={() => void claim()}>{claiming ? '领取中…' : Number(data.claimable || 0) > 0 ? '立即领取' : '暂无可领取奖励'}</Button></CardContent></Card><Card><CardHeader><CardTitle>推荐用户</CardTitle><span className="rx-muted">{rows.length} 位直推成员</span></CardHeader><CardContent>{!rows.length ? <Empty>暂无推荐用户</Empty> : <div className="rx-table-wrap"><table className="rx-table no-mobile-stack"><thead><tr><th>钱包地址</th><th>加入日期</th><th>交易量</th><th>交易手续费</th><th>跟单金额</th><th>您的奖励</th><th>状态</th></tr></thead><tbody>{rows.map((row: ReferralRow) => <tr key={row.wallet}><td><code>{row.shortAddress || row.wallet || '—'}</code></td><td>{row.joinedAt ? new Date(row.joinedAt).toLocaleDateString('zh-CN') : '—'}</td><td>{amount(row.totalVolume)} USDT</td><td>{amount(row.totalFees)} USDT</td><td>{amount(row.managedAmount)} USDT</td><td>{amount(row.myReward)} USDT</td><td>{row.valid ? <span className="rx-badge is-positive">有效</span> : <span className="rx-muted">无效</span>}</td></tr>)}</tbody></table></div>}</CardContent></Card></div>;
 }
 export default function TeamPage() {
   const [tab, setTab] = useState('overview'), wallet = useWallet(), profile = useProfile(), action = useAction();

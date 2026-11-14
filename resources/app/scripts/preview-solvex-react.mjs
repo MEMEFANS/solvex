@@ -252,9 +252,12 @@ try {
       await page.evaluate(text => [...document.querySelectorAll('.tab-panel.active button')].find(b => b.textContent.includes(text))?.click(), text);
     };
     await visit('earn','blindbox'); await page.waitForSelector('[data-native-ecosystem="blindbox"]');
-    allowedMutation='/api/a-token/blindbox/join';
-    await clickText('支付 1 USDT 开盲盒'); await confirm(); await waitText('[data-sonner-toaster]','盲盒已开启');
-    assert.equal(JSON.parse(mutations.find(r=>r.path===allowedMutation).body).signature,'PREVIEW_ONLY');
+    const blindboxButton = await page.$('[data-native-ecosystem="blindbox"] .svx-box-actions button');
+    assert.ok(blindboxButton,'blindbox action is rendered');
+    // The isolated preview deliberately has no chain payment contract. Keep
+    // the production fail-closed guard covered instead of trying to fake an
+    // EVM receipt in a UI-only browser fixture.
+    assert.equal(await blindboxButton.evaluate(button => button.disabled), true, 'blindbox stays disabled without on-chain payment config');
     await visit('partner-plan'); await page.waitForSelector('[data-native-ecosystem="shareholder"]');
     assert.equal(await page.$$eval('[data-native-ecosystem="shareholder"] button', rows=>rows.find(b=>b.textContent.includes('暂不开放')).disabled),true);
     allowedMutation='/api/a-token/shareholder/join'; mutationStatus=503;
