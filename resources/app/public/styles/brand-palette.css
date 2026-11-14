@@ -1,0 +1,56 @@
+/* Shared by the application, storefront and chart theme.
+   The logo stays vivid; large surfaces use low-glare violet/blue tints. */
+html:root {
+  color-scheme: light;
+  --brand: #6552ab;
+  --brand-2: #496aa6;
+  --brand-strong: #574398;
+  --brand-soft: #dcd8ed;
+  --brand-ink: #ffffff;
+  --brand-txt: #51418b;
+  --brand-line: #bbb2d9;
+  --brand-dim: #e1ddef;
+  --accent: #377da0;
+  --deep: #32275d;
+  --pur: var(--brand);
+  --pur2: var(--brand-2);
+  --brand-gradient: linear-gradient(115deg, #7152b4, #5861ae 56%, #3e729f);
+  --brand-gradient-hover: linear-gradient(115deg, #63459f, #4c539b 56%, #32638e);
+  --canvas-gradient: radial-gradient(ellipse at 8% 0, #cec4e875, transparent 55%), radial-gradient(ellipse at 100% 20%, #bedcea65, transparent 55%), linear-gradient(145deg, #dddcef, #dce3f0 70%, #d8e6ee);
+  --bg: #dddff0;
+  --bg2: #d9e2ef;
+  --panel: #e8e8f3;
+  --panel2: #e1e3f0;
+  --card: var(--panel);
+  --card-2: var(--panel2);
+  --slot: #dadeed;
+  --surface-hover: #d9dcef;
+  --chrome: #e1e3f0f5;
+  --txt: #252941;
+  --body: #39405a;
+  --mut: #515b73;
+  --mut2: #555f7c;
+  --text: var(--txt);
+  --muted: var(--mut);
+  --border: #c4cae0;
+  --border2: #aeb8d6;
+  --border-subtle: #d0d4e6;
+  --hover: var(--surface-hover);
+  --up: #067a63;
+  --down: #c02a45;
+  --grn: var(--up);
+  --grn2: #056352;
+  --red: var(--down);
+  --red2: #a31f36;
+  --blu: #365da0;
+  --blu2: #294c8a;
+  --yel: #8a5508;
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 18px;
+  --shadow-1: 0 2px 4px #39315d06, 0 8px 24px #39315d0a;
+  --shadow-2: 0 18px 44px #39315d26;
+  --chart-bg: var(--panel);
+  --chart-grid: #d2d5e5;
+  background: var(--bg);
+}

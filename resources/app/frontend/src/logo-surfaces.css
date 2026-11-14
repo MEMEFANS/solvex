@@ -1,0 +1,94 @@
+/* Final component colors. Replaces the former mist/white/button override
+   stacks in ui-system.css. Geometry and component behavior stay in their files. */
+body.solvex-react { background: var(--canvas-gradient); color: var(--body); }
+body.solvex-react::before { background-image: none; }
+.solvex-react :is(.rx-sidebar, .rx-mobile-sheet) { background: linear-gradient(165deg, var(--panel), var(--bg2)); border-color: var(--border); box-shadow: none; }
+.solvex-react :is(.rx-topbar, .rx-mobile-dock) { background: var(--chrome); border-color: var(--border); }
+.solvex-react :is(.rx-brand strong, .rx-topbar-brand, .rx-heading h1) { color: var(--txt); }
+.solvex-react :is(.rx-nav-label, .rx-sidebar-foot, .rx-breadcrumb, .rx-heading p, .rx-muted) { color: var(--mut); }
+.solvex-react .rx-nav button { color: var(--body); }
+.solvex-react .rx-nav button:hover { background: var(--surface-hover); color: var(--brand-txt); }
+.solvex-react .rx-nav button.is-active { background: linear-gradient(110deg, var(--brand-soft), #d8e2f0); color: var(--brand-txt); box-shadow: inset 0 0 0 1px var(--brand-line); }
+.solvex-react .rx-nav button.is-active svg { color: var(--brand); }
+.solvex-react .rx-nav button.is-active::before { background: var(--brand-gradient); }
+.solvex-react .rx-nav-dot { background: var(--accent); }
+.solvex-react .rx-nav-separator { background: var(--border-subtle); }
+.solvex-react .rx-sidebar-help { background: var(--panel2); border-color: var(--border); }
+.solvex-react .rx-sidebar-help strong { color: var(--txt); }
+.solvex-react .rx-sidebar-help p { color: var(--mut); }
+.solvex-react .rx-sidebar-help button { color: var(--brand-txt); }
+.solvex-react :is(.rx-mobile-menu, .rx-locale button) { background: var(--panel2); border-color: var(--border); color: var(--brand-txt); box-shadow: none; }
+.solvex-react :is(.rx-mobile-menu, .rx-locale button):hover { background: var(--surface-hover); border-color: var(--border2); }
+.solvex-react .rx-session-state { background: var(--panel2); color: var(--mut2); }
+.solvex-react .rx-wallet #wallet-connect-btn,
+.solvex-react .rx-wallet #wallet-connect-btn.connected { background: var(--brand-gradient); color: var(--brand-ink); border-color: transparent; box-shadow: 0 3px 10px #6552ab1a; }
+.solvex-react .rx-wallet #wallet-connect-btn:hover { background: var(--brand-gradient-hover); }
+.solvex-react .rx-mobile-dock button[aria-current=page] { color: var(--brand-txt); }
+
+/* Primary, secondary, ghost and destructive controls retain distinct meanings. */
+.solvex-react :is(.ui-button.bg-primary, .mp-btn.gold, .aim-primary, .aim-vip-btn:not(:disabled), .assets-primary-action, .portal-button.primary) { background: var(--brand-gradient); border-color: var(--brand); color: var(--brand-ink); box-shadow: 0 3px 10px #6552ab18; }
+.solvex-react :is(.ui-button.bg-primary, .mp-btn.gold, .aim-primary, .aim-vip-btn, .assets-primary-action, .portal-button.primary):hover:not(:disabled) { background: var(--brand-gradient-hover); }
+.solvex-react :is(.ui-button.border, .ui-button.bg-secondary, .assets-secondary-action, .rx-source-switch button, .rx-play-nav button) { background: var(--panel2); border-color: var(--border); color: var(--body); box-shadow: none; }
+.solvex-react :is(.ui-button.border, .ui-button.bg-secondary, .assets-secondary-action, .rx-source-switch button, .rx-play-nav button):hover:not(:disabled) { background: var(--surface-hover); border-color: var(--border2); color: var(--brand-txt); }
+.solvex-react .ui-button:not(.bg-primary):not(.border):not(.bg-secondary):not(.bg-destructive) { background: transparent; color: var(--brand-txt); box-shadow: none; }
+.solvex-react .ui-button:not(.bg-primary):not(.border):not(.bg-secondary):not(.bg-destructive):hover { background: var(--brand-soft); }
+.solvex-react .ui-button.bg-destructive { background: var(--down); color: var(--brand-ink); }
+.solvex-react :is(.ui-button, .mp-btn, .aim-primary, .assets-primary-action):disabled { box-shadow: none; }
+.solvex-react :is(.ui-tabs, .assets-tabs) { background: var(--panel2); border-color: var(--border); }
+.solvex-react :is(.ui-tab[data-state=active], .rx-source-switch button.active, .rx-play-nav button.is-active, .assets-tabs button.active) { background: var(--brand-soft); color: var(--brand-txt); border-color: var(--brand-line); box-shadow: inset 0 0 0 1px var(--brand-line); }
+.solvex-react :is(.ui-tab, .assets-tabs button):hover { background: var(--surface-hover); color: var(--brand-txt); }
+.solvex-react :is(button, a, input, textarea, select):focus-visible { outline-color: var(--brand); }
+.solvex-react :is(.rx-kicker, .rx-input-group button) { color: var(--brand-txt); }
+.solvex-react :is(.rx-progress > i, .assets-tabs button.active::after) { background: var(--brand-gradient); }
+.solvex-react .rx-metric-link button { background: transparent; color: var(--brand-txt); }
+
+/* Cards, sheets and tables use tinted surfaces, including lazy legacy pages. */
+.solvex-react :is(.ui-card, .rx-card, .portal-card, .rx-tier, .rx-position, .rx-getting-started, .assets-main, .assets-distribution, .assets-record-block, .aim-panel, .aim-card, .mp-card, .mp-quota, .mp-empty, .support-chat-wrap) { background: var(--panel); border-color: var(--border); box-shadow: var(--shadow-1); }
+.solvex-react .rx-partner-plan :is(.pp-tier-card, .pp-qualification-card, .pp-records-card) { background: var(--panel); border-color: var(--border); }
+.solvex-react :is(.ui-dialog, .rx-dialog, .svx-order-sheet, .svx-order-sheet-head) { background: var(--panel); border-color: var(--border); color: var(--body); }
+.solvex-react :is(.rx-input-group, .assets-search, .aim-amount-field) { background: var(--panel2); border-color: var(--border2); }
+.solvex-react :is(input, select, textarea) { color: var(--body); accent-color: var(--brand); }
+.solvex-react :is(.rx-input-group, .assets-search, .aim-amount-field) input { background: transparent; }
+.solvex-react :is(input, textarea)::placeholder { color: var(--mut); opacity: 1; }
+.solvex-react :is(.rx-table, .assets-table, .account-history) th { background: var(--panel2); color: var(--mut2); border-color: var(--border); }
+.solvex-react :is(.rx-table, .assets-table, .account-history) td { border-color: var(--border-subtle); }
+.solvex-react :is(.rx-table, .assets-table, .account-history) tbody tr:hover td { background: var(--surface-hover); }
+.solvex-react .rx-pool-summary, .solvex-react .rx-metrics { background: var(--panel); border-color: var(--border); }
+.solvex-react .rx-claim-strip { background: linear-gradient(110deg, var(--brand-soft), var(--panel)); border-color: var(--border); }
+.solvex-react :is(.rx-cavern, .rx-cavern-heading, .rx-cavern-footer) { background: var(--panel); border-color: var(--border); }
+.solvex-react :is(.rx-cavern-icon, .rx-claim-icon, .rx-cavern-toggle) { background: var(--brand-dim); border-color: var(--brand-line); color: var(--brand-txt); }
+.solvex-react .rx-cavern-title h2 { color: var(--txt); }
+.solvex-react .rx-cavern-title p, .solvex-react .rx-cavern-footer p { color: var(--mut); }
+.solvex-react .rx-tier[data-tone] .rx-tier-invest { background: var(--brand-gradient); color: var(--brand-ink); box-shadow: none; }
+.solvex-react .rx-tier[data-tone] .rx-tier-invest:hover { background: var(--brand-gradient-hover); }
+.solvex-react .support-chat-messages { background: var(--bg2); }
+.solvex-react .support-msg.me .support-msg-bubble { background: var(--brand-gradient); }
+.solvex-react .support-msg.them .support-msg-bubble { background: var(--panel); border-color: var(--border); }
+.solvex-react :is(.svx-mobile-actions, #tab-trade .mt-bottom-nav) { background: var(--chrome); border-color: var(--border); }
+.solvex-react .svx-mobile-buy { background: var(--brand-gradient); }
+.solvex-react :is(.aim-record-card, .atrade-chart-card, .atrade-chart-host, .atrade-chart-toolbar, .aentry-quote, .order-entry.aentry > .quote-box) { background: var(--panel2); border-color: var(--border); }
+body.solvex-react.mt-trading,
+body.solvex-react.mt-trading #tab-trade { --mt-bg: var(--panel); --mt-line: var(--border); --mt-muted: var(--mut); --mt-text: var(--body); }
+
+/* Chat is loaded separately. The app scope wins regardless of navigation order. */
+.solvex-react .sx-chat { --chat-ink: var(--txt); --chat-muted: var(--mut); --chat-line: var(--border-subtle); --chat-purple: var(--brand); }
+.solvex-react .sx-chat-window { background: var(--panel); border-color: var(--border); box-shadow: var(--shadow-1); }
+.solvex-react :is(.sx-group-rail, .sx-chat-header, .sx-chat-composer) { background: var(--panel); border-color: var(--border-subtle); }
+.solvex-react .sx-message-area { background: linear-gradient(145deg, var(--bg), var(--bg2)); }
+.solvex-react .sx-message-bubble { background: var(--panel); border-color: var(--border); color: var(--body); }
+.solvex-react .sx-message.is-mine .sx-message-bubble { background: var(--brand-soft); border-color: var(--brand-line); color: var(--brand-txt); }
+.solvex-react .sx-chat-primary { background: var(--brand-gradient); color: var(--brand-ink); box-shadow: none; }
+.solvex-react .sx-chat-primary:hover:not(:disabled) { background: var(--brand-gradient-hover); }
+.solvex-react :is(.sx-chat-secondary, .sx-unread, .sx-group-search, .sx-chat-composer textarea) { background: var(--panel2); border-color: var(--border); color: var(--mut2); }
+.solvex-react .sx-group-item:hover, .solvex-react .sx-group-item.is-active { background: var(--surface-hover); border-color: var(--brand-line); }
+.solvex-react .sx-group-icon { background: var(--brand-soft); color: var(--brand-txt); }
+.solvex-react .sx-group-icon.tone-1 { background: #d5e4f0; color: #3f6d96; }
+.solvex-react .sx-group-icon.tone-2 { background: #e8e0d5; color: #84663d; }
+.solvex-react .sx-group-icon.tone-3 { background: #d3e6e6; color: #3a747b; }
+.solvex-react .sx-group-unread { background: var(--brand); }
+.solvex-react :is(.sx-group-item-copy small, .sx-group-time, .sx-message-meta, .sx-message-time, .sx-form-hint) { color: var(--mut); }
+@media (max-width: 760px) {
+  .solvex-react .sx-mobile-group-home .sx-group-item { background: var(--panel2); }
+  .solvex-react .sx-mobile-group-home .sx-group-item.is-active { background: var(--brand-soft); border-color: var(--brand-line); }
+  .solvex-react .sx-mobile-back:hover { background: var(--surface-hover); }
+}
