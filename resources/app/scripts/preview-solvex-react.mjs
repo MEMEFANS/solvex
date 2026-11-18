@@ -156,7 +156,7 @@ try {
     await page.screenshot({path:path.join(output,'pool-invest-dialog.png')});
     await page.click('.rx-invest-actions .ui-button');
     await page.waitForSelector('.rx-invest-dialog',{hidden:true});
-    // Energy amounts open in a Radix sheet; confirmation preserves the entered value.
+    // Mobile amount forms keep confirmation in the sheet so wallet browsers never need nested dialogs.
     for(const [sub,mode] of [['staking','energy']]) {
       await visit('earn',sub);
       assert.equal(await page.$('#amount-'+mode),null,'mobile amount field waits for its sheet');
@@ -167,16 +167,41 @@ try {
       assert.ok(bounds.left>=0&&bounds.right<=bounds.width+1&&bounds.bottom<=bounds.height+1,'amount sheet fits viewport');
       await page.type('#amount-'+mode,'1000');
       await page.click('.rx-amount-sheet .rx-amount-form .rx-full');
-      await page.waitForFunction(()=>document.querySelectorAll('.ui-dialog[role=dialog]').length===2);
-      await page.waitForFunction(()=>document.querySelector('.ui-dialog[role=dialog]:not(.rx-amount-sheet)')?.contains(document.activeElement));
+      await page.waitForSelector('.rx-inline-confirm');
+      assert.equal(await page.$$eval('.ui-dialog[role=dialog]',nodes=>nodes.length),1,'mobile confirmation stays in the amount sheet');
       await settle();
-      await page.keyboard.press('Escape');
-      await page.waitForFunction(()=>document.querySelectorAll('.ui-dialog[role=dialog]').length===1);
+      await page.click('.rx-inline-confirm button');
+      await page.waitForSelector('.rx-inline-confirm',{hidden:true});
       assert.equal(await page.$eval('#amount-'+mode,e=>e.value),'1000','cancel keeps amount in the sheet');
       await page.screenshot({path:path.join(output,mode+'-amount-sheet.png')});
       await page.click('.rx-amount-sheet .ui-dialog-close');
       await page.waitForSelector('.rx-amount-sheet',{hidden:true});
     }
+    await visit('referrals');
+    const upgradeTab=await page.evaluate(()=>[...document.querySelectorAll('#tab-referrals [role=tab]')].find(button=>button.textContent==='升级舱')?.id);
+    assert.ok(upgradeTab,'mobile upgrade tab exists');
+    await page.click('[id="'+upgradeTab+'"]');
+    await page.waitForFunction(id=>document.getElementById(id)?.getAttribute('aria-selected')==='true',{},upgradeTab);
+    await page.waitForSelector('#tab-referrals [data-open-amount=upgrade]');
+    allowedMutation='/api/a-token/upgrade/enter';mutationStatus=503;
+    await page.click('#tab-referrals .rx-amount-entry [data-open-amount=upgrade]');
+    await page.waitForSelector('.rx-amount-sheet',{visible:true});
+    await page.type('#amount-upgrade','1000');
+    await page.click('.rx-amount-sheet .rx-amount-form .rx-full');
+    await page.waitForSelector('.rx-inline-confirm');
+    assert.equal(await page.$$eval('.ui-dialog[role=dialog]',nodes=>nodes.length),1,'upgrade uses one mobile dialog');
+    await page.click('.rx-inline-confirm button:last-child');
+    await waitText('[data-sonner-toaster]','模拟响应中断');
+    await page.waitForSelector('.rx-inline-confirm',{hidden:true});
+    assert.equal(await page.$eval('#amount-upgrade',input=>input.value),'1000','failed mobile upgrade keeps the amount for retry');
+    mutationStatus=200;
+    await page.click('.rx-amount-sheet .rx-amount-form .rx-full');
+    await page.waitForSelector('.rx-inline-confirm');
+    await page.click('.rx-inline-confirm button:last-child');
+    await page.waitForFunction(()=>document.getElementById('amount-upgrade').value==='');
+    const mobileUpgrades=mutations.filter(request=>request.path==='/api/a-token/upgrade/enter');
+    assert.equal(mobileUpgrades.length,2,'mobile upgrade submits once per explicit confirmation');
+    assert.equal(mobileUpgrades[0].headers['idempotency-key'],mobileUpgrades[1].headers['idempotency-key'],'mobile retry keeps the request ID after an uncertain response');
     await page.setViewport({width:1440,height:1050});
     await visit('referrals');
     const selectTeam=async label=>{
@@ -188,7 +213,9 @@ try {
     };
     for(const label of ['团队成员','团队收益','升级舱','邀请好友','交易返佣']) {
       await selectTeam(label);
-      assert.ok(await page.$eval('#tab-referrals',el=>el.textContent.length>60));
+      const content = { '团队成员':'直推成员', '团队收益':'团队收益', '升级舱':'管理升级舱', '邀请好友':'我的邀请链接', '交易返佣':'推荐奖励' }[label];
+      await waitText('#tab-referrals .rx-tab-body', content);
+      assert.equal(await page.$('#tab-referrals .rx-loading'), null, 'team tab finished loading: ' + label);
     }
     const confirm=async()=>{
       await page.waitForSelector('.ui-dialog[role=dialog]',{visible:true});
@@ -211,7 +238,7 @@ try {
     await page.waitForFunction(()=>!document.querySelector('#tab-referrals .rx-amount-form .rx-full').disabled);
     await page.click('#tab-referrals .rx-amount-form .rx-full');await confirm();
     await page.waitForFunction(()=>document.getElementById('amount-upgrade').value==='');
-    const upgrades=mutations.filter(r=>r.path===allowedMutation);
+    const upgrades=mutations.filter(r=>r.path===allowedMutation).slice(-2);
     assert.equal(upgrades.length,2);
     assert.match(upgrades[0].headers['idempotency-key'],/^aup_/);
     assert.equal(upgrades[0].headers['idempotency-key'],upgrades[1].headers['idempotency-key'],'uncertain upgrade retry keeps its request ID');
@@ -226,7 +253,7 @@ try {
     await page.type('#amount-energy','1.000000000000000001');
     await page.click('.rx-amount-form .rx-full');await confirm();
     await page.waitForFunction(()=>document.getElementById('amount-energy').value==='');
-    assert.deepEqual(JSON.parse(mutations.find(r=>r.path===allowedMutation).body),{planId:'energy',principal:'1.000000000000000001'});
+    assert.deepEqual(JSON.parse(mutations.find(r=>r.path===allowedMutation).body),{planId:'energy30',principal:'1.000000000000000001'});
     allowedMutation=null;
     await visit('earn','miner');
     await page.click('.rx-tier[data-tone=silver] .rx-tier-invest');
@@ -344,11 +371,12 @@ try {
     await waitText('.rx-pool-empty','你的第一份矿池');
     failProfile=true;profileDelay=0;
     await page.click('[aria-label="刷新当前页数据"]');
-    await waitText('.rx-error','模拟网络不可用');
-    assert.ok(await page.$('.rx-error button'),'network failure has a retry action');
+    await waitText('.rx-cache-notice','当前显示上次加载的内容');
+    assert.ok((await page.$eval('.rx-metrics',e=>e.textContent)).includes('777'), 'background failure keeps the last successful balance visible');
+    assert.ok(await page.$('.rx-cache-notice button'),'network failure has a retry action');
     failProfile=false;
-    await page.click('.rx-error button');
-    await page.waitForSelector('.rx-error',{hidden:true});
+    await page.click('.rx-cache-notice button');
+    await page.waitForSelector('.rx-cache-notice',{hidden:true});
     profileDelay=0;authenticated=false;
     await page.evaluate(()=>{
       window.currentWalletConnection=null;window.currentWalletProfile=null;

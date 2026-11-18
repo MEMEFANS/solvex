@@ -172,6 +172,10 @@ body.solvex-react { background:var(--bg); color:var(--body); font-size:14px; }
 .rx-amount-sheet .rx-dialog-title { margin:8px 0 10px; font-size:21px; }
 .rx-amount-sheet .rx-note { margin-bottom:22px; font-size:13px; }
 .rx-amount-sheet .rx-full { min-height:48px; }
+.rx-inline-confirm { margin:18px 0 8px; padding:14px; border:1px solid #ddd5ed; border-radius:14px; background:linear-gradient(145deg,#faf9fd,#f2eff9); }
+.rx-inline-confirm p { margin:0 0 12px; color:#515a70; font-size:13px; line-height:1.65; }
+.rx-inline-confirm>div { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.rx-inline-confirm .ui-button { min-height:46px; }
 /* 投入矿池弹窗：桌面居中，内容超高时只做纵向滚动，禁止横向溢出 */
 .rx-invest-dialog { max-height:calc(100dvh - 48px); overflow-y:auto; overflow-x:hidden; overscroll-behavior:contain; }
 .rx-invest-title { font-size:21px; line-height:1.3; color:#101728; }

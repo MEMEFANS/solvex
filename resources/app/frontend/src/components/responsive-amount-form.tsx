@@ -21,7 +21,7 @@ export function ResponsiveAmountForm({ mode = 'pool' }: { mode?: 'pool' | 'energ
     <Dialog open={open} onOpenChange={setOpen}><DialogContent placement="bottom" className="rx-amount-sheet">
       <span className="rx-sheet-handle" aria-hidden="true" /><DialogTitle className="rx-dialog-title">{title}</DialogTitle>
       <DialogDescription className="rx-note">先核对数量和规则，再确认提交。</DialogDescription>
-      <AmountForm mode={mode} />
+      <AmountForm mode={mode} inlineConfirmation />
     </DialogContent></Dialog>
   </div>;
 }

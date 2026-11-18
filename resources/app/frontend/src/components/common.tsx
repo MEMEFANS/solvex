@@ -60,5 +60,5 @@ export function useAction(scope?: ActionScope) {
     finally { transactionBusy = false; if (mounted.current) setBusy(false); }
   }
   const dialog = <Dialog open={Boolean(confirmation)} onOpenChange={open => { if (!open) close(false); }}><DialogContent><DialogTitle className="rx-dialog-title">{confirmation?.title}</DialogTitle><DialogDescription className="rx-dialog-description">{confirmation?.description}</DialogDescription><div className="rx-dialog-actions"><Button variant="outline" onClick={() => close(false)}>取消</Button><Button onClick={() => close(true)}>确认操作</Button></div></DialogContent></Dialog>;
-  return { run, busy, dialog };
+  return { run, busy, confirmation, confirm:() => close(true), cancel:() => close(false), dialog };
 }
