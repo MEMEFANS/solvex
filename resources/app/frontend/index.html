@@ -1,2 +1,54 @@
 <!doctype html>
-<html lang="zh-CN"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content"><meta name="theme-color" content="#dddff0"><meta name="format-detection" content="telephone=no"><title>Solvex · 数字资产与量化生态</title><link rel="icon" href="/assets/brand/logo.svg?v=20261111-domain-brand-1"><link rel="apple-touch-icon" href="/assets/brand/icon-180.png"></head><body><div id="root"></div><main id="legacy-root"></main><noscript>请启用 JavaScript 以使用 Solvex。</noscript><script type="module" src="/src/main.tsx"></script></body></html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#dddff0">
+  <meta name="format-detection" content="telephone=no">
+  <title>Solvex · 数字资产与量化生态</title>
+  <link rel="icon" href="/assets/brand/logo.svg?v=20261111-domain-brand-1">
+  <link rel="apple-touch-icon" href="/assets/brand/icon-180.png">
+  <style>
+    #svx-boot { box-sizing:border-box; position:fixed; inset:0; display:grid; place-items:center; padding:24px; background:#eeeff7; color:#292e4a; font:16px/1.6 system-ui,sans-serif; text-align:center }
+    #svx-boot h1 { margin:0; font-size:24px; font-weight:700 }
+    #svx-boot p { margin:10px 0 18px; color:#515975 }
+    #svx-boot a { display:inline-block; padding:10px 24px; border-radius:12px; background:#494375; color:#fff; text-decoration:none }
+    #svx-boot a[hidden] { display:none }
+  </style>
+</head>
+<body>
+  <div id="root"><div id="svx-boot"><div>
+    <h1>Solvex</h1>
+    <p id="svx-boot-status" role="status">正在打开页面…</p>
+    <a id="svx-boot-retry" href="?__svx_reload=1" hidden>重新加载</a>
+    <noscript>请启用 JavaScript 以使用 Solvex。</noscript>
+  </div></div></div>
+  <main id="legacy-root"></main>
+  <script>
+    (function () {
+      // This runs without the app bundle, including when the entry module fails.
+      var showRetry = function () {
+        var status = document.getElementById('svx-boot-status');
+        var retry = document.getElementById('svx-boot-retry');
+        if (!status || !retry) return;
+        status.textContent = '页面暂时没加载完成，可以重新加载。';
+        retry.hidden = false;
+      };
+      window.addEventListener('error', function (event) {
+        var target = event.target;
+        if (target && target.tagName === 'SCRIPT' && target.type === 'module') showRetry();
+      }, true);
+      window.setTimeout(showRetry, 8000);
+      document.getElementById('svx-boot-retry').addEventListener('click', function (event) {
+        try {
+          var url = new URL(window.location.href);
+          url.searchParams.set('__svx_reload', String(Date.now()));
+          event.preventDefault();
+          window.location.replace(url.href);
+        } catch (error) { /* The link also works without the URL API. */ }
+      });
+    })();
+  </script>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
