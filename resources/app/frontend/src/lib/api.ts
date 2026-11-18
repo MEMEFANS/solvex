@@ -1,6 +1,8 @@
 import { QueryClient } from '@tanstack/react-query';
 import { signWalletOperation, walletAddress } from './wallet';
+import { configurePageCache } from './page-cache';
 export const queryClient = new QueryClient({ defaultOptions: { queries: { staleTime: 15000, retry: 1, refetchOnWindowFocus: true, gcTime: 120000 }, mutations: { retry: false } } });
+configurePageCache(queryClient);
 export function walletSnapshot() {
   return { address: String(window.currentWalletConnection?.address || '').toLowerCase(), authenticated: Boolean(window.currentWalletProfile?.authenticated), revision: window.getWalletStateRevision?.() || 0 };
 }

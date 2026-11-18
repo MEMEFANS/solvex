@@ -1,3 +1,4 @@
+import { canRetainQueryData } from '@/lib/page-cache';
 import { useQuery } from '@tanstack/react-query';
 import { RefreshCw, Trophy } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -25,7 +26,7 @@ export default function RankingPage() {
     <PageHeading title="合约风云榜" subtitle="按合约跟单累计收益排名">
       <Button variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}><RefreshCw />刷新排名</Button>
     </PageHeading>
-    {query.error ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : !payload ? <Loading /> : <div className="rx-stack">
+    {query.error && !canRetainQueryData(query) ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : !payload ? <Loading /> : <div className="rx-stack">
       <Card className="rx-metrics rx-metrics-3">
         <Metric label="跟单账户" value={rows.length} unit="个" note={`共 ${payload.total || 0} 个有跟单收益账户`} icon={<Trophy size={18} />} />
         <Metric label="榜首 30D 收益" value={top ? formatDecimal(top.earned30d, 2) : '—'} unit="USDT" note={top ? `${roiText(top.roi30d)} ROI` : '暂无数据'} />

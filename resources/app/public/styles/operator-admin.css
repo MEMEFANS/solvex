@@ -358,3 +358,12 @@
   background: var(--admin-panel-2); color: var(--admin-muted); cursor: pointer; font-size: 12px;
 }
 .acm-chip button:hover { background: var(--admin-red); color: #fff; }
+.admin-level-mode { display:block; margin-top:4px; color:var(--admin-muted); font-size:11px; }
+.admin-v-level-help { padding:0 18px 12px; margin:0; color:var(--admin-muted); font-size:12px; line-height:1.7; }
+.admin-user-actions { display:flex; align-items:center; flex-wrap:wrap; gap:6px; }
+.operator-admin-page .admin-user-actions .admin-level-select { width:auto; min-width:0; max-width:100%; padding:0 6px; font-size:12px; }
+.admin-user-actions .admin-table-action { flex-shrink:0; white-space:nowrap; }
+@media (max-width:700px) {
+  #admin-users-body td { overflow-wrap:anywhere; }
+  #admin-users-body td[data-label="操作"]::before { display:block; margin-bottom:6px; }
+}

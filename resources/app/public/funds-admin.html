@@ -8,19 +8,19 @@
   <meta name="theme-color" content="#ffffff">
   <title>Solvex 资金后台</title>
   <link rel="icon" href="/favicon.ico?v=20261111-domain-solvex-logo-3">
-  <link rel="stylesheet" href="/styles/funds-admin.css?v=20261111-domain-model-4">
-  <script defer src="/js/funds-admin.js?v=20261112-daily-withdrawal-summary"></script>
+  <link rel="stylesheet" href="/styles/funds-admin.css?v=20261115-admin-tools-1">
+  <script defer src="/js/funds-admin.js?v=20261116-energy30-1"></script>
 </head>
 <body>
   <main class="funds-shell">
-    <header class="funds-header"><div><span class="eyebrow">Solvex Exchange</span><h1>资金管理后台</h1><p>提现审核 · 资产调整 · 能量充值</p></div><button id="funds-lock" type="button" class="secondary" hidden>锁定并退出</button></header>
+    <header class="funds-header"><div><span class="eyebrow">Solvex Exchange</span><h1>资金管理后台</h1><p>提现审核 · 资产调整 · 矿池赠送 · 能量池赠送</p></div><button id="funds-lock" type="button" class="secondary" hidden>锁定并退出</button></header>
     <section id="funds-login" class="card login-card">
       <h2>验证资金管理权限</h2><p>使用原提现后台的独立管理令牌登录。</p>
       <form id="funds-login-form"><label>资金管理令牌<input id="funds-token" type="password" autocomplete="off" spellcheck="false" required></label><button type="submit">进入资金后台</button></form>
     </section>
     <div id="funds-status" class="status" role="status" aria-live="polite"></div>
     <section id="funds-app" hidden>
-      <nav class="tabs" aria-label="资金后台功能"><button id="funds-tab-withdrawals" type="button" class="selected" aria-pressed="true">提现审核</button><button id="funds-tab-credits" type="button" class="secondary" aria-pressed="false">测试入账</button><button id="funds-tab-assets" type="button" class="secondary" aria-pressed="false">资产调整</button><button id="funds-tab-miners" type="button" class="secondary" aria-pressed="false">能量充值</button><button id="funds-refresh" type="button" class="secondary refresh">刷新记录</button></nav>
+      <nav class="tabs" aria-label="资金后台功能"><button id="funds-tab-withdrawals" type="button" class="selected" aria-pressed="true">提现审核</button><button id="funds-tab-credits" type="button" class="secondary" aria-pressed="false">测试入账</button><button id="funds-tab-assets" type="button" class="secondary" aria-pressed="false">资产调整</button><button id="funds-tab-pools" type="button" class="secondary" aria-pressed="false">矿池赠送</button><button id="funds-tab-miners" type="button" class="secondary" aria-pressed="false">能量池赠送</button><button id="funds-refresh" type="button" class="secondary refresh">刷新记录</button></nav>
       <section id="funds-withdrawals">
         <section class="card" id="funds-daily-summary"><div class="card-head"><div><h2>每日提现统计</h2><p>北京时间 · 已支付金额与 2% 手续费</p></div></div><div class="table-scroll"><table><thead><tr><th>日期</th><th>已支付笔数</th><th>到账金额</th><th>手续费（2%）</th><th>平台扣款合计</th><th>待处理金额</th></tr></thead><tbody id="funds-daily-summary-body"><tr><td colspan="6">尚未读取</td></tr></tbody></table></div></section>
         <details class="card settings"><summary>提现设置 <span id="funds-auto-state">读取中</span></summary>
@@ -46,16 +46,33 @@
         </section>
         <section class="card"><h2>资产调整记录</h2><p id="funds-asset-count">尚未读取</p><div class="table-scroll"><table><thead><tr><th>时间</th><th>钱包</th><th>操作</th><th>数量</th><th>原因</th><th>管理员</th></tr></thead><tbody id="funds-assets-body"></tbody></table></div></section>
       </section>
-      <section id="funds-miners" hidden>
-        <section class="card"><h2>能量充值</h2><p>充值的原始额度每天释放1%，共100次。用户每天08:00后手动领取，未领取的当日额度作废。</p>
-          <form id="funds-miner-form" class="grid-form">
-            <label>用户钱包地址<input id="funds-miner-wallet" placeholder="0x…" autocomplete="off" pattern="0x[a-fA-F0-9]{40}" required></label>
-            <label>能量数量<input id="funds-miner-amount" type="text" inputmode="decimal" placeholder="能量总额度（SVX）" required></label>
-            <label>赠送原因<input id="funds-miner-reason" minlength="2" maxlength="120" placeholder="例如：工作室充值" required></label>
-            <button type="submit">确认能量充值</button>
+      <section id="funds-pools" hidden>
+        <section class="card"><h2>赠送矿池</h2><p>后台赠送的币数与份数不设上限，收益固定按所选矿种计算。超过 100 份合并为一条持仓，保留实际份数与每份币数。用户自行开矿仍按原金额档位计算。</p><p>不扣用户已有余额；每日手动领取利息，到期领取本金，并计入团队业绩。个人领取后才产生团队收益。</p>
+          <form id="funds-pool-form" class="grid-form">
+            <label>用户钱包地址<input id="funds-pool-wallet" placeholder="0x…" autocomplete="off" pattern="0x[a-fA-F0-9]{40}" required></label>
+            <label>矿池类型<select id="funds-pool-type" required><option value="">读取矿池类型…</option></select></label>
+            <label>每份矿池币数（SVX）<input id="funds-pool-coins" type="text" inputmode="numeric" pattern="[0-9]+" required></label>
+            <label>赠送数量（份）<input id="funds-pool-quantity" type="text" inputmode="numeric" pattern="[1-9][0-9]*" value="1" required></label>
+            <label>赠送原因<input id="funds-pool-reason" minlength="2" maxlength="120" placeholder="例如：活动奖励" required></label>
+            <button id="funds-pool-submit" type="submit" disabled>确认赠送矿池</button>
+            <output id="funds-pool-preview" class="pool-preview" aria-live="polite">请选择矿池类型与数量</output>
           </form>
         </section>
-        <section class="card"><h2>能量充值记录</h2><p id="funds-miner-count">尚未读取</p><div class="table-scroll"><table><thead><tr><th>时间</th><th>钱包</th><th>能量额度</th><th>记录编号</th><th>原因</th><th>管理员</th></tr></thead><tbody id="funds-miners-body"></tbody></table></div></section>
+        <section class="card"><h2>矿池赠送记录</h2><p id="funds-pool-count">尚未读取</p><div class="table-scroll"><table><thead><tr><th>时间</th><th>钱包</th><th>类型 / 数量</th><th>本金 / 全期利息</th><th>到期时间</th><th>原因 / 管理员</th><th>矿池编号</th></tr></thead><tbody id="funds-pools-body"></tbody></table></div></section>
+      </section>
+      <section id="funds-miners" hidden>
+        <section class="card"><h2>赠送能量池</h2><p>直接为用户创建能量池，不扣用户已有余额，也无需用户再次投入。填写每份额度和赠送份数；后台赠送不设业务数量上限，超过 100 份合并显示并保留实际份数。</p><p>统一30天释放完，每日约3.33%，尾差自动补齐。用户每天08:00后手动领取，未领取的当日额度作废。</p>
+          <form id="funds-miner-form" class="grid-form">
+            <label>用户钱包地址<input id="funds-miner-wallet" placeholder="0x…" autocomplete="off" pattern="0x[a-fA-F0-9]{40}" required></label>
+            <input id="funds-miner-plan" type="hidden" value="energy30">
+            <label>每份能量池额度（SVX）<input id="funds-miner-amount" type="text" inputmode="decimal" placeholder="例如：1000" required></label>
+            <label>赠送数量（份）<input id="funds-miner-quantity" type="text" inputmode="numeric" pattern="[1-9][0-9]*" value="1" required></label>
+            <label>赠送原因<input id="funds-miner-reason" minlength="2" maxlength="120" placeholder="例如：工作室充值" required></label>
+            <button id="funds-miner-submit" type="submit" disabled>确认赠送能量池</button>
+            <output id="funds-miner-preview" class="pool-preview" aria-live="polite">请填写每份能量池额度和赠送份数</output>
+          </form>
+        </section>
+        <section class="card"><h2>能量池赠送记录</h2><p id="funds-miner-count">尚未读取</p><div class="table-scroll"><table><thead><tr><th>时间</th><th>钱包</th><th>每份额度 / 数量</th><th>合计额度</th><th>能量池编号</th><th>原因</th><th>管理员</th></tr></thead><tbody id="funds-miners-body"></tbody></table></div></section>
       </section>
     </section>
   </main>

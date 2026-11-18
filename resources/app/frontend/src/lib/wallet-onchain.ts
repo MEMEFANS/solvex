@@ -14,10 +14,10 @@ const BLINDBOX_LP_ABI = [
 
 /** Sends the exact 1-USDT payment and its LP addition as one atomic contract call. */
 export async function buyBlindboxOnchain({
-  contractAddress, usdtAddress, chainId, receiptKey, confirmations = 3, onStatus,
+  contractAddress, usdtAddress, chainId, receiptKey, confirmations = 3, onStatus, onSubmitted, onFailed,
 }: {
   contractAddress: string; usdtAddress: string; chainId: number; receiptKey: string;
-  confirmations?: number; onStatus?: (text: string) => void;
+  confirmations?: number; onStatus?: (text: string) => void; onSubmitted: (transactionHash: string) => void; onFailed?: () => void;
 }) {
   const bridge = await fundsBridge();
   await bridge.ensureSession?.();
@@ -56,10 +56,24 @@ export async function buyBlindboxOnchain({
   const deadline = BigInt(block.timestamp) + BigInt(deadlineSeconds);
   onStatus?.('请在钱包中确认：支付 1 USDT，并按约 0.1 USDT/SVX 加入流动性');
   const tx = await lp.buyBlindboxAndAddLiquidity(receiptKey, quote, deadline);
-  onStatus?.('盲盒支付与加 LP 交易已提交：' + tx.hash);
-  const receipt = await tx.wait(Math.max(1, Number(confirmations)));
+  // Persist before waiting, including when the page has already unmounted.
+  onSubmitted(tx.hash);
+  onStatus?.('支付已提交，等待链上确认');
+  let transactionHash = tx.hash;
+  let receipt;
+  try { receipt = await tx.wait(Math.max(1, Number(confirmations)), 90000); }
+  catch (error) {
+    const replaced = error as { code?: string; cancelled?: boolean; replacement?: typeof tx; receipt?: typeof receipt };
+    // Wallet speed-up must carry the same call; never accept a cancellation or another transfer.
+    if (replaced.code === 'TRANSACTION_REPLACED' && replaced.cancelled && replaced.receipt) onFailed?.();
+    if (replaced.code !== 'TRANSACTION_REPLACED' || replaced.cancelled || !replaced.replacement || replaced.replacement.to?.toLowerCase() !== tx.to?.toLowerCase() || replaced.replacement.data !== tx.data || replaced.replacement.value !== tx.value) throw error;
+    transactionHash = replaced.replacement.hash;
+    onSubmitted(transactionHash);
+    receipt = replaced.receipt;
+  }
+  if (receipt && Number(receipt.status) === 0) onFailed?.();
   if (!receipt || Number(receipt.status) !== 1) throw new Error('链上盲盒支付或加 LP 失败');
-  return { transactionHash: tx.hash, blockNumber: Number(receipt.blockNumber) };
+  return { transactionHash, blockNumber: Number(receipt.blockNumber) };
 }
 
 async function fundsBridge() {

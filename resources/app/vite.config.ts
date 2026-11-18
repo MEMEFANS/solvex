@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { runtimeScriptUrl, walletConnectorUrl } from './frontend/src/lib/runtime-assets';
 import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath, URL } from 'node:url';
 export default defineConfig(({ command }) => ({
@@ -8,7 +9,7 @@ export default defineConfig(({ command }) => ({
   publicDir: fileURLToPath(new URL('./public', import.meta.url)),
   plugins: [react(), tailwindcss(), {
     name: 'legacy-public-assets',
-    transformIndexHtml: { order: 'post', handler: html => html.replaceAll('/app/styles/', '/styles/').replaceAll('/app/assets/brand/', '/assets/brand/') },
+    transformIndexHtml: { order: 'post', handler: html => html.replaceAll('/app/styles/', '/styles/').replaceAll('/app/assets/brand/', '/assets/brand/').replace('</head>', (command === 'build' ? ['core', 'wallet'].map(name => `<link rel="preload" as="script" href="${runtimeScriptUrl(name)}">`).join('') + `<link rel="modulepreload" href="${walletConnectorUrl}">` : '') + '</head>') },
   }],
   experimental: { renderBuiltUrl: (filename, { type }) => type === 'public' ? '/' + filename : undefined },
   resolve: { alias: { '@': fileURLToPath(new URL('./frontend/src', import.meta.url)) } },

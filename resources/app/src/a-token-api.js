@@ -290,8 +290,13 @@ export function createATokenApi({
         const sp = new URLSearchParams(request.url?.split('?')[1] || '');
         const status = String(sp.get('status') || 'pending');
         const limit = Math.min(Math.max(Number(sp.get('limit')) || 200, 1), 1000);
+        const history = status === 'all' ? walletService.database.listAllATokenPendingRewards(session.address, limit) : null;
         return send(res, 200, {
-          pending: pendingService.list(session.address, status, limit),
+          pending: history ? history.map(row => {
+            if (row.bizType !== 'team' || row.sourceAmountUnits || !row.sourcePendingId) return row;
+            const source = walletService.database.getATokenPendingReward(row.sourcePendingId);
+            return source ? { ...row, sourceAmountUnits: source.amountUnits } : row;
+          }) : pendingService.list(session.address, status, limit),
           summary: pendingService.summary(session.address),
         });
       }

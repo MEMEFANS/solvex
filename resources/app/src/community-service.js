@@ -1,6 +1,10 @@
 // 群聊服务：单一公共群（钱包地址即身份，昵称可改），消息持久化在 SQLite。
 // 实时性由前端轮询承担（after_id 增量拉取），这里只做游标分页、未读与基础风控。
 const MAX_BODY_LEN = 500;
+// Nginx production request limit is 20MB; base64 JSON adds overhead, so keep the binary below 14MB.
+const MAX_VIDEO_BYTES = 14 * 1024 * 1024;
+const MAX_VIDEO_DATA_LEN = Math.ceil(MAX_VIDEO_BYTES * 4 / 3) + 64;
+const VIDEO_MIMES = new Set(['video/mp4', 'video/webm', 'video/quicktime']);
 const MAX_NICKNAME_LEN = 24;
 const MAX_AVATAR_BYTES = 240_000;
 const MAX_AVATAR_DATA_URL_LEN = 330_000;
@@ -81,6 +85,22 @@ function normalizeClientId(raw) {
   return value;
 }
 
+function normalizeVideo(raw) {
+  if (!raw || typeof raw !== 'object') throw fail('视频数据无效', 400);
+  const mime = String(raw.mime || '').toLowerCase();
+  const data = String(raw.data || '');
+  if (!VIDEO_MIMES.has(mime)) throw fail('视频仅支持 MP4、WebM 或 MOV 格式', 400);
+  if (data.length > MAX_VIDEO_DATA_LEN || !/^[A-Za-z0-9+/]+={0,2}$/.test(data)) throw fail('视频不能超过 14MB', 400);
+  const bytes = Buffer.from(data, 'base64');
+  if (!bytes.length || bytes.length > MAX_VIDEO_BYTES) throw fail('视频不能超过 14MB', 400);
+  const mp4 = mime === 'video/mp4' || mime === 'video/quicktime';
+  const valid = mp4
+    ? bytes.length >= 12 && bytes.toString('ascii', 4, 8) === 'ftyp'
+    : bytes.length >= 4 && bytes.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]));
+  if (!valid) throw fail('视频文件内容无效，请重新选择', 400);
+  return { mime, data };
+}
+
 export function createCommunityService({ database, clock = () => Date.now() }) {
   if (!database) throw new Error('communityService 需要 database');
 
@@ -103,8 +123,12 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
       address: row.wallet,
       nickname: member?.nickname || row.nickname,
       avatar: avatarUrl(member),
-      body: deleted ? '' : row.body,
-      kind: row.kind === 'red_packet' ? 'red_packet' : row.kind === 'image' ? 'image' : 'text',
+      body: deleted ? '' : row.kind === 'video' ? '[视频]' : row.body,
+      kind: row.kind === 'red_packet' ? 'red_packet' : row.kind === 'image' ? 'image' : row.kind === 'video' ? 'video' : 'text',
+      // Early group inserts omitted payload_json. Keep that history visible
+      // with an explicit missing-image notice instead of a broken image tag.
+      ...(row.kind === 'image' ? { imageAvailable: Boolean(messageImage(row)) } : {}),
+      ...(row.kind === 'video' ? { videoAvailable: Boolean(messageVideo(row)) } : {}),
       refId: row.ref_id || '',
       deleted,
       createdAt: Number(row.created_at),
@@ -155,12 +179,14 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
     };
   }
 
-  function postMessage(address, { body, clientId, image } = {}) {
+  function postMessage(address, { body, clientId, image, video } = {}) {
     const member = ensureMember(address);
     if (member.status === 'kicked') throw fail('你已被移出群聊，暂时无法发言', 403);
     if (Number(member.muted_until || 0) > clock()) throw fail('你当前处于禁言状态，暂时无法发言', 403);
     // 图片消息：所有人可发，存 payload_json；文字消息走原有的敏感词/链接/脚本校验
     const isImage = Boolean(image && image.data);
+    const isVideo = Boolean(video && video.data);
+    if (isImage && isVideo) throw fail('一条消息只能发送图片或视频', 400);
     let text = '';
     let payloadJson = '{}';
     if (isImage) {
@@ -170,6 +196,8 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
       if (data.length > 560_000) throw fail('图片过大，请压缩后再发送', 400);
       if (!/^[A-Za-z0-9+/=]+$/.test(data)) throw fail('图片数据格式无效', 400);
       payloadJson = JSON.stringify({ mime, data });
+    } else if (isVideo) {
+      payloadJson = JSON.stringify(normalizeVideo(video));
     } else {
       text = normalizeBody(body);
       const matched = findSensitiveWord(text);
@@ -195,7 +223,7 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
         nickname: member.nickname,
         body: text,
         clientId: stableId,
-        kind: isImage ? 'image' : 'text',
+        kind: isImage ? 'image' : isVideo ? 'video' : 'text',
         createdAt: now,
         payloadJson,
       });
@@ -211,12 +239,30 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
 
   // 图片消息原图读取：仅 visible 的图片消息可取，撤回后 404
   function getMessageImage(id) {
-    const row = database.getCommunityMessage(Number(id));
+    return messageImage(database.getCommunityMessage(Number(id)));
+  }
+
+  function getMessageVideo(id) {
+    return messageVideo(database.getCommunityMessage(Number(id)));
+  }
+  function messageImage(row) {
     if (!row || row.kind !== 'image' || row.status !== 'visible') return null;
     let payload = {};
     try { payload = JSON.parse(row.payload_json || '{}'); } catch { payload = {}; }
-    if (!payload.mime || !payload.data) return null;
+    if (!/^image\/(png|jpeg|webp)$/.test(payload.mime || '') || typeof payload.data !== 'string' || !payload.data) return null;
     return { mime: String(payload.mime), data: String(payload.data) };
+  }
+
+  function messageVideo(row) {
+    if (!row || row.kind !== 'video' || row.status !== 'visible') return null;
+    let payload = {};
+    try { payload = JSON.parse(row.payload_json || '{}'); } catch { payload = {}; }
+    if (!VIDEO_MIMES.has(payload.mime || '') || typeof payload.data !== 'string' || !payload.data) return null;
+    return { mime: String(payload.mime), data: String(payload.data) };
+  }
+
+  function sweepExpiredVideos(cutoff = clock() - 24 * 60 * 60_000) {
+    return typeof database.clearExpiredCommunityVideos === 'function' ? database.clearExpiredCommunityVideos(cutoff) : 0;
   }
 
   function setProfile(address, input = {}) {
@@ -293,5 +339,5 @@ export function createCommunityService({ database, clock = () => Date.now() }) {
     return '';
   }
 
-  return { overview, listMessages, postMessage, getMessageImage, setNickname, setProfile, getAvatar, markRead, listMembers, ensureMember, findSensitiveWord };
+  return { overview, listMessages, postMessage, getMessageImage, getMessageVideo, sweepExpiredVideos, setNickname, setProfile, getAvatar, markRead, listMembers, ensureMember, findSensitiveWord };
 }

@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
-// 同一设备最多绑定的钱包数：默认 3，可用 DEVICE_MAX_WALLETS 覆盖（见 config.js）
-export const DEFAULT_MAX_WALLETS_PER_DEVICE = 3;
+// 同一设备最多绑定的钱包数：默认 5，可用 DEVICE_MAX_WALLETS 覆盖（见 config.js）
+export const DEFAULT_MAX_WALLETS_PER_DEVICE = 5;
 const ROLLOUT_SETTING_KEY = 'device_limit_rollout_at';
 
 function sha256(value) {

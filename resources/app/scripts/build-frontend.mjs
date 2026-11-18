@@ -1,16 +1,21 @@
 import { build } from 'vite';
 import { readFile, writeFile, rename, rm, mkdir, cp } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { buildShellStyles } from './build-shell-styles.mjs';
+import { createReleaseManifest } from './release-manifest.mjs';
+await buildShellStyles();
 // Build away from the live directory. Publish all chunks before either entry,
 // and retain previous chunks so existing tabs continue to load their pages.
 const buildRoot = new URL('../output/.frontend-build-' + process.pid + '/', import.meta.url);
 await mkdir(buildRoot, { recursive: true });
-let entry;
+let entry, manifest;
 try {
   await build({ build: { outDir: fileURLToPath(buildRoot), emptyOutDir: true } });
+  manifest = await createReleaseManifest(fileURLToPath(new URL('../', import.meta.url)), fileURLToPath(buildRoot));
   entry = await readFile(new URL('index.html', buildRoot));
   await mkdir(new URL('../public/app/assets/', import.meta.url), { recursive: true });
   await cp(new URL('assets/', buildRoot), new URL('../public/app/assets/', import.meta.url), { recursive: true, force: false });
+  await cp(new URL('release.json', buildRoot), new URL('../public/app/release.json', import.meta.url));
 } finally { await rm(buildRoot, { recursive: true, force: true }); }
 // Replace the entry atomically; Windows may briefly lock it while serving a request.
 const target = new URL('../public/index.html', import.meta.url);
@@ -27,4 +32,5 @@ try {
     }
   }
 } finally { await rm(staging, { force: true }); }
+await writeFile(new URL('../.release-manifest.json', import.meta.url), JSON.stringify(manifest, null, 2));
 console.log('React entry published to public/index.html');

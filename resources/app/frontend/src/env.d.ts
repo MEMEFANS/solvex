@@ -1,7 +1,9 @@
 /// <reference types="vite/client" />
 import type { WalletConfig, WalletState } from './types';
+import type { PerformanceDiagnostics } from './lib/performance-metrics';
 declare global {
   interface Window {
+    solvexPerformance?: PerformanceDiagnostics;
     WG_REACT_APP?: boolean; WG_OPERATOR_MODE?: boolean;
     currentWalletConnection?: { address: string } | null;
     currentWalletProfile?: { authenticated?: boolean; address?: string } | null;

@@ -1,9 +1,18 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { FormEvent } from 'react';
-import { ArrowDown, ArrowLeft, Check, ChevronRight, Copy, Gift, Hash, ImagePlus, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Check, ChevronRight, Copy, Gift, Hash, ImagePlus, LoaderCircle, MessageCircle, Plus, Search, Send, Settings, Smile, UsersRound, Video } from 'lucide-react';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { useWallet } from '@/hooks/use-wallet';
+import { useChatViewport } from '@/hooks/use-chat-viewport';
+import { useChatDraft } from '@/hooks/use-chat-draft';
+import { watchCommunity } from '@/lib/community-live';
+import { ChatMessageWindow } from '@/components/chat-message-window';
+import { ChatImage } from '@/components/chat-image';
+import { ChatVideo } from '@/components/chat-video';
+import type { ChatWindowControl } from '@/components/chat-message-window';
+import { chatLocalKey, readChatOutbox, saveChatOutboxItem, removeChatOutboxItem } from '@/lib/chat-local';
+import type { ChatOutboxItem } from '@/lib/chat-local';
 import { api } from '@/lib/api';
 import { connectWallet } from '@/lib/wallet';
 import type { CommunityGroup, CommunityGroupList, CommunityMember, CommunityMessage, CommunityPacket, CommunitySession } from '@/types';
@@ -27,6 +36,7 @@ const MUTE_PRESETS = [1, 6, 12, 24, 72, 168, 720];
 const muteHoursText = (hours: number) => hours >= 24 && hours % 24 === 0 ? `${hours / 24} 天` : `${hours} 小时`;
 interface PacketDetail { packet: CommunityPacket; claims: { address: string; nickname?: string; amount: string; claimedAt: number }[] }
 type GroupAction = 'join' | 'create' | 'settings';
+type ChatMessage = CommunityMessage & { clientId?: string; failed?: boolean; deliveryError?: string };
 const fmtTime = (ts?: number) => {
   const date = new Date(Number(ts) || Date.now());
   return date.toLocaleString('zh-CN', date.toDateString() === new Date().toDateString()
@@ -34,14 +44,15 @@ const fmtTime = (ts?: number) => {
     : { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 };
 const groupPreview = (item: CommunityGroup) => item.latestMessage?.body || (item.kind === 'private' ? '私人群聊' : '暂无消息，进去打个招呼');
-// 合并消息：已存在的按 id 原位更新，新消息追加到末尾（保留临时消息的底部位置）
-function mergeMessages(base: CommunityMessage[], incoming: CommunityMessage[]) {
+// Confirmed messages stay in server order even if a send resolves before a poll.
+// Unconfirmed local messages remain at the bottom.
+function mergeMessages(base: ChatMessage[], incoming: ChatMessage[]) {
   const result = base.slice(), index = new Map(result.map((message, at) => [message.id, at]));
   for (const message of incoming) {
     const at = index.get(message.id);
     if (at === undefined) { index.set(message.id, result.length); result.push(message); } else result[at] = message;
   }
-  return result;
+  return [...result.filter(message => message.id > 0).sort((a, b) => a.id - b.id), ...result.filter(message => message.id < 0)];
 }
 function packetStatusText(packet: CommunityPacket) {
   if (packet.grabbed) return '已领取';
@@ -79,7 +90,7 @@ function resizeAvatar(file: File): Promise<string> {
   });
 }
 
-function MessageRow({ message, isAdmin, onDelete, compact = false }: { message: CommunityMessage; isAdmin: boolean; onDelete: () => void; compact?: boolean }) {
+function MessageRow({ message, group, isAdmin, onDelete, onRetry, compact = false }: { message: ChatMessage; group: string; isAdmin: boolean; onDelete: () => void; onRetry: () => void; compact?: boolean }) {
   const mine = isMine(message.address);
   return <div className={'sx-message' + (mine ? ' is-mine' : '') + (message.deleted ? ' is-deleted' : '') + (compact ? ' is-compact' : '')}>
     {compact ? <span className="sx-avatar-gap" aria-hidden="true" /> : <CommunityAvatar nickname={message.nickname} src={message.avatar} />}
@@ -91,9 +102,11 @@ function MessageRow({ message, isAdmin, onDelete, compact = false }: { message: 
       {message.deleted
         ? <div className="sx-message-bubble">该消息已被管理员撤回</div>
         : message.kind === 'image'
-          ? <div className="sx-message-bubble sx-message-bubble-image">{message.pending ? <span className="sx-image-pending">图片发送中…</span> : <img className="sx-message-image" src={`/api/community/message-image/${message.id}`} alt="图片消息" loading="lazy" onClick={() => window.open(`/api/community/message-image/${message.id}`, '_blank', 'noopener')} />}</div>
+          ? <div className="sx-message-bubble sx-message-bubble-image">{message.pending ? <span className="sx-image-pending">图片发送中…</span> : <ChatImage id={message.id} group={group} available={message.imageAvailable} />}</div>
+          : message.kind === 'video'
+            ? <div className="sx-message-bubble sx-message-bubble-video">{message.pending ? <span className="sx-image-pending">视频发送中…</span> : <ChatVideo id={message.id} group={group} available={message.videoAvailable} />}</div>
           : <div className="sx-message-bubble">{String(message.body ?? '')}</div>}
-      {mine && <small className="sx-message-delivery">{message.pending ? <><LoaderCircle size={11} className="sx-spin" />发送中</> : <><Check size={11} />已发送</>}</small>}
+      {mine && <small className="sx-message-delivery">{message.pending ? <><LoaderCircle size={11} className="sx-spin" />发送中</> : message.failed ? <button type="button" className="sx-message-retry" title={message.deliveryError || '发送结果未确认，重试不会重复发送'} onClick={onRetry}>未确认 · 点击重试</button> : <><Check size={11} />已发送</>}</small>}
     </div>
   </div>;
 }
@@ -140,17 +153,23 @@ export default function CommunityPage() {
   const wallet = useWallet();
   const identity = wallet.address + ':' + wallet.revision + ':' + wallet.authenticated;
   const [groups, setGroups] = useState<CommunityGroup[]>([]);
-  const [canCreate, setCanCreate] = useState(false);
+  const [creationAccess, setCreationAccess] = useState<{ identity: string; allowed: boolean | null; error?: boolean } | null>(null);
+  const currentAccess = creationAccess?.identity === identity ? creationAccess : null;
+  const canCreate = wallet.authenticated && currentAccess?.allowed === true;
   const [group, setGroup] = useState(DEFAULT_GROUP);
   const [overview, setOverview] = useState<CommunitySession | null>(null);
-  const [messages, setMessages] = useState<CommunityMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [hasMore, setHasMore] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [unread, setUnread] = useState(0);
-  const [draft, setDraft] = useState('');
+  const [atLatest, setAtLatest] = useState(true);
+  const localKey = chatLocalKey(wallet.address, group);
+  const [draft, setDraft] = useChatDraft(localKey);
   const [sending, setSending] = useState(false);
   const [imageSending, setImageSending] = useState(false);
+  const [videoSending, setVideoSending] = useState(false);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const [busyPacket, setBusyPacket] = useState('');
   const [error, setError] = useState('');
   const [packetOpen, setPacketOpen] = useState(false);
@@ -158,8 +177,8 @@ export default function CommunityPage() {
   const [packetError, setPacketError] = useState('');
   const [packetBusy, setPacketBusy] = useState(false);
   const [groupSearch, setGroupSearch] = useState('');
-  const [mobileGroupsOpen, setMobileGroupsOpen] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
+  const chatPageRef = useChatViewport(mobileChatOpen);
   const [membersOpen, setMembersOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
   const [selectedPacketId, setSelectedPacketId] = useState('');
@@ -179,23 +198,32 @@ export default function CommunityPage() {
 
   const groupRef = useRef(group);
   const overviewRef = useRef<CommunitySession | null>(null);
-  const messagesRef = useRef<CommunityMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>([]);
   const unreadRef = useRef(0);
   const latestId = useRef(0);
   const firstId = useRef(0);
   const lastReadSent = useRef(0);
   const pollTick = useRef(0);
   const readTimer = useRef<number>(0);
+  const readInFlight = useRef(false);
+  const sendInFlight = useRef(false);
+  const groupRequest = useRef<{ identity: string; promise: Promise<void>; controller: AbortController } | null>(null);
+  const groupsRevision = useRef(0);
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
   const packetClientId = useRef('');
   const listRef = useRef<HTMLDivElement>(null);
+  const messageWindowRef = useRef<ChatWindowControl | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const groupAvatarInputRef = useRef<HTMLInputElement>(null);
   const pinnedToBottom = useRef(true);
   const composing = useRef(false);
   const detailRequest = useRef(0);
+  const scope = useMemo(() => `${group}:${identity}:${newId('scope')}`, [group, identity]);
   const scopeRef = useRef('');
-  scopeRef.current = `${group}:${identity}`;
+  scopeRef.current = scope;
+  useEffect(() => () => { scopeRef.current = ''; }, []);
 
   useEffect(() => {
     document.body.classList.toggle('sx-chat-focused', mobileChatOpen);
@@ -203,8 +231,9 @@ export default function CommunityPage() {
   }, [mobileChatOpen]);
 
   const path = (name: string, target = groupRef.current) => `community/${name}${name.includes('?') ? '&' : '?'}group=${encodeURIComponent(target)}`;
-  const scrollToBottom = () => { const box = listRef.current; if (box) { pinnedToBottom.current = true; box.scrollTop = box.scrollHeight; } };
-  const isNearBottom = () => { const box = listRef.current; return !box || box.scrollHeight - box.scrollTop - box.clientHeight < 90; };
+  const scrollToBottom = () => { const box = listRef.current; if (box) { pinnedToBottom.current = true; setAtLatest(true); if (messageWindowRef.current) messageWindowRef.current.scrollToBottom(); else box.scrollTop = box.scrollHeight; } };
+  const roomVisible = () => !document.hidden && Boolean(listRef.current?.getClientRects().length) && (listRef.current?.clientHeight || 0) > 0;
+  const isNearBottom = () => { const box = listRef.current; return roomVisible() && Boolean(box && box.scrollHeight - box.scrollTop - box.clientHeight < 90); };
 
   function ensureSession() {
     const run = window.ensurePlatformSession;
@@ -213,24 +242,33 @@ export default function CommunityPage() {
   }
 
   function queueMarkRead() {
-    if (!overviewRef.current?.authenticated || !latestId.current) return;
+    if (!overviewRef.current?.authenticated || !latestId.current || !isNearBottom()) return;
     const target = groupRef.current, scope = scopeRef.current;
     window.clearTimeout(readTimer.current);
-    readTimer.current = window.setTimeout(() => {
-      if (scopeRef.current !== scope) return;
-      if (latestId.current <= lastReadSent.current) return;
-      lastReadSent.current = latestId.current;
-      void api(path('read', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastId: latestId.current }) }).catch(() => {});
+    readTimer.current = window.setTimeout(async () => {
+      if (scopeRef.current !== scope || !isNearBottom() || readInFlight.current) return;
+      // An outgoing message can arrive before an unseen incoming backlog.
+      // Acknowledge only the contiguous range retrieved by the message feed.
+      const seenId = Math.min(latestId.current, Math.max(0, ...messagesRef.current.map(message => message.id)));
+      if (seenId <= lastReadSent.current) return;
+      readInFlight.current = true;
+      try {
+        const result = await api<{ lastReadId: number; unread: number }>(path('read', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lastId: seenId }) });
+        if (scopeRef.current !== scope) return;
+        lastReadSent.current = Math.max(lastReadSent.current, Number(result.lastReadId) || seenId);
+        groupsRevision.current += 1;
+        setGroups(items => items.map(item => item.number === target ? { ...item, unread: Number(result.unread) || 0 } : item));
+        if (latestId.current <= seenId) { unreadRef.current = Number(result.unread) || 0; setUnread(unreadRef.current); }
+      } catch { /* Keep the read cursor unchanged; the next poll retries. */ }
+      finally { readInFlight.current = false; }
     }, 700);
   }
-
-  function clearUnread() { unreadRef.current = 0; setUnread(0); }
 
   // 输入框增高、手机旋转或窗口缩放时，正在看最新消息的用户仍停留在底部。
   useEffect(() => {
     const box = listRef.current;
     if (!box) return;
-    const observer = new ResizeObserver(() => { if (pinnedToBottom.current) box.scrollTop = box.scrollHeight; });
+    const observer = new ResizeObserver(() => { if (roomVisible() && pinnedToBottom.current) { scrollToBottom(); queueMarkRead(); } });
     observer.observe(box);
     return () => observer.disconnect();
   }, []);
@@ -249,53 +287,80 @@ export default function CommunityPage() {
     groupRef.current = group;
     latestId.current = 0; firstId.current = 0; lastReadSent.current = 0;
     overviewRef.current = null; messagesRef.current = []; unreadRef.current = 0;
-    setOverview(null); setMessages([]); setHasMore(false); setUnread(0); setError(''); setPacketOpen(false);
+    setOverview(null); setMessages([]); setHasMore(false); setLoadingOlder(false); setUnread(0); setAtLatest(true); setError(''); setPacketOpen(false);
     setSelectedPacketId(''); setPacketDetail(null); setDetailError(''); detailRequest.current += 1;
-    setDraft(''); setEmojiOpen(false); setMembersOpen(false); setAction(null); setMobileGroupsOpen(false);
+    setEmojiOpen(false); setMembersOpen(false); setAction(null);
     let cancelled = false;
-    (async () => {
+    let loading = false;
+    let retryTimer = 0;
+    const controller = new AbortController();
+    const load = async () => {
+      if (cancelled || loading || overviewRef.current) return;
+      loading = true;
+      window.clearTimeout(retryTimer);
       const sessionPath = `community/session?group=${encodeURIComponent(group)}`;
       const messagesPath = `community/messages?limit=60&group=${encodeURIComponent(group)}`;
       try {
         const [session, page] = await Promise.all([
-          api<CommunitySession>(sessionPath, {}, false),
-          api<{ messages?: CommunityMessage[]; hasMore?: boolean; latestId?: number }>(messagesPath, {}, false),
+          api<CommunitySession>(sessionPath, { signal: controller.signal }, false),
+          api<{ messages?: CommunityMessage[]; hasMore?: boolean; latestId?: number }>(messagesPath, { signal: controller.signal }, false),
         ]);
         if (cancelled || groupRef.current !== group) return;
         const list = (page.messages || []).filter(message => Number(message.id) > 0);
         overviewRef.current = session;
-        messagesRef.current = list;
+        const restored: ChatMessage[] = readChatOutbox(localKey).map((item, index) => ({ ...item, id: -(item.createdAt + index), address: wallet.address, nickname: session.me?.nickname, avatar: session.me?.avatar, kind: 'text', failed: true }));
+        messagesRef.current = [...list, ...restored];
         lastReadSent.current = Number(session.lastReadId || 0);
-        latestId.current = Number(page.latestId || list.at(-1)?.id || 0);
+        latestId.current = Number(list.at(-1)?.id || 0);
         firstId.current = Number(list[0]?.id || 0);
         setOverview(session);
-        setMessages(list);
+        setError('');
+        setMessages(messagesRef.current);
         setHasMore(Boolean(page.hasMore));
         const pending = Number(session.unread || 0);
         unreadRef.current = pending; setUnread(pending);
-        pinnedToBottom.current = pending <= 0;
-        if (pending <= 0) { requestAnimationFrame(scrollToBottom); queueMarkRead(); }
+        pinnedToBottom.current = true;
+        requestAnimationFrame(() => { if (!cancelled && roomVisible()) { scrollToBottom(); queueMarkRead(); } });
       } catch (caught) {
         if (cancelled || groupRef.current !== group) return;
         setError(caught instanceof Error ? caught.message : '群聊加载失败');
+      } finally {
+        loading = false;
+        if (!cancelled && !overviewRef.current && !document.hidden && navigator.onLine) retryTimer = window.setTimeout(() => void load(), 8000);
       }
-    })();
-    return () => { cancelled = true; window.clearTimeout(readTimer.current); };
+    };
+    const resume = () => { if (!document.hidden && navigator.onLine) void load(); };
+    void load();
+    window.addEventListener('online', resume);
+    document.addEventListener('visibilitychange', resume);
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(retryTimer); window.clearTimeout(readTimer.current); window.removeEventListener('online', resume); document.removeEventListener('visibilitychange', resume); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [group, identity]);
 
-  // 轮询：拉增量消息；每 4 轮（约 16s）同步一次成员与未读
+  // Serialize refreshes so a slow response cannot overlap the next poll.
+  // The list refreshes even when no room is open; hidden rooms stay unread.
   useEffect(() => {
     let cancelled = false;
+    let running = false;
+    let failures = 0;
+    let timer = 0;
+    let pushed = false, live = false, details = false;
+    const controller = new AbortController();
     const scope = (name: string) => `community/${name}${name.includes('?') ? '&' : '?'}group=${encodeURIComponent(group)}`;
     async function tick() {
-      if (cancelled || document.hidden) return;
-      pollTick.current += 1;
+      if (cancelled || running) return;
+      window.clearTimeout(timer);
+      if (document.hidden || !navigator.onLine) return;
+      running = true;
+      pushed = false;
+      const refreshDetails = details; details = false;
+      let catchup = false;
       try {
-        {
-          // 定期重取最近消息，同步红包领取状态及管理员删除；空群同样轮询。
-          const query = pollTick.current % 4 === 0 ? 'messages?limit=80' : `messages?after_id=${latestId.current}&limit=80`;
-          const page = await api<{ messages?: CommunityMessage[]; latestId?: number }>(scope(query), {}, false);
+        await loadGroups(true);
+        if (cancelled) return;
+        if (roomVisible() && overviewRef.current) {
+          pollTick.current += 1;
+          const page = await api<{ messages?: CommunityMessage[]; latestId?: number }>(scope(`messages?after_id=${latestId.current}&limit=80`), { signal: controller.signal }, false);
           if (cancelled) return;
           const incoming = (page.messages || []).filter(message => Number(message.id) > 0);
           const known = new Set(messagesRef.current.map(message => message.id));
@@ -305,101 +370,173 @@ export default function CommunityPage() {
             messagesRef.current = next;
             setMessages(next);
             latestId.current = Math.max(latestId.current, ...incoming.map(message => Number(message.id)));
-            if (atBottom && fresh.length) { requestAnimationFrame(scrollToBottom); queueMarkRead(); }
+            if (atBottom && fresh.length) requestAnimationFrame(() => { if (!cancelled && roomVisible()) { scrollToBottom(); queueMarkRead(); } });
             else if (fresh.length) {
               const added = fresh.filter(message => !isMine(message.address)).length;
               unreadRef.current += added;
               setUnread(unreadRef.current);
             }
           }
-          if (Number(page.latestId) > latestId.current) latestId.current = Number(page.latestId);
+          // Advance only through received messages. Jumping to the server's
+          // latest ID would skip messages when a reconnect backlog exceeds 80.
+          catchup = incoming.length >= 80 && Number(page.latestId) > latestId.current;
+          if (!catchup && (refreshDetails || pollTick.current % 4 === 0)) {
+            const [data, recent] = await Promise.all([
+              api<CommunitySession>(scope('session'), { signal: controller.signal }, false),
+              api<{ messages?: CommunityMessage[] }>(scope('messages?limit=80'), { signal: controller.signal }, false),
+            ]);
+            if (cancelled) return;
+            overviewRef.current = data; setOverview(data);
+            // Refresh edits/packet status without skipping an unseen increment.
+            const knownIds = new Set(messagesRef.current.map(message => message.id));
+            const next = mergeMessages(messagesRef.current, (recent.messages || []).filter(message => knownIds.has(message.id)));
+            messagesRef.current = next; setMessages(next);
+          }
+          queueMarkRead();
         }
-        if (pollTick.current % 4 === 0) {
-          const data = await api<CommunitySession>(scope('session'), {}, false);
-          if (cancelled) return;
-          if (data) { overviewRef.current = data; setOverview(data); }
-        }
-      } catch { /* 轮询失败静默，等待下一轮 */ }
+        failures = 0;
+      } catch { failures += 1; }
+      finally {
+        running = false;
+        if (catchup && refreshDetails) details = true;
+        if (!cancelled && !document.hidden && navigator.onLine) timer = window.setTimeout(() => void tick(), catchup || pushed ? 200 : Math.min((live ? 30000 : POLL_MS) * 2 ** Math.min(failures, 3), 30000));
+      }
     }
-    const timer = window.setInterval(() => { void tick(); }, POLL_MS);
-    return () => { cancelled = true; window.clearInterval(timer); };
+    const changed = () => {
+      if (cancelled) return;
+      details = true; pushed = true;
+      if (!running) { window.clearTimeout(timer); timer = window.setTimeout(() => void tick(), 150); }
+    };
+    const stopLive = wallet.authenticated ? watchCommunity(changed, healthy => {
+      const lost = live && !healthy; live = healthy;
+      if (lost && !cancelled && !running && !document.hidden && navigator.onLine) { window.clearTimeout(timer); timer = window.setTimeout(() => void tick(), 200); }
+    }) : () => {};
+    const resume = () => { if (!document.hidden && navigator.onLine) void tick(); else window.clearTimeout(timer); };
+    document.addEventListener('visibilitychange', resume);
+    window.addEventListener('online', resume);
+    window.addEventListener('offline', resume);
+    void tick();
+    return () => { cancelled = true; stopLive(); controller.abort(); window.clearTimeout(timer); document.removeEventListener('visibilitychange', resume); window.removeEventListener('online', resume); window.removeEventListener('offline', resume); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [group, identity]);
+  }, [group, identity, mobileChatOpen]);
 
-  async function loadGroups() {
-    try {
-      const data = await api<CommunityGroupList>(path('groups'), {}, false);
-      setGroups(data.groups || []);
-      setCanCreate(Boolean(data.canCreate));
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : '群组加载失败'); }
+  async function loadGroups(silent = false): Promise<void> {
+    if (groupRequest.current?.identity === identityRef.current) return silent ? groupRequest.current.promise : groupRequest.current.promise.catch(() => {});
+    groupRequest.current?.controller.abort();
+    const requestIdentity = identityRef.current, revision = groupsRevision.current;
+    const controller = new AbortController();
+    const promise = (async () => {
+      try {
+        const data = await api<CommunityGroupList>('community/groups', { signal: controller.signal }, false);
+        if (controller.signal.aborted || identityRef.current !== requestIdentity) return;
+        // Read acknowledgements change the list revision, not this wallet's
+        // creation permission. Never discard the permission with a stale unread count.
+        setCreationAccess({ identity: requestIdentity, allowed: Boolean(data.canCreate) });
+        if (groupsRevision.current === revision) setGroups(data.groups || []);
+      } catch (caught) {
+        if (!controller.signal.aborted && identityRef.current === requestIdentity) setCreationAccess({ identity: requestIdentity, allowed: null, error: true });
+        if (!controller.signal.aborted && !silent) toast.error(caught instanceof Error ? caught.message : '群组加载失败');
+        throw caught;
+      } finally { if (groupRequest.current?.controller === controller) groupRequest.current = null; }
+    })();
+    groupRequest.current = { identity: requestIdentity, promise, controller };
+    // Manual callers use the toast path; the polling loop needs a rejection to back off.
+    return silent ? promise : promise.catch(() => {});
   }
-  useEffect(() => { void loadGroups(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [identity]);
+  useEffect(() => () => { groupRequest.current?.controller.abort(); groupRequest.current = null; }, [identity]);
+
+  useEffect(() => {
+    if (roomVisible()) requestAnimationFrame(() => { if (roomVisible()) { if (pinnedToBottom.current) scrollToBottom(); queueMarkRead(); } });
+    else window.clearTimeout(readTimer.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mobileChatOpen]);
 
   async function loadOlder() {
     if (loadingOlder || !hasMore || !firstId.current) return;
     setLoadingOlder(true);
+    const requestScope = scopeRef.current;
     try {
       const page = await api<{ messages?: CommunityMessage[]; hasMore?: boolean }>(path(`messages?before_id=${firstId.current}&limit=60`), {}, false);
+      if (scopeRef.current !== requestScope) return;
       const older = (page.messages || []).filter(message => Number(message.id) > 0);
       if (older.length) {
-        const box = listRef.current, previousHeight = box?.scrollHeight || 0;
+        messageWindowRef.current?.preserveBeforePrepend();
         const known = new Set(messagesRef.current.map(message => message.id));
         const merged = [...older.filter(message => !known.has(message.id)), ...messagesRef.current];
         messagesRef.current = merged;
         setMessages(merged);
         firstId.current = Number(older[0].id);
-        requestAnimationFrame(() => { if (box) box.scrollTop = box.scrollHeight - previousHeight; });
       }
       setHasMore(Boolean(page.hasMore));
-    } catch (caught) { toast.error(caught instanceof Error ? caught.message : '加载失败'); }
-    finally { setLoadingOlder(false); }
+    } catch (caught) { if (scopeRef.current === requestScope) toast.error(caught instanceof Error ? caught.message : '加载失败'); }
+    finally { if (scopeRef.current === requestScope) setLoadingOlder(false); }
   }
 
-  function commitMessage(real: CommunityMessage | undefined, tempId: number) {
+  function commitMessage(real: CommunityMessage | undefined, tempId: number, clientId?: string) {
     if (!real) return;
-    const base = messagesRef.current.filter(message => message.id !== tempId);
+    const base = messagesRef.current.filter(message => message.id !== tempId && (!clientId || message.clientId !== clientId));
     const next = base.some(message => message.id === real.id) ? base : mergeMessages(base, [real]);
     messagesRef.current = next;
     setMessages(next);
   }
 
-  async function send() {
-    if (sending) return;
-    const body = draft.trim();
-    if (!body) return;
+  async function submitText(item: ChatOutboxItem, tempId: number) {
+    if (sendInFlight.current) return;
     const current = overviewRef.current;
     if (!current?.authenticated) { toast.error('请先连接钱包并完成身份验证'); return; }
-    const target = groupRef.current, scope = scopeRef.current;
+    const target = groupRef.current, scope = scopeRef.current, key = localKey, requestIdentity = identityRef.current;
+    sendInFlight.current = true;
     setSending(true);
-    const tempId = -Date.now();
-    const temp: CommunityMessage = { id: tempId, address: current.me?.address, nickname: current.me?.nickname, avatar: current.me?.avatar, body, kind: 'text', createdAt: Date.now(), pending: true };
-    const withTemp = [...messagesRef.current, temp];
+    const temp: ChatMessage = { ...item, id: tempId, address: current.me?.address, nickname: current.me?.nickname, avatar: current.me?.avatar, kind: 'text', pending: true };
+    const withTemp = [...messagesRef.current.filter(message => message.clientId !== item.clientId), temp];
     messagesRef.current = withTemp;
     setMessages(withTemp);
-    setDraft('');
     requestAnimationFrame(scrollToBottom);
     try {
       await ensureSession();
       if (scopeRef.current !== scope) return;
-      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body, clientId: newId('c') }) });
-      if (scopeRef.current !== scope) return;
-      commitMessage(result.message, tempId);
-      latestId.current = Math.max(latestId.current, Number(result.message.id) || 0);
+      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ body: item.body, clientId: item.clientId }) });
+      if (!(Number(result.message?.id) > 0)) throw new Error('发送结果尚未确认，请重试核对');
+      removeChatOutboxItem(key, item.clientId);
+      // Switching away and back may restore the outbox under a new scope.
+      // Reconcile this confirmed send by its ID whenever the same wallet/group is visible.
+      if (!scopeRef.current || groupRef.current !== target || identityRef.current !== requestIdentity) return;
+      commitMessage(result.message, tempId, item.clientId);
+      groupsRevision.current += 1;
+      setGroups(items => items.map(row => row.number === target ? { ...row, latestMessage: { body: result.message.body, nickname: result.message.nickname, createdAt: result.message.createdAt } } : row));
       queueMarkRead();
     } catch (caught) {
       if (scopeRef.current !== scope) return;
-      const reverted = messagesRef.current.filter(message => message.id !== tempId);
-      messagesRef.current = reverted;
-      setMessages(reverted);
-      setDraft(body);
-      toast.error(caught instanceof Error ? caught.message : '发送失败，请重试');
-    } finally { setSending(false); }
+      const message = caught instanceof Error ? caught.message : '发送失败，请重试';
+      const next = messagesRef.current.map(row => row.id === tempId ? { ...row, pending: false, failed: true, deliveryError: message } : row);
+      messagesRef.current = next; setMessages(next);
+      toast.error(message);
+    } finally { sendInFlight.current = false; setSending(false); }
+  }
+
+  async function send() {
+    if (sendInFlight.current || imageSending || videoSending) return;
+    const body = draft.trim();
+    if (!body) return;
+    if (!overviewRef.current?.authenticated) { toast.error('请先连接钱包并完成身份验证'); return; }
+    const item = { clientId: newId('c'), body, createdAt: Date.now() };
+    try { saveChatOutboxItem(localKey, item); }
+    catch (caught) { toast.error(caught instanceof Error ? caught.message : '消息暂存失败'); return; }
+    setDraft('');
+    const tempId = Math.min(-Date.now(), ...messagesRef.current.filter(row => row.id < 0).map(row => row.id - 1));
+    await submitText(item, tempId);
+  }
+
+  function retryText(message: ChatMessage) {
+    if (!message.clientId || !isMine(message.address) || sendInFlight.current || imageSending) return;
+    const item = readChatOutbox(localKey).find(row => row.clientId === message.clientId);
+    if (item) void submitText(item, message.id);
   }
 
   // 发送图片：本地压缩到最长边 1280 / JPEG 82% 再上传，所有人可用
   async function pickImage(file?: File | null) {
     if (!file) return;
-    if (imageSending || sending) return;
+    if (imageSending || videoSending || sending) return;
     if (!/^image\/(png|jpeg|webp)$/.test(file.type)) { toast.error('仅支持 JPG、PNG、WebP 图片'); return; }
     const current = overviewRef.current;
     if (!current?.authenticated) { toast.error('请先连接钱包并完成身份验证'); return; }
@@ -431,9 +568,11 @@ export default function CommunityPage() {
         img.onerror = () => resolve(dataUrl);
         img.src = dataUrl;
       });
-      const base64 = compressed.split(',')[1] || '';
-      if (!base64) throw new Error('图片处理失败');
+      const encoded = compressed.match(/^data:(image\/(?:png|jpeg|webp));base64,(.+)$/);
+      if (!encoded) throw new Error('图片处理失败');
+      const [, mime, base64] = encoded;
       if (base64.length > 550_000) throw new Error('图片过大，请换一张再发');
+      if (scopeRef.current !== scope) return;
       const temp: CommunityMessage = { id: tempId, address: current.me?.address, nickname: current.me?.nickname, avatar: current.me?.avatar, body: '', kind: 'image', createdAt: Date.now(), pending: true };
       const withTemp = [...messagesRef.current, temp];
       messagesRef.current = withTemp;
@@ -441,10 +580,9 @@ export default function CommunityPage() {
       requestAnimationFrame(scrollToBottom);
       await ensureSession();
       if (scopeRef.current !== scope) return;
-      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: { mime: compressed.startsWith('data:image/png') ? 'image/png' : 'image/jpeg', data: base64 }, clientId: newId('c') }) });
+      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: { mime, data: base64 }, clientId: newId('c') }) });
       if (scopeRef.current !== scope) return;
       commitMessage(result.message, tempId);
-      latestId.current = Math.max(latestId.current, Number(result.message.id) || 0);
       queueMarkRead();
     } catch (caught) {
       if (scopeRef.current === scope) {
@@ -454,6 +592,38 @@ export default function CommunityPage() {
         toast.error(caught instanceof Error ? caught.message : '图片发送失败，请重试');
       }
     } finally { setImageSending(false); if (imageInputRef.current) imageInputRef.current.value = ''; }
+  }
+
+  // 视频只上传原文件，聊天列表不加载内容；服务端限制 20MB，并在 24 小时后清理。
+  async function pickVideo(file?: File | null) {
+    if (!file) return;
+    if (videoSending || imageSending || sending) return;
+    if (!['video/mp4', 'video/webm', 'video/quicktime'].includes(file.type)) { toast.error('仅支持 MP4、WebM 或 MOV 视频'); return; }
+    if (file.size > 14 * 1024 * 1024) { toast.error('视频不能超过 14MB'); return; }
+    const current = overviewRef.current;
+    if (!current?.authenticated) { toast.error('请先连接钱包并完成身份验证'); return; }
+    setVideoSending(true);
+    const target = groupRef.current, scope = scopeRef.current, tempId = -Date.now(), clientId = newId('v');
+    try {
+      const duration = await new Promise<number>((resolve, reject) => {
+        const url = URL.createObjectURL(file), probe = document.createElement('video');
+        probe.preload = 'metadata'; probe.onloadedmetadata = () => { URL.revokeObjectURL(url); resolve(Number(probe.duration || 0)); };
+        probe.onerror = () => { URL.revokeObjectURL(url); reject(new Error('视频无法识别，请重新选择')); }; probe.src = url;
+      });
+      if (!Number.isFinite(duration) || duration <= 0 || duration > 60) throw new Error('视频时长需为 1 至 60 秒');
+      const dataUrl = await new Promise<string>((resolve, reject) => { const reader = new FileReader(); reader.onload = () => resolve(String(reader.result)); reader.onerror = () => reject(new Error('读取视频失败')); reader.readAsDataURL(file); });
+      const encoded = dataUrl.match(/^data:(video\/(?:mp4|webm|quicktime));base64,(.+)$/);
+      if (!encoded) throw new Error('视频处理失败');
+      const [, mime, data] = encoded;
+      const temp: ChatMessage = { id: tempId, address: current.me?.address, nickname: current.me?.nickname, avatar: current.me?.avatar, body: '[视频]', kind: 'video', createdAt: Date.now(), pending: true };
+      const withTemp = [...messagesRef.current, temp]; messagesRef.current = withTemp; setMessages(withTemp); requestAnimationFrame(scrollToBottom);
+      await ensureSession(); if (scopeRef.current !== scope) return;
+      const result = await api<{ message: CommunityMessage }>(path('messages', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ video: { mime, data }, clientId }) });
+      if (scopeRef.current !== scope || !(Number(result.message?.id) > 0)) return;
+      commitMessage(result.message, tempId, clientId); queueMarkRead();
+    } catch (caught) {
+      if (scopeRef.current === scope) { messagesRef.current = messagesRef.current.filter(message => message.id !== tempId); setMessages(messagesRef.current); toast.error(caught instanceof Error ? caught.message : '视频发送失败，请重试'); }
+    } finally { setVideoSending(false); if (videoInputRef.current) videoInputRef.current.value = ''; }
   }
 
   async function grabPacket(packetId: string) {
@@ -527,7 +697,6 @@ export default function CommunityPage() {
       const next = mergeMessages(messagesRef.current, [result.message]);
       messagesRef.current = next;
       setMessages(next);
-      latestId.current = Math.max(latestId.current, Number(result.message.id) || 0);
       requestAnimationFrame(scrollToBottom);
       queueMarkRead();
       setPacketOpen(false);
@@ -537,21 +706,25 @@ export default function CommunityPage() {
   }
 
   async function runAdminAction(name: string, payload: unknown, successText: string) {
+    const target = groupRef.current, scope = scopeRef.current;
     try {
       await ensureSession();
-      await api(path(name), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (scopeRef.current !== scope) return false;
+      await api(path(name, target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+      if (scopeRef.current !== scope) return false;
       toast.success(successText);
       const [session, page] = await Promise.all([
-        api<CommunitySession>(path('session'), {}, false),
-        api<{ messages?: CommunityMessage[]; hasMore?: boolean; latestId?: number }>(path('messages?limit=60'), {}, false),
+        api<CommunitySession>(path('session', target), {}, false),
+        api<{ messages?: CommunityMessage[]; hasMore?: boolean; latestId?: number }>(path('messages?limit=60', target), {}, false),
       ]);
+      if (scopeRef.current !== scope) return false;
       const list = (page.messages || []).filter(message => Number(message.id) > 0);
       overviewRef.current = session;
-      messagesRef.current = list;
-      latestId.current = Number(page.latestId || list.at(-1)?.id || 0);
+      messagesRef.current = [...list, ...messagesRef.current.filter(message => message.id < 0)];
+      latestId.current = Number(list.at(-1)?.id || 0);
       firstId.current = Number(list[0]?.id || 0);
       setOverview(session);
-      setMessages(list);
+      setMessages(messagesRef.current);
       setHasMore(Boolean(page.hasMore));
       return true;
     } catch (caught) { toast.error(caught instanceof Error ? caught.message : '操作失败'); return false; }
@@ -663,7 +836,7 @@ export default function CommunityPage() {
       } else {
         const result = await api<{ group: CommunityGroup }>(path(action === 'join' ? 'groups/join' : 'groups', target), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(action === 'join' ? { number: actionForm.number.trim(), invite: actionForm.invite.trim() } : { name: actionForm.name.trim() }) });
         if (scopeRef.current !== scope) return;
-        await loadGroups(); setGroup(result.group.number);
+        await loadGroups(); setGroup(result.group.number); setMobileChatOpen(true);
         toast.success(action === 'join' ? '已加入群聊' : '私人群已创建');
       }
       setAction(null);
@@ -694,18 +867,20 @@ export default function CommunityPage() {
   const visibleGroups = groups.filter(item => `${item.name} ${item.number}`.toLowerCase().includes(groupSearch.toLowerCase()));
   const actionTitle = action === 'join' ? '加入群聊' : action === 'create' ? '创建私人群' : '设置';
 
-  return <div className="rx-page sx-chat-page"><div className="sx-chat">
+  return <div ref={chatPageRef} className="rx-page sx-chat-page"><div className="sx-chat">
     <div className="sx-chat-window">
       <aside className="sx-group-rail" aria-label="群聊列表">
-        <div className="sx-mobile-group-control"><button type="button" className="sx-mobile-current-group" aria-expanded={mobileGroupsOpen} onClick={() => setMobileGroupsOpen(open => !open)}><span className="sx-group-icon">{overview?.group?.avatar ? <img src={overview.group.avatar} alt="" /> : <UsersRound size={17} />}</span><span><strong>{groupName}</strong><small>{memberCount} 位成员 · 群号 {group}</small></span><ChevronRight size={16} /></button><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={19} /></button>{canCreate && <button type="button" className="sx-chat-secondary" onClick={() => openAction('create')}>建群</button>}</div>
-        {!mobileChatOpen && <div className="sx-mobile-group-home"><div className="sx-mobile-home-heading"><strong>我的群聊</strong><span>{visibleGroups.length} 个群</span></div><label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label><div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} onClick={() => { setGroup(item.number); setMobileChatOpen(true); }}><span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" /> : <UsersRound size={19} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{groupPreview(item)} · {item.latestMessage?.createdAt ? fmtTime(item.latestMessage.createdAt) : '暂无消息'}</small></span>{Number(item.unread || 0) > 0 && <b className="sx-group-unread">{Number(item.unread) > 99 ? '99+' : item.unread}</b>}<ChevronRight size={15} /></button>)}{!visibleGroups.length && <p className="sx-rail-empty">没有找到这个群聊</p>}</div></div>}
-        {mobileGroupsOpen && <div className="sx-mobile-group-picker"><label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label><div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} onClick={() => { setGroup(item.number); setMobileGroupsOpen(false); setMobileChatOpen(true); }}><span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" /> : <UsersRound size={19} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{item.kind === 'private' ? '私人群' : '社区群'} · {item.number}</small></span></button>)}{!visibleGroups.length && <p className="sx-rail-empty">没有找到这个群聊</p>}</div></div>}
-        <div className="sx-group-rail-title"><strong>我的群聊</strong><button type="button" className="sx-icon-button" aria-label="群号入群" onClick={() => openAction('join')}><Plus size={18} /></button></div>
+        <div className="sx-group-directory-heading"><strong>我的群聊</strong><span>{groups.length} 个群</span></div>
+        <div className="sx-group-actions" aria-label="群聊操作">
+          <button type="button" className="sx-chat-secondary" onClick={() => openAction('join')}><Hash size={16} />加入群聊</button>
+          <button type="button" className="sx-chat-primary sx-create-group" disabled={!canCreate} aria-describedby="sx-create-group-hint" onClick={() => openAction('create')}><Plus size={16} />创建群聊</button>
+        </div>
+        <p id="sx-create-group-hint" className="sx-group-access-hint" role="status">{!wallet.authenticated ? '完成钱包签名后可查看建群权限' : currentAccess?.error ? <>建群权限读取失败，<button type="button" onClick={() => void loadGroups()}>重新读取</button></> : currentAccess?.allowed == null ? '正在确认建群权限…' : canCreate ? '已满足 V3 建群条件，可创建私人群' : '达到 V3 后可创建私人群'}</p>
+        {!mobileChatOpen && <div className="sx-mobile-group-home"><label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label><div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} onClick={() => { setGroup(item.number); setMobileChatOpen(true); }}><span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" /> : <UsersRound size={19} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{groupPreview(item)} · {item.latestMessage?.createdAt ? fmtTime(item.latestMessage.createdAt) : '暂无消息'}</small></span>{Number(item.unread || 0) > 0 && <b className="sx-group-unread">{Number(item.unread) > 99 ? '99+' : item.unread}</b>}<ChevronRight size={15} /></button>)}{!visibleGroups.length && <p className="sx-rail-empty">没有找到这个群聊</p>}</div></div>}
         <label className="sx-group-search"><Search size={15} /><input aria-label="搜索群聊" placeholder="搜索群名 / 群号" value={groupSearch} onChange={event => setGroupSearch(event.target.value)} /></label>
         <div className="sx-group-list">{visibleGroups.map((item, at) => <button type="button" key={item.number} className={'sx-group-item' + (group === item.number ? ' is-active' : '')} aria-current={group === item.number ? 'true' : undefined} onClick={() => setGroup(item.number)}>
           <span className={`sx-group-icon tone-${at % 4}`}>{item.avatar ? <img src={item.avatar} alt="" loading="lazy" /> : <UsersRound size={21} />}</span><span className="sx-group-item-copy"><strong>{item.name || '群聊'}</strong><small>{groupPreview(item)}</small></span>{Number(item.unread || 0) > 0 ? <b className="sx-group-unread">{Number(item.unread) > 99 ? '99+' : item.unread}</b> : group === item.number && <span className="sx-group-dot" />}
         </button>)}{!visibleGroups.length && <p className="sx-rail-empty">{groupSearch ? '没有找到这个群聊' : '正在加载群聊…'}</p>}</div>
-        <div className="sx-group-rail-bottom"><button type="button" onClick={() => openAction('join')}><Hash size={15} />通过群号加入</button>{canCreate && <button type="button" onClick={() => openAction('create')}><Plus size={15} />创建私人群</button>}</div>
       </aside>
       <section className={'sx-chat-main' + (!mobileChatOpen ? ' sx-mobile-chat-hidden' : '')} aria-label={`${groupName}聊天区`}>
         <header className="sx-chat-header">
@@ -714,12 +889,12 @@ export default function CommunityPage() {
           <div className="sx-chat-header-actions">{overview?.group?.invite && <button type="button" className="sx-chat-secondary" onClick={() => void copyInvite()}><Copy size={14} /><span>邀请</span></button>}{overview?.authenticated && <button type="button" className="sx-chat-secondary" onClick={() => openAction('settings')}><Settings size={14} /><span>设置</span></button>}<button type="button" className="sx-icon-button" aria-label="查看群成员" onClick={() => setMembersOpen(true)}><UsersRound size={20} /></button></div>
         </header>
         <div className="sx-message-area">
-          <div className="sx-messages" ref={listRef} role="log" aria-label="群消息" aria-live="polite" aria-relevant="additions" onScroll={() => { pinnedToBottom.current = isNearBottom(); if (unreadRef.current > 0 && pinnedToBottom.current) { clearUnread(); queueMarkRead(); } }}>
-            {hasMore && <button type="button" className="sx-load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '加载中…' : '查看更早的消息'}</button>}
+          <div className="sx-messages" ref={listRef} role="log" aria-label="群消息" aria-live="polite" aria-relevant="additions" onScroll={() => { pinnedToBottom.current = isNearBottom(); setAtLatest(pinnedToBottom.current); if (pinnedToBottom.current) queueMarkRead(); }}>
             {error ? <div className="sx-chat-empty" role="alert"><MessageCircle size={36} /><strong>暂时无法进入群聊</strong><p>{error}</p><button type="button" className="sx-chat-secondary" onClick={() => openAction('join')}>通过群号加入</button></div>
               : !overview ? <div className="sx-chat-empty"><LoaderCircle size={26} className="sx-spin" /><p>正在加载消息…</p></div>
               : !messages.length ? <div className="sx-chat-empty"><div className="sx-empty-icon"><MessageCircle size={30} /></div><strong>从一句你好开始</strong><p>这里还很安静，来和大家打个招呼吧。</p></div>
-              : messages.map((message, index) => {
+              : <ChatMessageWindow key={scope} messages={messages} scrollRef={listRef} controlRef={messageWindowRef} header={hasMore ? <button type="button" className="sx-load-older" disabled={loadingOlder} onClick={() => void loadOlder()}>{loadingOlder ? '加载中…' : '查看更早的消息'}</button> : null} renderMessage={index => {
+                const message = messages[index];
                 const previous = index ? messages[index - 1] : undefined;
                 // 同一人 3 分钟内的连续文字消息合并展示（隐藏重复头像与昵称），贴近常见群聊
                 const compact = previous && message.kind === 'text' && previous.kind === 'text'
@@ -730,17 +905,17 @@ export default function CommunityPage() {
                   {(!index || Number(message.createdAt) - Number(messages[index - 1].createdAt) > 300_000) && <div className="sx-message-time">{fmtTime(message.createdAt)}</div>}
                   {message.kind === 'red_packet' && message.packet && !message.deleted
                     ? <PacketRow message={message} onOpen={() => openPacket(message)} />
-                    : <MessageRow message={message} isAdmin={Boolean(overview.isAdmin)} onDelete={() => void deleteMessage(message.id)} compact={compact} />}
+                    : <MessageRow message={message} group={group} isAdmin={Boolean(overview.isAdmin)} onDelete={() => void deleteMessage(message.id)} onRetry={() => retryText(message)} compact={compact} />}
                 </Fragment>;
-              })}
+              }} />}
           </div>
-          {unread > 0 && <button type="button" className="sx-unread" onClick={() => { scrollToBottom(); clearUnread(); queueMarkRead(); }}><ArrowDown size={14} />{unread} 条新消息</button>}
+          {unread > 0 && !atLatest && <button type="button" className="sx-unread" onClick={() => { scrollToBottom(); queueMarkRead(); }}><ArrowDown size={14} />{unread} 条新消息</button>}
         </div>
         <div className="sx-chat-composer">
           {!overview?.authenticated
             ? <div className="sx-chat-gate"><span>连接钱包，加入大家的聊天</span><button type="button" className="sx-chat-primary" onClick={() => connectWallet()}>连接钱包</button></div>
             : <>
-              <div className="sx-composer-tools"><div className="sx-emoji-anchor"><button type="button" className="sx-icon-button" aria-label="选择表情" aria-expanded={emojiOpen} disabled={blocked} onClick={() => setEmojiOpen(!emojiOpen)}><Smile size={21} /></button>{emojiOpen && <div className="sx-emoji-picker" role="group" aria-label="表情">{emojis.map(emoji => <button type="button" key={emoji} aria-label={`插入${emoji}`} onClick={() => { const input = inputRef.current, start = input?.selectionStart ?? draft.length, end = input?.selectionEnd ?? draft.length; setDraft((draft.slice(0, start) + emoji + draft.slice(end)).slice(0, 500)); setEmojiOpen(false); requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}</div>}</div><button type="button" className="sx-icon-button" aria-label="发送图片" disabled={blocked || imageSending} onClick={() => imageInputRef.current?.click()}>{imageSending ? <LoaderCircle size={19} className="sx-spin" /> : <ImagePlus size={21} />}</button><input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void pickImage(file); }} /><button type="button" className="sx-red-packet-button" onClick={openPacketModal} disabled={blocked}><Gift size={19} />发红包</button><span>{overview.me?.nickname || shortAddress(overview.me?.address)}</span></div>
+              <div className="sx-composer-tools"><div className="sx-emoji-anchor"><button type="button" className="sx-icon-button" aria-label="选择表情" aria-expanded={emojiOpen} disabled={blocked} onClick={() => setEmojiOpen(!emojiOpen)}><Smile size={21} /></button>{emojiOpen && <div className="sx-emoji-picker" role="group" aria-label="表情">{emojis.map(emoji => <button type="button" key={emoji} aria-label={`插入${emoji}`} onClick={() => { const input = inputRef.current, start = input?.selectionStart ?? draft.length, end = input?.selectionEnd ?? draft.length; setDraft((draft.slice(0, start) + emoji + draft.slice(end)).slice(0, 500)); setEmojiOpen(false); requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + emoji.length, start + emoji.length); }); }}>{emoji}</button>)}</div>}</div><button type="button" className="sx-icon-button" aria-label="发送图片" disabled={blocked || imageSending || videoSending} onClick={() => imageInputRef.current?.click()}>{imageSending ? <LoaderCircle size={19} className="sx-spin" /> : <ImagePlus size={21} />}</button><input ref={imageInputRef} type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void pickImage(file); }} /><button type="button" className="sx-icon-button" aria-label="发送视频" disabled={blocked || imageSending || videoSending} onClick={() => videoInputRef.current?.click()}>{videoSending ? <LoaderCircle size={19} className="sx-spin" /> : <Video size={21} />}</button><input ref={videoInputRef} type="file" accept="video/mp4,video/webm,video/quicktime" hidden onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; void pickVideo(file); }} /><button type="button" className="sx-red-packet-button" onClick={openPacketModal} disabled={blocked}><Gift size={19} />发红包</button><span>{overview.me?.nickname || shortAddress(overview.me?.address)}</span></div>
               <textarea ref={inputRef} rows={2} maxLength={500} aria-label="消息内容" placeholder={composerHint} disabled={blocked} value={draft} onChange={event => setDraft(event.target.value)} onCompositionStart={() => { composing.current = true; }} onCompositionEnd={() => { composing.current = false; }} onKeyDown={event => { if (event.key === 'Escape') setEmojiOpen(false); if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing && !composing.current && event.keyCode !== 229) { event.preventDefault(); void send(); } }} />
               <div className="sx-composer-bottom"><span><span className="sx-keyboard-hint">Enter 发送 · Shift + Enter 换行 · 禁止发送链接</span>{draft.length > 400 && <span>{draft.length}/500</span>}</span><button type="button" className="sx-chat-primary" disabled={sending || !draft.trim() || blocked} onClick={() => void send()}>{sending ? <LoaderCircle size={15} className="sx-spin" /> : <Send size={15} />}{sending ? '发送中' : '发送'}</button></div>
             </>}

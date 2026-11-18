@@ -105,6 +105,8 @@ function defaultSettings() {
     // 固定价（>0 时生效）：SVX 池价与 K 线一律恒定在该价（如 0.1），用于关闭行情波动。
     // 2026-11-12 用户确认锁定 0.1：100 USDT 精确兑换 1000 SVX，K 线呈水平线。
     fixedPrice: 0,
+    // Explicit platform quote schedule; never presented as external market trades.
+    targetSchedule: null,
     // 每日随机交易 A 数量基准（用于 volume 生成）
     baseVolumePerDayA: 50_000,
   };
@@ -255,6 +257,9 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
   function saveSettings(patch) {
     const cur = getSettings();
     const next = { ...cur, ...patch, driftBpsPer1m: { ...cur.driftBpsPer1m, ...((patch && patch.driftBpsPer1m) || {}) } };
+    if (patch?.mode && patch.fixedPrice === undefined && (patch.mode === 'manual' || patch.mode !== cur.mode)) {
+      next.fixedPrice = patch.mode === 'manual' ? Number(aTokenService.getPoolMeta().priceUsdt) : 0;
+    }
     if (patch?.mode === 'sideways' && cur.mode !== 'sideways' && !patch.sideways) {
       const currentPrice = Number(aTokenService.getPoolMeta().priceUsdt);
       next.sideways = { anchorTimeS: Math.floor(clock() / 1000), anchorPrice: currentPrice > 0 ? currentPrice : 0.1 };
@@ -263,6 +268,27 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
       ON CONFLICT(setting_key) DO UPDATE SET payload_json=excluded.payload_json,updated_at=excluded.updated_at`)
       .run(SETTINGS_KEY, JSON.stringify(next), clock());
     return next;
+  }
+  function scheduleTargetPrice(input) {
+    const text = String(input ?? '').trim();
+    if (!/^\d+(?:\.\d{1,6})?$/.test(text) || !Number.isFinite(Number(text)) || Number(text) < 0.0001 || Number(text) >= 1e15) {
+      throw new Error('目标报价须不少于0.0001 USDT，最多6位小数');
+    }
+    return db.transaction(() => {
+      const startPrice = Number(aTokenService.getPoolMeta().priceUsdt);
+      if (!(startPrice > 0) || !Number.isFinite(startPrice)) throw new Error('当前报价无效，无法启动计划');
+      const startTimeS = Math.floor(clock() / 1000);
+      return saveSettings({mode:'scheduled', fixedPrice:0, targetSchedule:{
+        startPrice, targetPrice:Number(text), startTimeS, endTimeS:startTimeS + 86400,
+      }});
+    });
+  }
+  function scheduledQuote(schedule, nowS) {
+    if (!schedule || !(schedule.startPrice > 0) || !(schedule.targetPrice > 0)
+      || Number(schedule.endTimeS) - Number(schedule.startTimeS) !== 86400) throw new Error('24小时报价计划无效');
+    const progress = clamp((nowS - schedule.startTimeS) / 86400, 0, 1);
+    const weight = progress * progress * (3 - 2 * progress);
+    return {price:Number((schedule.startPrice + (schedule.targetPrice - schedule.startPrice) * weight).toFixed(6)), progress};
   }
 
   // 新开盘语义：只生成「1 分钟」基础序列（北京时间当日 00:00 开盘锚点 → 当前），
@@ -445,7 +471,9 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     //  (1) daily 模式：取 今日平滑路径（startPrice → EOD target × 6 段波浪 + 小噪声）在 now 的位置
     //  (2) up/down/sideways 模式：取 drift + 短期波动的“平滑路径”（用近 30 分钟为一段做微波浪，避免锯齿针）
     let pathNextPrice = curPrice;
-    if (settings.mode === 'daily') {
+    if (settings.mode === 'scheduled') {
+      pathNextPrice = scheduledQuote(settings.targetSchedule, nowS).price;
+    } else if (settings.mode === 'daily') {
       const st = ensureDailySchedule(nowS, curPrice, settings, saveSettings);
       const pct = clampDailyPct(settings.dailyChangePct);
       const targetEod = Math.max(0.0001, st.startPrice * (1 + pct / 100));
@@ -508,7 +536,7 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     // 最终 nextPrice = 在「单 tick 限幅」范围内，朝 pathNextPrice 走（让历史方向不突变）
     const loCap = curPrice * (1 - TICK_MAX_MOVE);
     const hiCap = curPrice * (1 + TICK_MAX_MOVE);
-    let nextPrice = clamp(pathNextPrice, loCap, hiCap);
+    let nextPrice = settings.mode === 'scheduled' ? pathNextPrice : clamp(pathNextPrice, loCap, hiCap);
     // 保险：任何非有限数 / NaN 都用 curPrice 或 0.1 顶回，不让下游 aTokenService.setPrice 抛错
     if (!Number.isFinite(nextPrice) || !(nextPrice > 0)) {
       console.warn('[A币K线] nextPrice 非法，用 curPrice 顶回:', nextPrice, 'curPrice=', curPrice, 'mode=', settings.mode);
@@ -517,7 +545,8 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     // 固定价模式：覆盖行情计算，池价与所有周期 K 线恒定在 fixedPrice（K 线为水平线）
     if (fixedPrice > 0) nextPrice = fixedPrice;
 
-    const volumeTick = Math.max(1,
+    // A scheduled platform quote does not imply a trade or generate trade volume.
+    const volumeTick = settings.mode === 'scheduled' || fixedPrice > 0 ? 0 : Math.max(1,
       (settings.baseVolumePerDayA / 86400) * (10 + Math.random() * 30));
 
     // 对每个周期更新当前 bar
@@ -572,6 +601,12 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     // daily 模式：输出当日平滑推进进度，供后台面板展示
     try {
       const s = out.settings;
+      out.chartSource = {type:'platform_quote', label:'平台报价走势', description:'记录平台设定报价，不代表外部市场成交'};
+      if (s.mode === 'scheduled' && s.targetSchedule) {
+        const current = scheduledQuote(s.targetSchedule, Math.floor(clock() / 1000));
+        out.targetProgress = {...s.targetSchedule, currentPrice:current.price,
+          progressPct:Number((current.progress * 100).toFixed(4)), completed:current.progress >= 1};
+      }
       if (s.mode === 'daily' && s.daily?.startPrice > 0) {
         const pct = clampDailyPct(s.dailyChangePct);
         const start = Number(s.daily.startPrice);
@@ -607,7 +642,7 @@ export function createATokenKlineService({ database, aTokenService, clock = () =
     ensureSeeded, rebuildAll,
     listKlines, appendCandle,
     tickLiveBar, closeCurrentBar,
-    getSettings, saveSettings,
+    getSettings, saveSettings, scheduleTargetPrice,
     status,
   };
 }

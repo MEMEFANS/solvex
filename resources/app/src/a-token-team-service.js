@@ -1,5 +1,5 @@
 import { createAixTransaction } from './a-token-ledger.js';
-import { formatUnits } from 'ethers';
+import { formatUnits, getAddress } from 'ethers';
 import { nextSettlementAt } from './a-token-time.js';
 import { readAixIncome, splitStakePayment, beijingDayStart } from './a-token-income.js';
 
@@ -31,7 +31,7 @@ const TEAM_LEVELS_VIEW = TEAM_LEVELS.map(t => ({
   ratePct: t.rateBps / 100,
 }));
 
-const DIRECT_STAKE_RATE_BPS = 1000n; // 直推 10%：按下级质押收益计算（2026-11-09 新规）
+const DIRECT_DYNAMIC_RATE_BPS = 1000n; // 直推10%：按下级实际领取的质押/矿池/盲盒收益计算。
 
 
 export function createATokenTeamService({ database, walletService, rotationAddresses = '', rotationHideViewers = '', reportingExclusions = null, pendingService = null, clock = () => Date.now() }) {
@@ -191,7 +191,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     try {
       let total = walletService.balanceUnits(address, 'A');
       for (const s of database.listATokenStakes(address)) {
-        if (s.planId === 'energy') continue;
+        if (s.planId === 'energy' || s.planId === 'energy30') continue;
         if (s.status === 'active') total += splitStakePayment(s, s.totalEarnedUnits).outstanding;
       }
       return total;
@@ -205,7 +205,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     try {
       let total = 0n;
       for (const s of database.listATokenStakes(address)) {
-        if (s.planId === 'energy') continue;
+        if (s.planId === 'energy' || s.planId === 'energy30') continue;
         if (s.status === 'active') total += splitStakePayment(s, s.totalEarnedUnits).outstanding;
       }
       for (const m of database.listATokenMiners(address)) {
@@ -460,15 +460,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       directTotalHoldA: formatUnits(directRealHoldUnits + acc.directHoldUnits, A_TOKEN_DECIMALS), // 直推总业绩（真实+虚拟）
       statsOverridden: acc.own,
     };
-    // 展示等级（仅页面展示，不写快照、不影响真实分润）：真实团队业绩 + 虚拟矿机业绩参与档位计算
-    let effectiveLevel = 0;
-    try {
-      const levelRow = database.getATokenTeamLevel?.(address);
-      const realLevel = applyFloor(calcLevel(getPersonalHeld(address), getTeamHeld(address)), levelRow?.manualLevel || 0);
-      const virtualLevel = calcLevel(getPersonalHeld(address), getTeamHeld(address) + acc.teamHoldUnits);
-      effectiveLevel = Math.max(realLevel, virtualLevel);
-    } catch {}
-    effective.level = effectiveLevel;
+    // 等级与用户团队页、建群及分润统一；人数展示数据不改变 V 等级。
+    effective.level = getLevel(address);
     const stored = database.getATokenTeamStatsOverride?.(address) || null;
     const reportingEnabled = !!reportingTxs && hiddenViewerSet.has(k(address));
     const reporting = { enabled: reportingEnabled,
@@ -551,18 +544,24 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return level;
   }
 
-  // ── 快照：算等级 + 写入数据库 ──
-  // manualLevel 语义=保底等级（只升不降）：实际等级取 max(自动等级, 保底等级)；
-  // 持仓达标更高等级时自动升级，跌破保底时维持保底；manualLevel=0 表示完全按持仓自动计算
-  function applyFloor(autoLevel, manualLevel) {
-    return autoLevel; // 新规则只认升级舱与团队业绩双条件，旧手动保底不再生效。
+  // Only explicit V-level settings apply. Historical A-level/manualLevel rows
+  // remain inert, so this release cannot silently restore old administrator grants.
+  function levelInfo(address, upgradeUnits = getUpgradeUnits(address), teamPerfUnits = getTeamPerfUnits(address)) {
+    const autoLevel = calcLevel(upgradeUnits, teamPerfUnits);
+    const saved = database.getSetting('team_v_level:' + k(address));
+    const setting = saved ? JSON.parse(saved) : null;
+    const manualVLevel = setting?.version === 1 && setting.mode === 'manual'
+      && Number.isInteger(setting.level) && setting.level >= 1 && setting.level <= 10 ? setting.level : null;
+    return { level: manualVLevel ?? autoLevel, autoLevel, manualVLevel, levelMode: manualVLevel === null ? 'auto' : 'manual' };
   }
+
+  // ── 快照：算等级 + 写入数据库 ──
   function snapshot(address) {
     const upgradeUnits = getUpgradeUnits(address);
     const teamPerfUnits = getTeamPerfUnits(address);
     const existing = database.getATokenTeamLevel?.(address);
     const manualLevel = existing?.manualLevel || 0;
-    const level = applyFloor(calcLevel(upgradeUnits, teamPerfUnits), manualLevel);
+    const info = levelInfo(address, upgradeUnits, teamPerfUnits), level = info.level;
     const links = activeLinks();
     const directValid = links.filter(
       (item) => k(item.referrerWallet) === k(address) && getPersonalHeld(item.wallet) > 0n
@@ -581,7 +580,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     // 同步 wallet_users 里的 level 字段，避免其他地方读旧值
     try { walletService?.setUserLevel?.(address, level); } catch {}
     return {
-      wallet: address, level,
+      wallet: address, ...info,
       upgradeA: Number(formatUnits(upgradeUnits, A_TOKEN_DECIMALS)),
       teamPerfA: Number(formatUnits(teamPerfUnits, A_TOKEN_DECIMALS)),
     };
@@ -612,6 +611,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     try { perfTotals = database.sumAllATokenTeamPerfUnits?.() || new Map(); } catch {}
     for (const w of upgradeTotals.keys()) wallets.add(w);
     for (const w of perfTotals.keys()) wallets.add(w);
+    for (const row of database.db.prepare("SELECT setting_key FROM service_settings WHERE setting_key GLOB 'team_v_level:0x*'").all()) wallets.add(row.setting_key.slice('team_v_level:'.length));
     const now = Date.now();
     const rows = [];
     for (const w of wallets) {
@@ -621,7 +621,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         const teamPerfUnits = perfTotals.get(key) || 0n;
         const existing = database.getATokenTeamLevel?.(w);
         const manualLevel = existing?.manualLevel || 0;
-        const level = applyFloor(calcLevel(upgradeUnits, teamPerfUnits), manualLevel);
+        const level = levelInfo(w, upgradeUnits, teamPerfUnits).level;
         let directValid = 0;
         for (const cw of childrenMap.get(key) || []) {
           const ck = k(cw);
@@ -651,19 +651,50 @@ export function createATokenTeamService({ database, walletService, rotationAddre
 
   // ── 获取等级（从快照表读）──
   function getLevel(address) {
-    return calcLevel(getUpgradeUnits(address), getTeamPerfUnits(address));
+    return levelInfo(address).level;
   }
 
-  // ── 后台手动指定等级：manualLevel 作为「保底等级」，实际等级=max(自动等级, 保底)，只升不降 ──
-  // level 1-10 = 设置/更新保底；0 = 取消保底，恢复完全按持仓自动计算
-  // 等级取值统一交给 snapshot()（applyFloor），这里只负责写入/删除保底标记
+  // 旧 A 等级保底入口保持停用；V 等级必须走有审计的 setAdminVLevel。
   function setManualLevel() { throw new Error('等级按升级舱与团队业绩自动计算，不支持手动保底'); }
+
+  function setAdminVLevel(address, input = {}, adminUsername) {
+    const wallet = getAddress(String(address || '').trim()).toLowerCase();
+    const { mode, level, requestId } = input;
+    if (!['manual', 'auto'].includes(mode)) throw new Error('请选择手动设置 V 等级或恢复自动评定');
+    if (mode === 'manual' && (!Number.isInteger(level) || level < 1 || level > 10)) throw new Error('V 等级须为 1 至 10 的整数');
+    if (mode === 'auto' && level != null) throw new Error('恢复自动评定时不要指定等级');
+    if (typeof requestId !== 'string' || !/^[A-Za-z0-9._:-]{8,80}$/.test(requestId)) throw new Error('等级操作请求编号无效，请刷新后台后重试');
+    if (typeof adminUsername !== 'string' || !adminUsername.trim()) throw new Error('需要管理员身份');
+    const operator = adminUsername.trim().slice(0, 80), requestedLevel = mode === 'manual' ? level : null;
+    return transaction(() => {
+      const old = database.getSetting('team_v_level_request:' + requestId);
+      if (old) {
+        const record = JSON.parse(old);
+        if (record.wallet !== wallet || record.mode !== mode || record.requestedLevel !== requestedLevel || record.adminUsername !== operator) {
+          throw Object.assign(new Error('该请求编号已用于另一笔等级设置'), {statusCode:409,code:'IDEMPOTENCY_CONFLICT'});
+        }
+        return { ...record, idempotent: true };
+      }
+      if (!database.db.prepare('SELECT address FROM wallet_users WHERE address=?').get(wallet)) throw Object.assign(new Error('用户不存在'), {statusCode:404});
+      const previous = levelInfo(wallet), updatedAt = clock();
+      database.saveSetting('team_v_level:' + wallet, JSON.stringify({ version:1, mode, level:requestedLevel, updatedAt, adminUsername:operator }));
+      const next = snapshot(wallet);
+      // Administrator changes must roll back when wallet synchronization fails.
+      walletService.setUserLevel(wallet, next.level);
+      const record = { wallet, mode, requestedLevel, ...levelInfo(wallet), previousLevel:previous.level, previousMode:previous.levelMode,
+        requestId, adminUsername:operator, updatedAt };
+      database.db.prepare('INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)')
+        .run('v_level_' + requestId, wallet, 'admin_v_level', updatedAt, JSON.stringify(record));
+      database.saveSetting('team_v_level_request:' + requestId, JSON.stringify(record));
+      return { ...record, idempotent:false };
+    });
+  }
 
   // ── 团队业绩记账（P3）：按币计、全团队都算（整条推荐链），可冲销 ──
   // 一笔业务只记一次；id 由 bizType+bizId+链位置确定，重复调用幂等。
   function recordTeamPerformance(sourceWallet, { bizType, bizId, amountUnits, occurredAt = Date.now(), payload = {} } = {}) {
-    // 2026-11-12：能量/质押本金、盲盒产出均不记团队业绩（业绩只认矿池 node 与升级舱 upgrade）
-    if (bizType === 'energy' || bizType === 'stake' || bizType === 'blindbox') return { recorded: 0, depth: 0 };
+    // Energy is a principal release. Blindbox draw value is recorded once at join.
+    if (bizType === 'energy' || bizType === 'stake') return { recorded: 0, depth: 0 };
     const units = BigInt(amountUnits || '0');
     const source = k(sourceWallet);
     if (units <= 0n || !source || !bizType || !bizId) return { recorded: 0, depth: 0 };
@@ -705,7 +736,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return { reversed };
   }
 
-  // ── 团队分润（矿机产出/质押收益通用）：直推 10%（仅质押）+ 级差/平级 ──
+  // ── 团队动态分润：质押/盲盒收益发直推10%；矿池/盲盒收益发等级差 ──
   // 动态收益仅发给当前仍持有有效矿池的用户。
   const eligibleStmt = database.db.prepare("SELECT 1 FROM a_token_nodes WHERE wallet=? AND status='active' AND expires_at>? LIMIT 1");
   function isEligibleRecipient(wallet) { return !!eligibleStmt.get(k(wallet), clock()); }
@@ -718,7 +749,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
   );
   const escapeLike = (s) => String(s).replace(/[\\%_]/g, '\\$&');
   // prefix: 'miner' → kind=miner_direct/...；'stake' → kind=stake_direct/...
-  function distributeReward(userAddress, rewardUnits, { prefix, sourceId, slotAt = Date.now(), receivedAt = slotAt }) {
+  function distributeReward(userAddress, rewardUnits, { prefix, sourceId, slotAt = Date.now(), receivedAt = slotAt, sourcePendingId = null, sourceAmountUnits = null }) {
     const dupPattern = `${escapeLike(prefix)}\\_%\\_${escapeLike(sourceId)}\\_${escapeLike(slotAt)}\\_%`;
     if (dupStmt.get(userAddress, dupPattern)) return { distributed:false, reason:'already distributed' };
     const chain = getReferralChain(userAddress);
@@ -753,6 +784,7 @@ export function createATokenTeamService({ database, walletService, rotationAddre
         amountUnits: amount.toString(),
         createdAt: receivedAt,
         periodEndAt: slotAt,
+        sourcePendingId,
       });
       if (recorded.inserted) {
         // P3：级差收益统一进入待领取（pending），由用户主动领取后入主钱包；
@@ -765,10 +797,13 @@ export function createATokenTeamService({ database, walletService, rotationAddre
             periodKey: 'v1',
             amountUnits: amount.toString(),
             quotaUnits: amount.toString(),
-            availableAt: nextSettlementAt(slotAt - 1),
+            availableAt: sourcePendingId ? receivedAt : nextSettlementAt(slotAt - 1),
+            ...(sourcePendingId ? { expiresAt: receivedAt + 24 * 3600_000 } : {}),
             payload: {
               rewardId, sourceWallet: userAddress, kind: `${prefix}_${kind}`,
               level: levelInfo.level ?? null, rateBps: levelInfo.rateBps ?? null, slotAt,
+              sourcePendingId, sourceClaimedAt: sourcePendingId ? receivedAt : null,
+              sourceAmountUnits: sourceAmountUnits == null ? null : String(sourceAmountUnits),
             },
           });
         } else {
@@ -778,18 +813,17 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       results.push({ recipient, kind, amount: amount.toString(), credited:recorded.inserted });
     };
 
-    // ① 直推 10%（2026-11-09 新规）：只按下级「质押收益」计算，不再按投资额；
-    //    矿机产出发放不再产生直推奖励。
-    if ((prefix === 'stake' || prefix === 'node') && chain[0]) {
-      const amt = (totalReward * DIRECT_STAKE_RATE_BPS) / 10000n;
-      credit(chain[0], 'direct', amt, { level: 1, rateBps: Number(DIRECT_STAKE_RATE_BPS) });
+    // ① 直推 10% 按下级实际领取的质押、矿池或盲盒日收益计算，不按投入本金计算。
+    if ((prefix === 'stake' || prefix === 'node' || prefix === 'blindbox') && chain[0]) {
+      const amt = (totalReward * DIRECT_DYNAMIC_RATE_BPS) / 10000n;
+      credit(chain[0], 'direct', amt, { level: 1, rateBps: Number(DIRECT_DYNAMIC_RATE_BPS) });
     }
     // ② 间推：新规归零并彻底移除（旧 10% 逻辑不再保留任何开关）
 
-    // ③ 级差（2026-11-12 口径）：V1~V10 每级 5%，按「矿池每日利息」计提；
+    // ③ 级差（2026-11-12 口径）：V1~V10 每级 5%，按「矿池/盲盒每日收益」计提；
     //    奖励 = 自己比例 − 直接下级比例；平级为 0、下级更高为 0。
     const rateBpsOf = (lvl) => (lvl > 0 ? BigInt(TEAM_LEVELS[lvl - 1].rateBps) : 0n);
-    if (prefix === 'node') {
+    if (prefix === 'node' || prefix === 'blindbox') {
       for (let i = 0; i < chain.length && i < LEVEL_DIFF_MAX_DEPTH; i++) {
         const uplineLevel = getLevel(chain[i]);
         if (uplineLevel <= 0) continue;
@@ -808,12 +842,35 @@ export function createATokenTeamService({ database, walletService, rotationAddre
 
   // ── 矿池利息分润（2026-11-12 起：直推 10% + 级差）──
   function distributeNodeReward(userAddress, rewardUnits, nodeId, slotAt = Date.now(), receivedAt = slotAt) {
-    return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'node', sourceId: nodeId, slotAt, receivedAt }));
+    return transaction(() => {
+      // Never accept an unclaimed accrual, caller-supplied amount or timestamp.
+      const source = database.db.prepare(`SELECT id,amount_units,claimed_at FROM a_token_pending_rewards
+        WHERE wallet=? AND biz_type='node' AND biz_id=? AND available_at=?
+          AND period_key LIKE 'interest_%' AND status='claimed'`).get(k(userAddress), nodeId, Number(slotAt));
+      if (!source || BigInt(source.amount_units) !== BigInt(rewardUnits)) return { distributed: false, reason: 'source_not_claimed' };
+      return distributeReward(k(userAddress), source.amount_units, {
+        prefix: 'node', sourceId: nodeId, slotAt, receivedAt: Number(source.claimed_at), sourcePendingId: source.id,
+        sourceAmountUnits: source.amount_units,
+      });
+    });
   }
 
-  // ── 质押收益分润（仅直推 10%）──
+  // ── 质押收益分润（直推 10%，不发级差）──
   function distributeStakeReward(userAddress, rewardUnits, stakeId, slotAt = Date.now(), receivedAt = slotAt) {
     return transaction(() => distributeReward(userAddress, rewardUnits, { prefix: 'stake', sourceId: stakeId, slotAt, receivedAt }));
+  }
+
+  function distributeBlindBoxReward(userAddress, rewardUnits, boxId, pendingId, slotAt = Date.now(), receivedAt = slotAt) {
+    return transaction(() => {
+      const source = database.db.prepare(`SELECT id,amount_units,claimed_at FROM a_token_pending_rewards
+        WHERE id=? AND wallet=? AND biz_type='blindbox' AND biz_id=? AND status='claimed'`).get(
+        String(pendingId), k(userAddress), String(boxId));
+      if (!source || BigInt(source.amount_units) !== BigInt(rewardUnits)) return { distributed:false, reason:'source_not_claimed' };
+      return distributeReward(k(userAddress), source.amount_units, {
+        prefix:'blindbox', sourceId:boxId, slotAt, receivedAt:Number(source.claimed_at),
+        sourcePendingId:source.id, sourceAmountUnits:source.amount_units,
+      });
+    });
   }
 
   // 新方案取消平级奖；保留方法以兼容调度入口，不再生成或补发任何平级奖励。
@@ -942,7 +999,6 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     let directHoldUnits = 0n;
     let directHoldUsers = 0;
     const directs = links.filter((item) => k(item.referrerWallet) === k(address)).map((item) => {
-      const row = database.getATokenTeamLevel?.(item.wallet);
       const bal = getPersonalHeld(item.wallet);
       const teamHeld = teamHeldFor(item.wallet);
       const dUpgradeUnits = getUpgradeUnits(item.wallet);
@@ -950,8 +1006,8 @@ export function createATokenTeamService({ database, walletService, rotationAddre
       // 该直推用户的虚拟团队业绩叠加（后台设置的虚拟矿机业绩沿推荐链传播到此直推用户）
       const dAcc = virtualStatsAccrual(item.wallet, links, overrideContext);
       const effTeamHeld = teamHeld + dAcc.teamHoldUnits;
-      // 保底等级只升不降：max(自动等级, 保底等级)；自动等级按 P3 双条件（升级仓 + 团队业绩）
-      const lvl = applyFloor(calcLevel(dUpgradeUnits, dTeamPerfUnits), row?.manualLevel || 0);
+      // 与用户本人相同的 V 等级口径。
+      const lvl = levelInfo(item.wallet, dUpgradeUnits, dTeamPerfUnits).level;
       const hisDirectCount = (childrenMap2.get(k(item.wallet)) || []).length;
       directHoldUnits += bal;
       if (bal > 0n) directHoldUsers += 1;
@@ -1123,8 +1179,18 @@ export function createATokenTeamService({ database, walletService, rotationAddre
     return { ...raw, rows, by, total: raw.total - excludedPro, excludedPro, rawTotal: raw.total, rawBy: raw.by };
   }
 
-  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, setManualLevel, calcLevel, distributeNodeReward, distributeStakeReward, distributeToA10Pool, getReferralChain,
+  pendingService?.setClaimHandler?.(row => {
+    if (row.bizType === 'node' && String(row.periodKey).startsWith('interest_') && row.asset === 'A') {
+      distributeNodeReward(row.wallet, row.amountUnits, row.bizId, row.availableAt, row.claimedAt);
+    }
+    if (row.bizType === 'blindbox' && row.asset === 'A') {
+      distributeBlindBoxReward(row.wallet, row.amountUnits, row.bizId, row.id, row.availableAt, row.claimedAt);
+    }
+  });
+
+  return { reportingMinerSummary, snapshot, snapshotAll, getLevel, levelInfo, setAdminVLevel, setManualLevel, calcLevel, distributeNodeReward, distributeStakeReward, distributeToA10Pool, getReferralChain,
     recordTeamPerformance, reverseTeamPerformance, getUpgradeUnits, getTeamPerfUnits,
+    distributeBlindBoxReward,
     settleParityRewards:(...args) => transaction(() => settleParityRewards(...args)),
     settleA10Pool:(...args) => transaction(() => settleA10Pool(...args)), profile, summary, getTeamStatsView, teamActivationBreakdown, TEAM_LEVELS };
 }

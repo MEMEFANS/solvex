@@ -2,8 +2,14 @@
   const byId = id => document.getElementById(id);
   let credential = '', revision = 0, tab = 'withdrawals', automation = {}, creditRequest = null;
   let withdrawalsRevision = 0, creditsRevision = 0;
-  const tabs = ['withdrawals','credits','assets','miners'];
+  const tabs = ['withdrawals','credits','assets','pools','miners'];
+  if (tabs.includes(location.hash.slice(1))) tab = location.hash.slice(1);
+  function renderTab() {
+    for (const target of tabs) { byId(`funds-${target}`).hidden = target !== tab; const button = byId(`funds-tab-${target}`); button.classList.toggle('secondary', target !== tab); button.setAttribute('aria-pressed', String(target === tab)); }
+  }
   const operationRequests = new Map();
+  const operationBusy = new Set();
+  let poolConfig = null, poolsRevision = 0;
   // Remove the former page's saved secret. This console keeps credentials in memory only.
   try { sessionStorage.removeItem('wd_admin_token'); } catch {}
   const labels = { pending_review:'待人工审核', pending_funds:'待补款放行', pending_auto:'自动队列', processing:'准备出款', signed:'等待广播', broadcast:'链上确认中', payout_failed:'出款失败', paid:'已支付', rejected:'已拒绝', failed:'失败', refunded:'已退回' };
@@ -13,11 +19,13 @@
     byId('funds-token').value = ''; byId('funds-login').hidden = false; byId('funds-app').hidden = true; byId('funds-lock').hidden = true;
     byId('funds-withdrawals-body').replaceChildren(); byId('funds-daily-summary-body').replaceChildren(); byId('funds-credits-body').replaceChildren(); byId('funds-credit-form').reset(); byId('funds-settings-form').reset();
     byId('funds-assets-body').replaceChildren(); byId('funds-miners-body').replaceChildren(); byId('funds-asset-form').reset(); byId('funds-miner-form').reset();
+    updateEnergyPreview();
+    poolsRevision++; poolConfig = null; byId('funds-pools-body').replaceChildren(); byId('funds-pool-form').reset(); updatePoolPreview();
   }
   async function api(path, options = {}) {
     if (!credential) throw new Error('请先验证资金管理权限');
     const current = revision;
-    const response = await fetch(`/api/wallet/admin/${path}`, { ...options, credentials:'omit', cache:'no-store', signal:AbortSignal.timeout(20000), headers:{ 'Content-Type':'application/json', 'X-Wallet-Admin-Token':credential } });
+    const response = await fetch(`/api/wallet/admin/${path}`, { ...options, credentials:'omit', cache:'no-store', signal:AbortSignal.timeout(20000), headers:{ 'Content-Type':'application/json', 'X-Wallet-Admin-Token':credential, 'X-Funds-UI-Version':'2' } });
     const data = await response.json();
     if (current !== revision) throw new Error('资金后台已锁定，请重新登录');
     if (response.status === 401) lock();
@@ -84,6 +92,7 @@
   async function refresh() {
     if (tab === 'credits') await loadCredits();
     else if (tab === 'assets') await loadAssets();
+    else if (tab === 'pools') await loadPools();
     else if (tab === 'miners') await loadMiners();
     else { await loadSettings(); await loadDailySummary(); await loadWithdrawals(); }
   }
@@ -103,13 +112,19 @@
     const body = byId('funds-miners-body'); body.replaceChildren();
     byId('funds-miner-count').textContent = `${data.items?.length || 0} 条记录`;
     for (const item of data.items || []) {
-      const row = document.createElement('tr'); cell(row,date(item.createdAt)); cell(row,item.wallet,'wallet'); cell(row,item.amount + ' SVX');
-      cell(row,item.energy?.id); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
+      const row = document.createElement('tr'); cell(row,date(item.createdAt)); cell(row,item.wallet,'wallet');
+      cell(row,`${item.amount} SVX × ${item.quantity ?? 1} 份 · 30天`); cell(row,`${item.totalAmount ?? item.amount} SVX`);
+      const ids = item.energyIds || (item.energy?.id ? [item.energy.id] : []);
+      const detail=document.createElement('details'), summary=document.createElement('summary');
+      summary.textContent=`${ids.length} 条持仓记录（${item.quantity ?? 1} 份）`; detail.append(summary);
+      for (const id of ids) { const line=document.createElement('div'); line.textContent=id; detail.append(line); }
+      cell(row,'').append(detail); cell(row,item.reason); cell(row,item.adminUsername); body.append(row);
     }
-    if (!data.items?.length) empty(body,6,'暂无能量充值记录');
+    if (!data.items?.length) empty(body,7,'暂无能量池赠送记录');
   }
   async function submitOperation(event, kind, payload, confirmation) {
     event.preventDefault();
+    if (operationBusy.has(kind)) return;
     if (!window.confirm(confirmation)) return;
     const form = event.currentTarget, button = event.submitter || form.querySelector('button');
     const fingerprint = JSON.stringify(payload);
@@ -118,14 +133,78 @@
       pending = { fingerprint, requestId:`${kind}_${crypto.randomUUID().replaceAll('-','')}` };
       operationRequests.set(kind,pending);
     }
-    button.disabled = true;
+    button.disabled = true; operationBusy.add(kind);
     try {
-      const result = await api(kind === 'asset' ? 'asset-adjustments' : 'energy-grants',{ method:'POST',body:JSON.stringify({...payload,requestId:pending.requestId}) });
+      const result = await api(kind === 'asset' ? 'asset-adjustments' : kind === 'pool' ? 'pool-grants' : 'energy-grants',{ method:'POST',body:JSON.stringify({...payload,requestId:pending.requestId}) });
       operationRequests.delete(kind); form.reset();
-      status(kind === 'asset' ? `${result.adjustment.amount} ${payload.asset === 'A' ? 'SVX' : payload.asset} 已${payload.action === 'debit' ? '扣除' : '赠送'}` : '能量已充值','ok');
-      if (kind === 'asset') await loadAssets(); else await loadMiners();
+      status(kind === 'asset' ? `${result.adjustment.amount} ${payload.asset === 'A' ? 'SVX' : payload.asset} 已${payload.action === 'debit' ? '扣除' : '赠送'}` : kind === 'pool' ? `已赠送 ${result.grant.quantity} 份${result.grant.name}，合计本金 ${result.grant.totalPrincipal} SVX` : `已赠送 ${result.grant.quantity ?? 1} 份能量池，合计额度 ${result.grant.totalAmount ?? result.grant.amount} SVX`,'ok');
+      if (kind === 'asset') await loadAssets(); else if (kind === 'pool') { selectPoolType(); await loadPools(); } else await loadMiners();
     } catch (error) { status(error.message,'error'); }
-    finally { button.disabled = false; }
+    finally { operationBusy.delete(kind); if (kind === 'pool') updatePoolPreview(); else if (kind === 'miner') updateEnergyPreview(); else button.disabled = false; }
+  }
+
+  const unit = 10n ** 18n;
+  const svx = value => { const text = (value % unit).toString().padStart(18, '0').replace(/0+$/, ''); return (value / unit).toLocaleString('zh-CN') + (text ? '.' + text : ''); };
+  function energyQuote() {
+    const planId='energy30', days=30;
+    const amount=byId('funds-miner-amount').value.trim(), quantity=byId('funds-miner-quantity').value.trim();
+    if (!/^\d+(?:\.\d{1,18})?$/.test(amount)) throw new Error('每份额度须为正数，最多支持18位小数');
+    const [whole, fraction='']=amount.split('.'), units=BigInt(whole)*unit+BigInt(fraction.padEnd(18,'0'));
+    if (units<=0n) throw new Error('每份能量池额度必须大于0');
+    if (!/^[1-9]\d*$/.test(quantity)) throw new Error('赠送份数须为正整数');
+    const total=units*BigInt(quantity);
+    return {amount,quantity,planId,text:`${quantity} 份能量池 · 每份 ${svx(units)} SVX\n合计额度 ${svx(total)} SVX · ${days}天释放完，每日约3.33%（尾差补齐）${BigInt(quantity)>100n ? '\n合并为一条持仓显示，保留实际份数及每份释放额度' : ''}`};
+  }
+  function updateEnergyPreview() {
+    const preview=byId('funds-miner-preview'), button=byId('funds-miner-submit');
+    if (!byId('funds-miner-amount').value.trim()) {preview.textContent='请填写每份能量池额度和赠送份数';preview.className='pool-preview';button.disabled=true;return;}
+    try {preview.textContent=energyQuote().text;preview.className='pool-preview';button.disabled=operationBusy.has('miner');}
+    catch(error){preview.textContent=error.message;preview.className='pool-preview error';button.disabled=true;}
+  }
+  function poolQuote() {
+    const plan = poolConfig?.plans?.find(item => item.type === byId('funds-pool-type').value);
+    if (!plan) throw new Error('请先读取矿池类型');
+    const coins = byId('funds-pool-coins').value.trim(), quantity = byId('funds-pool-quantity').value.trim();
+    if (!/^[1-9]\d*$/.test(coins)) throw new Error('每份矿池币数须为正整数');
+    if (!/^[1-9]\d*$/.test(quantity)) throw new Error('赠送份数须为正整数');
+    if (!poolConfig.unlimited && poolConfig.maxQuantity != null && BigInt(quantity) > BigInt(poolConfig.maxQuantity)) throw new Error(`赠送份数须为 1 至 ${poolConfig.maxQuantity} 的整数`);
+    if (BigInt(coins) < BigInt(plan.minCoins) || plan.maxCoinsExclusive && BigInt(coins) >= BigInt(plan.maxCoinsExclusive)) throw new Error(`${plan.name}每份币数须不少于 ${plan.minCoins}${plan.maxCoinsExclusive ? ` 且小于 ${plan.maxCoinsExclusive}` : ''} SVX`);
+    const total = BigInt(coins) * BigInt(quantity) * unit, interest = total * BigInt(plan.yieldBps) / 10000n;
+    if (!poolConfig.unlimited && poolConfig.maxTotalCoins != null && total > BigInt(poolConfig.maxTotalCoins) * unit) throw new Error('赠送合计不能超过代币总量');
+    return { plan, coins, quantity, total, interest,
+      text: `${quantity} 份${plan.name} · 每份 ${coins} SVX · ${plan.days} 天累计收益 ${plan.ratePct}%\n合计本金 ${svx(total)} SVX · 全期利息 ${svx(interest)} SVX · 本息合计 ${svx(total + interest)} SVX` };
+  }
+  function updatePoolPreview() {
+    const preview = byId('funds-pool-preview'), button = byId('funds-pool-submit');
+    try { preview.textContent = poolQuote().text; preview.className = 'pool-preview'; button.disabled = operationBusy.has('pool'); }
+    catch (error) { preview.textContent = error.message; preview.className = 'pool-preview error'; button.disabled = true; }
+  }
+  function selectPoolType() {
+    const plan = poolConfig?.plans?.find(item => item.type === byId('funds-pool-type').value);
+    if (plan) byId('funds-pool-coins').value = plan.minCoins;
+    updatePoolPreview();
+  }
+  async function loadPools() {
+    const current = ++poolsRevision; byId('funds-pool-submit').disabled = true;
+    const data = await api('pool-grants');
+    if (current !== poolsRevision) return;
+    const select = byId('funds-pool-type'), selected = select.value;
+    poolConfig = data; select.replaceChildren();
+    for (const plan of data.plans || []) select.add(new Option(`${plan.name} · ${plan.days} 天 / ${plan.ratePct}%`, plan.type));
+    if (data.plans.some(plan => plan.type === selected)) select.value = selected;
+    if (!byId('funds-pool-coins').value) selectPoolType(); else updatePoolPreview();
+    if (data.unlimited || data.maxQuantity == null) byId('funds-pool-quantity').removeAttribute('max');
+    else byId('funds-pool-quantity').max = String(data.maxQuantity);
+    const body = byId('funds-pools-body'); body.replaceChildren();
+    byId('funds-pool-count').textContent = `${data.items?.length || 0} 条赠送记录`;
+    for (const item of data.items || []) {
+      const row = document.createElement('tr'); cell(row, date(item.createdAt)); cell(row, item.wallet, 'wallet'); cell(row, `${item.name} × ${item.quantity} 份（每份 ${item.coins} SVX）`);
+      cell(row, `${item.totalPrincipal} / ${item.totalInterest} SVX`); cell(row, date(item.expiresAt)); cell(row, `${item.reason} / ${item.adminUsername}`);
+      const detail = document.createElement('details'), summary = document.createElement('summary'); summary.textContent = `${item.nodeIds?.length || 0} 条持仓记录（${item.quantity} 份）`; detail.append(summary);
+      for (const id of item.nodeIds || []) { const line = document.createElement('div'); line.textContent = id; detail.append(line); }
+      cell(row, '').append(detail); body.append(row);
+    }
+    if (!data.items?.length) empty(body, 7, '暂无矿池赠送记录');
   }
   async function processWithdrawal(item, kind, button, txHash) {
     const body = { action:kind };
@@ -154,7 +233,7 @@
   byId('funds-lock').addEventListener('click', () => { lock(); status('资金后台已锁定'); });
   for (const name of tabs) byId(`funds-tab-${name}`).addEventListener('click', async () => {
     tab = name;
-    for (const target of tabs) { byId(`funds-${target}`).hidden = target !== name; const button = byId(`funds-tab-${target}`); button.classList.toggle('secondary', target !== name); button.setAttribute('aria-pressed', String(target === name)); }
+    history.replaceState(null, '', '#' + tab); renderTab();
     try { await refresh(); } catch (error) { status(error.message, 'error'); }
   });
   byId('funds-refresh').addEventListener('click', async () => { try { await refresh(); status('记录已刷新', 'ok'); } catch (error) { status(error.message, 'error'); } });
@@ -164,8 +243,22 @@
     submitOperation(event,'asset',payload,`确认给钱包 ${payload.wallet} ${payload.action === 'debit' ? '扣除' : '赠送'} ${payload.amount} ${payload.asset === 'A' ? 'SVX' : payload.asset}？`);
   });
   byId('funds-miner-form').addEventListener('submit',event => {
-    const payload = { wallet:byId('funds-miner-wallet').value.trim(), amount:byId('funds-miner-amount').value.trim(), reason:byId('funds-miner-reason').value.trim() };
-    submitOperation(event,'miner',payload,`确认给钱包 ${payload.wallet} 充值 ${payload.amount} SVX 能量，每日释放1%？`);
+    event.preventDefault();
+    try {
+      const q=energyQuote(), payload={wallet:byId('funds-miner-wallet').value.trim(),amount:q.amount,quantity:q.quantity,planId:q.planId,reason:byId('funds-miner-reason').value.trim()};
+      void submitOperation(event,'miner',payload,`确认给钱包 ${payload.wallet} 赠送能量池？\n${q.text}\n直接创建释放中的能量池，不扣用户余额。`);
+    } catch(error){status(error.message,'error');}
+  });
+  for (const id of ['funds-miner-amount','funds-miner-quantity']) byId(id).addEventListener('input',updateEnergyPreview);
+  byId('funds-miner-plan').addEventListener('change',updateEnergyPreview);
+  byId('funds-pool-type').addEventListener('change', selectPoolType);
+  for (const id of ['funds-pool-coins', 'funds-pool-quantity']) byId(id).addEventListener('input', updatePoolPreview);
+  byId('funds-pool-form').addEventListener('submit', event => {
+    event.preventDefault();
+    try {
+      const q = poolQuote(), payload = { wallet: byId('funds-pool-wallet').value.trim(), type: q.plan.type, coins: q.coins, quantity: q.quantity, reason: byId('funds-pool-reason').value.trim() };
+      void submitOperation(event, 'pool', payload, `确认赠送给 ${payload.wallet}？\n${q.text}\n不扣用户已有余额；按正常矿池规则领取利息与到期本金，并计入团队业绩。`);
+    } catch (error) { status(error.message, 'error'); }
   });
   byId('funds-credit-form').addEventListener('submit', async event => {
     event.preventDefault(); const form = event.currentTarget; const button = event.submitter || form.querySelector('button');
@@ -187,4 +280,11 @@
     finally { button.disabled = false; }
   });
   window.addEventListener('pagehide', lock);
+  window.addEventListener('hashchange', () => {
+    const next = location.hash.slice(1);
+    if (!tabs.includes(next) || next === tab) return;
+    tab = next; renderTab();
+    if (credential) void refresh().catch(error => status(error.message, 'error'));
+  });
+  renderTab();
 })();

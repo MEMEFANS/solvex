@@ -103,7 +103,7 @@ const bridgeService = createBridgeService({
 const walletService = createWalletService({ ...cfg.wallet, dataRoot: DATA_ROOT, bridgeService, withdrawalPrivateKey: cfg.wallet.withdrawalPrivateKey,
   // 充值自动扫链对账专用 RPC（需支持 eth_getLogs；主 RPC 一般不支持）
   depositReconcileRpcUrl: process.env.DEPOSIT_RECONCILE_RPC_URL || 'https://bsc-mainnet.nodereal.io/v1/64a9df0874fb4a93b9d0a3849de012d3' });
-// 设备限制：同一设备最多绑定 N 个钱包（DEVICE_MAX_WALLETS，默认 3）
+// 设备限制：同一设备最多绑定 N 个钱包（DEVICE_MAX_WALLETS，默认 5）
 const deviceService = createDeviceService({
   database: walletService.database,
   maxWalletsPerDevice: cfg.wallet.maxWalletsPerDevice,
@@ -528,8 +528,8 @@ try { aTokenUpgradeService.processDueReturns(); } catch (e) { console.error('[�
 const aTokenNodeService = createATokenNodeService({
   aTokenService, database: walletService.database, pendingService: aTokenPendingService, teamService: aTokenTeamService,
 });
-// 盲盒（2026-11-09 P4）：1 USDT 进 LP、按钱包地址限 1 份、随机 100–500 币、
-// 30 天每日领取（每日额度固定为总币数/30，滚动 24h 未领作废）；产出进乙区，不计团队业绩与推广收益。
+// 盲盒（2026-11-09 P4）：1 USDT 进 LP、按钱包地址限 1 份、随机 100–500 币，
+// 开盒总币数计入团队业绩；日收益领取后计算直推与级差奖励，上级须有有效矿池。
 const blindBoxChainVerifier = createATokenBlindBoxChainVerifier({
   rpcUrl: cfg.wallet.autoLp.rpcUrl,
   contractAddress: cfg.wallet.autoLp.contractAddress,
@@ -538,7 +538,7 @@ const blindBoxChainVerifier = createATokenBlindBoxChainVerifier({
   confirmations: cfg.wallet.autoLp.confirmations,
 });
 const aTokenBlindBoxService = createATokenBlindBoxService({
-  aTokenService, database: walletService.database, pendingService: aTokenPendingService,
+  aTokenService, database: walletService.database, pendingService: aTokenPendingService, teamService: aTokenTeamService,
   chainPayment: blindBoxChainVerifier,
 });
 // 盲盒每日额度发放：每 5 分钟扫描一次进行中的盲盒，只补发「当天」窗口（错过日期作废）
@@ -665,6 +665,14 @@ const communityRedPacketService = createCommunityRedPacketService({
 });
 communityRedPacketService.startSweeper();
 const communityGroupService = createCommunityGroupService({database:walletService.database,walletService,teamService:aTokenTeamService,adminService:communityAdminService});
+// 群聊视频只保留 24 小时；清理正文仍保留消息记录和“已清理”提示，避免聊天列表膨胀。
+const communityVideoCleanupTimer = setInterval(() => {
+  try {
+    const cleared = walletService.database.clearExpiredCommunityVideos();
+    if (cleared > 0) console.log('[群聊视频] 已自动清理', cleared, '条超过24小时的视频');
+  } catch (error) { console.error('[群聊视频] 自动清理失败', error?.message || error); }
+}, 10 * 60 * 1000);
+communityVideoCleanupTimer.unref?.();
 const communityApi = createCommunityApi({
   groupService:communityGroupService,
   service: communityService,
@@ -672,7 +680,7 @@ const communityApi = createCommunityApi({
   redPacketService: communityRedPacketService,
   send, readBody, getSession: walletSession, isSameOrigin,
 });
-const fundsAdminApi = createFundsAdminApi({ walletService, stakingService:aTokenStakingService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
+const fundsAdminApi = createFundsAdminApi({ walletService, stakingService:aTokenStakingService, nodeService:aTokenNodeService, payoutService:withdrawalPayoutService, send, readBody, isSameOrigin, allowRequest, getToken:() => String(process.env.WALLET_ADMIN_TOKEN || '') });
 // ── 60s 定时：质押日结 + 每日固定销毁跨日结算 ──
 // 2026-10-29：团伙深链曾使团队全量快照递归爆栈、O(N²) 自旋卡死（23:23 与 00:11 两次全站无响应）。
 // 已修复：teamHeldOf 改迭代式 + 全链路剔除封禁账号（见 a-token-team-service.js），团队任务恢复启用。
@@ -960,6 +968,7 @@ export const server = http.createServer(async (request, res) => {
         const walletDashboard = walletService.adminDashboard({ includeUsers:url.searchParams.get('view') !== 'overview' });
         return send(res, 200, {
           ...walletDashboard,
+          ...(walletDashboard.users ? { users:walletDashboard.users.map(user => ({ ...user, ...aTokenTeamService.levelInfo(user.address) })) } : {}),
           withdrawalAutomation:{ ...walletDashboard.withdrawalAutomation, ...withdrawalPayoutService.status() },
           tokens:marketCatalog.list({ includeDisabled:true }),
           recentDeposits:walletService.adminListDeposits('', { limit:8 }),
@@ -971,7 +980,7 @@ export const server = http.createServer(async (request, res) => {
           userQuery:url.searchParams.get('q') || '', realOnly:url.searchParams.get('realOnly') === '1',
           ...(url.searchParams.has('limit') ? { limit:url.searchParams.get('limit'), offset:url.searchParams.get('offset') } : {}),
         });
-        return send(res, 200, { summary:dashboard.summary, users:dashboard.users,
+        return send(res, 200, { summary:dashboard.summary, users:dashboard.users.map(user => ({ ...user, ...aTokenTeamService.levelInfo(user.address) })),
           ...(dashboard.usersTotal !== undefined ? { total:dashboard.usersTotal, limit:dashboard.usersLimit, offset:dashboard.usersOffset } : {}),
         });
       }
@@ -987,13 +996,13 @@ export const server = http.createServer(async (request, res) => {
           const walletUser = walletService.ensureUser(wallet);
           const usdtBalance = fmtU(walletUser.balances?.USDT || '0');
           const aixBalance = aTokenService.balanceA(wallet);
-          const level = walletUser.level || 1;
+          const userLevelInfo = aTokenTeamService.levelInfo(wallet);
           // 个人业绩 & 团队业绩（来自团队快照）
           const teamLevelRow = db.getATokenTeamLevel(wallet) || {};
           const personalHeld = fmtA(teamLevelRow.personalHeldUnits || '0');
           const teamHeld = fmtA(teamLevelRow.teamHeldUnits || '0');
           // 等级以团队快照为准（无快照=未达标=0级）
-          const teamLevel = Number(teamLevelRow.level || 0);
+          const teamLevel = userLevelInfo.level;
           // 推荐关系
           const links = db.listReferralLinks();
           const link = links.find(l => String(l.wallet).toLowerCase() === wallet) || null;
@@ -1040,7 +1049,8 @@ export const server = http.createServer(async (request, res) => {
           return send(res, 200, {
             address: wallet,
             level: teamLevel,
-            displayLevel: tEff.level ?? teamLevel,
+            ...userLevelInfo,
+            displayLevel: teamLevel,
             usdtBalance,
             aixBalance: fmtA(aixBalance),
             personalHeld,
@@ -1084,18 +1094,13 @@ export const server = http.createServer(async (request, res) => {
           return send(res, 500, { error: error?.message || String(error) });
         }
       }
-      // 设置用户等级 A1-A10：POST /api/admin/users/{wallet}/level { level: 1-10 }
+      // V1-V10 固定等级，或恢复双条件自动评定；设置、快照与审计原子提交。
       if (p.startsWith('/api/admin/users/') && p.endsWith('/level') && request.method === 'POST') {
         if (!allowRequest(request, res, 'admin-set-level', 30, 60_000)) return;
         try {
           const body = await readBody(request, 4_000);
           const wallet = decodeURIComponent(p.split('/')[4] || '');
-          console.log('[admin-set-level] wallet=', wallet, 'body=', JSON.stringify(body), 'level=', body.level);
-          const result = walletService.adminSetUserLevel(wallet, body.level, operatorSession.username);
-          // 同步锁定团队快照表的 manualLevel，否则用户打开团队页触发 snapshot 重算时会把等级覆盖回持仓等级
-          try { aTokenTeamService.setManualLevel(wallet, body.level); }
-          catch (e) { console.error('[admin-set-level] manualLevel 锁定失败:', e?.message || e); }
-          console.log('[admin-set-level] result=', JSON.stringify(result));
+          const result = aTokenTeamService.setAdminVLevel(wallet, body, operatorSession.username);
           return send(res, 200, { ok: true, ...result });
         } catch (error) {
           return send(res, Number(error?.statusCode) || 400, { error: error?.message || String(error) });

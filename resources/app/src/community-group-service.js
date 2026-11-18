@@ -137,13 +137,13 @@ export function createCommunityGroupService({database, walletService, teamServic
     return match ? { mime: match[1], data: match[2] } : null;
   }
   function list(wallet) {
-    const latestStmt = db.prepare("SELECT body, nickname, created_at FROM community_messages WHERE group_number=? AND status='visible' ORDER BY id DESC LIMIT 1");
+    const latestStmt = db.prepare("SELECT body, kind, nickname, created_at FROM community_messages WHERE group_number=? AND status='visible' ORDER BY id DESC LIMIT 1");
     const unreadStmt = db.prepare("SELECT COUNT(*) AS n FROM community_messages WHERE group_number=? AND status='visible' AND id>? AND lower(wallet)<>lower(?)");
     const result = db.prepare('SELECT * FROM community_groups ORDER BY number').all()
       .filter(g=>entitled(g,wallet)&&membership(g.number,wallet)?.status!=='kicked')
       .map(g=>{
         const item=view(g,wallet), member=wallet?membership(g.number,wallet):null, latest=latestStmt.get(g.number);
-        return {...item, latestMessage: latest ? { body:String(latest.body||'').slice(0,80), nickname:latest.nickname, createdAt:Number(latest.created_at||0) } : null,
+        return {...item, latestMessage: latest ? { body:latest.kind==='image'?'[图片]':String(latest.body||'').slice(0,80), nickname:latest.nickname, createdAt:Number(latest.created_at||0) } : null,
           unread: wallet ? Number(unreadStmt.get(g.number,Number(member?.last_read_id||0),wallet)?.n||0) : 0};
       });
     return {groups:result,canCreate:Boolean(wallet)&&Number(teamService.snapshot(wallet).level)>=3};
@@ -200,7 +200,7 @@ export function createCommunityGroupService({database, walletService, teamServic
         insertCommunityMessage:input=>{
           const current=get(n);
           if(Number(current?.muted_all||0)&&!isAdmin(current,input.wallet))fail('全员禁言中，仅群管理员可发言');
-          const r=db.prepare("INSERT INTO community_messages(wallet,nickname,body,client_id,kind,ref_id,created_at,group_number) VALUES(?,?,?,?,?,?,?,?)").run(key(input.wallet),input.nickname,input.body,String(input.clientId||''),input.kind||'text',input.refId||'',input.createdAt,n);return db.prepare('SELECT * FROM community_messages WHERE id=?').get(Number(r.lastInsertRowid));},
+          const r=db.prepare("INSERT INTO community_messages(wallet,nickname,body,client_id,kind,ref_id,created_at,group_number,payload_json) VALUES(?,?,?,?,?,?,?,?,?)").run(key(input.wallet),input.nickname,input.body,String(input.clientId||''),input.kind||'text',input.refId||'',input.createdAt,n,String(input.payloadJson||'{}'));return db.prepare('SELECT * FROM community_messages WHERE id=?').get(Number(r.lastInsertRowid));},
         getCommunityMessage:id=>db.prepare('SELECT * FROM community_messages WHERE id=? AND group_number=?').get(Number(id),n)||null,
         getCommunityMessageByClient:(w,c)=>db.prepare('SELECT * FROM community_messages WHERE wallet=? AND client_id=? AND group_number=?').get(key(w),c,n)||null,
         getCommunityMessageByRef:(kind,id)=>db.prepare('SELECT * FROM community_messages WHERE kind=? AND ref_id=? AND group_number=?').get(kind,id,n)||null,
@@ -225,5 +225,9 @@ export function createCommunityGroupService({database, walletService, teamServic
     }
     return {...cache.get(n),group:view(group,wallet)};
   }
-  return {list,create,join,scoped,moderate,setAvatar,getAvatar,setName,setOwner,setGroupAdmin,adminAddresses};
+  function canReadEvents(number, wallet) {
+    const group = get(number);
+    return Boolean(group && entitled(group, wallet) && membership(group.number, wallet)?.status !== 'kicked' && database.getCommunityMember(wallet)?.status !== 'kicked');
+  }
+  return {list,create,join,scoped,moderate,setAvatar,getAvatar,setName,setOwner,setGroupAdmin,adminAddresses,canReadEvents};
 }

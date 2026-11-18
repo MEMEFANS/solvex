@@ -1,3 +1,4 @@
+import { canRetainQueryData } from '@/lib/page-cache';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -6,7 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Gate, PageHeading } from '@/components/common';
 import { useWallet } from '@/hooks/use-wallet';
-import { api, walletIdentity } from '@/lib/api';
+import { useProfile } from '@/hooks/use-profile';
+import { api, walletIdentity, walletSnapshot } from '@/lib/api';
+import { refreshAction } from '@/lib/action-refresh';
 import { formatDecimal, formatUnits, mulDecimal, sumDecimal, units } from '@/lib/utils';
 import { depositUsdt, openUsdtWithdrawal } from '@/lib/wallet';
 import type { CapitalRow, PlatformProfile, RevenueReport, WalletConfig, WalletProfile } from '@/types';
@@ -78,11 +81,11 @@ export default function AssetsPage() {
   const [hideZero, setHideZero] = useState(false);
   const [depositOpen, setDepositOpen] = useState(false);
 
-  const walletQuery = useQuery({ queryKey: ['wallet-profile', identity], queryFn: () => api<WalletProfile>('wallet/profile'), enabled: wallet.authenticated });
+  const walletQuery = useQuery({ queryKey: ['wallet-profile', identity], queryFn: ({ signal }) => api<WalletProfile>('wallet/profile', { signal }), enabled: wallet.authenticated });
   // 账户估值/资金记录来自交易账户接口 platform/profile；此前误接 a-token/profile，
   // 导致总资产估值、现货/合约/策略市值全部为 0（2026-11-12 修复）
-  const platformQuery = useQuery({ queryKey: ['platform-profile', identity], queryFn: () => api<PlatformProfile>('platform/profile'), enabled: wallet.authenticated });
-  const aTokenProfileQuery = useQuery({ queryKey: ['a-token-profile', identity], queryFn: () => api<PlatformProfile>('a-token/profile'), enabled: wallet.authenticated });
+  const platformQuery = useQuery({ queryKey: ['platform-profile', identity], queryFn: ({ signal }) => api<PlatformProfile>('platform/profile', { signal }), enabled: wallet.authenticated });
+  const aTokenProfileQuery = useProfile();
   // 合伙人身份：股东接口返回 { member }，status=active 即已加入合伙人计划
   const shareholderQuery = useQuery({ queryKey: ['ecosystem', 'shareholder', wallet.address, wallet.revision], queryFn: ({ signal }) => api<{ member?: { status?: string } | null }>('a-token/shareholder', { signal }), enabled: wallet.authenticated, refetchInterval: 60000 });
   const isPartner = shareholderQuery.data?.member?.status === 'active';
@@ -92,7 +95,7 @@ export default function AssetsPage() {
   const walletProfile = walletQuery.data, platform = platformQuery.data, balances = walletProfile?.balances;
   const markPrice = poolQuery.data?.priceUsdt || '0';
   const loading = walletQuery.isLoading || platformQuery.isLoading;
-  const error = walletQuery.error || platformQuery.error;
+  const error = (!canRetainQueryData(walletQuery) && walletQuery.error) || (!canRetainQueryData(platformQuery) && platformQuery.error) || (!canRetainQueryData(aTokenProfileQuery) && aTokenProfileQuery.error);
   const symbols = useMemo(() => {
     const list = ['USDT', ...(platform?.symbols || []).filter(symbol => symbol !== 'USDT')];
     if (!list.includes('A')) list.splice(1, 0, 'A');
@@ -280,7 +283,7 @@ function DepositPanel({ onClose }: { onClose: () => void }) {
   const [amount, setAmount] = useState('');
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
-  const address = window.solvexWalletBridge?.address() || '';
+  const address = (window.solvexWalletBridge?.address() || '').toLowerCase();
   const balanceQuery = useQuery({
     queryKey: ['wallet-deposit-balance', address, network?.id],
     queryFn: () => api<{ balance?: string }>(`wallet/deposit-balance?address=${encodeURIComponent(address)}&network=${encodeURIComponent(network?.id || '')}`, {}, false),
@@ -288,13 +291,15 @@ function DepositPanel({ onClose }: { onClose: () => void }) {
   });
 
   async function submit() {
+    const wallet = walletSnapshot(), identity = walletIdentity();
     setBusy(true);
     setStatus('');
     try {
       const txHash = await depositUsdt(network?.id || '', amount, setStatus);
+      if (walletIdentity() !== identity) return;
       setStatus(`交易已提交：${shortAddr(txHash)}`);
       setAmount('');
-      await client.invalidateQueries();
+      await refreshAction(client, 'deposit', wallet);
     } catch (error) {
       setStatus(window.solvexWalletBridge?.depositErrorMessage?.(error) || (error instanceof Error ? error.message : '充值失败，请重试'));
     } finally { setBusy(false); }

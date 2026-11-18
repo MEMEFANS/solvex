@@ -7,7 +7,7 @@
  *  - 其余同源 GET     → 不接管，走浏览器默认行为
  * 注意：修改静态文件需升级对应 ?v= 版本号，或递增 SW_VERSION 重建缓存。
  */
-const SW_VERSION = 'solvex-static-v51-market-retry';
+const SW_VERSION = 'solvex-static-v55-svx-illustration';
 const STATIC_PREFIXES = ['/app/assets/', '/js/', '/styles/', '/vendor/', '/assets/'];
 // 文件名即内容哈希：URL 不变内容就永不变，新版本以新 URL 发布，缓存后无需任何再校验。
 const IMMUTABLE_PREFIXES = ['/app/assets/'];
@@ -88,7 +88,14 @@ self.addEventListener('fetch', (event) => {
       const immutable = IMMUTABLE_PREFIXES.some(prefix => url.pathname.startsWith(prefix));
       // A proxy can return its HTML fallback with HTTP 200 for a missing chunk.
       // Never keep that response as a permanent JavaScript/CSS cache entry.
-      const validAsset = response => response && response.ok && (!immutable || !response.headers.get('Content-Type')?.includes('text/html'));
+      const validAsset = response => {
+        if (!response?.ok) return false;
+        if (!immutable) return true;
+        const type = (response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        if (url.pathname.endsWith('.css')) return type === 'text/css';
+        if (url.pathname.endsWith('.js')) return ['text/javascript','application/javascript','application/x-javascript','text/ecmascript','application/ecmascript'].includes(type);
+        return !['text/html','application/json'].includes(type);
+      };
       // Versioned URLs change with each release. Re-fetching cached assets competes with login on mobile.
       // Immutable (content-hashed) URLs are safe to keep serving forever: new deploys publish new URLs.
       if (validAsset(cached) && (url.searchParams.has('v') || immutable)) return cached;

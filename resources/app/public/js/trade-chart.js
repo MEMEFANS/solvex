@@ -50,6 +50,31 @@ let tradeMacdLive = null;       // { fPrev, fCur, sPrev, sCur, sigPrev, sigCur }
 
 // 完整 K 线数据缓存（含 volume），供所有指标计算使用
 let tradeCandleData = [];
+let tradeSnapshotKey = '';
+// Keep the series cache in sync with both snapshots and live ticks. Only a
+// changed final bar / appended bars use update(); corrections and window shifts
+// replace the complete series so history and indicators remain authoritative.
+const tradeSeriesRows = new WeakMap();
+const sameTradePoint = (a, b) => Boolean(a && b) && ['time','open','high','low','close','volume','value','color'].every(key => a[key] === b[key]);
+function setTradeSeriesData(series, rows, reset = false) {
+  if (!series) return;
+  const previous = tradeSeriesRows.get(series);
+  const tailOnly = !reset && previous?.length && rows.length >= previous.length && rows.length - previous.length <= 32
+    && previous.slice(0, -1).every((row, index) => sameTradePoint(row, rows[index]))
+    && previous.at(-1).time === rows[previous.length - 1]?.time;
+  if (tailOnly) {
+    for (let index = previous.length - 1; index < rows.length; index++) if (!sameTradePoint(previous[index], rows[index])) series.update(rows[index]);
+  } else if (reset || !previous || previous.length !== rows.length || previous.some((row, index) => !sameTradePoint(row, rows[index]))) series.setData(rows);
+  tradeSeriesRows.set(series, rows.slice());
+}
+function updateTradeSeriesPoint(series, point) {
+  if (!series) return;
+  series.update(point);
+  const rows = tradeSeriesRows.get(series);
+  if (!rows) return;
+  if (rows.at(-1)?.time === point.time) rows[rows.length - 1] = point;
+  else if (!rows.length || point.time > rows.at(-1).time) rows.push(point);
+}
 
 // ── 指标计算 ─────────────────────────────────────────────────────────────
 
@@ -312,36 +337,43 @@ function renderTradeChartCandles(raw) {
   // Prices and order entry can work while the optional chart library downloads.
   if (!ensureTradeChart()) return metrics;
   tradeDeferredCandles = null;
+  const key = `${tradeProduct}:${tradeSymbol}:${tradeIntervalSec}`;
+  const reset = tradeSnapshotKey !== key || tradeChartNeedsFit;
+  if (!reset && data.length === tradeCandleData.length && data.every((row, index) => sameTradePoint(row, tradeCandleData[index]))) {
+    updateTradeExecutionMarkers();
+    return metrics;
+  }
+  tradeSnapshotKey = key;
   updateTradeChartPriceFormat(data[0]?.close || 0);
   const hadPreviousData = tradeCandleData.length > 0;
   tradeCandleData = data;
-  tradeCandleSeries.setData(data);
+  setTradeSeriesData(tradeCandleSeries, data, reset);
   updateTradeExecutionMarkers();
   tradeLiveCandleHistory = data.slice();
 
   // MA
   for (const period of [7, 25, 99]) {
     const series = tradeMaSeries.get(period);
-    if (series) series.setData(movingAverage(data, period));
+    if (series) setTradeSeriesData(series, movingAverage(data, period), reset);
   }
   // EMA
   for (const period of [7, 25, 99]) {
     const series = tradeEmaSeries.get(period);
-    if (series) series.setData(emaSeries(data, period));
+    if (series) setTradeSeriesData(series, emaSeries(data, period), reset);
   }
   // BOLL
   const boll = bollingerBands(data);
-  tradeBollUpper?.setData(boll.map(p => ({ time:p.time, value:p.upper })));
-  tradeBollMiddle?.setData(boll.map(p => ({ time:p.time, value:p.middle })));
-  tradeBollLower?.setData(boll.map(p => ({ time:p.time, value:p.lower })));
+  setTradeSeriesData(tradeBollUpper, boll.map(p => ({ time:p.time, value:p.upper })), reset);
+  setTradeSeriesData(tradeBollMiddle, boll.map(p => ({ time:p.time, value:p.middle })), reset);
+  setTradeSeriesData(tradeBollLower, boll.map(p => ({ time:p.time, value:p.lower })), reset);
   // VOL
-  if (tradeVolSeries) tradeVolSeries.setData(volumeData(data));
+  if (tradeVolSeries) setTradeSeriesData(tradeVolSeries, volumeData(data), reset);
   // MACD
   if (tradeMacdLineSeries) {
     const m = macdSeries(data);
-    tradeMacdLineSeries.setData(m.macdLine);
-    tradeMacdSignalSeries.setData(m.signalLine);
-    tradeMacdHistSeries.setData(m.hist);
+    setTradeSeriesData(tradeMacdLineSeries, m.macdLine, reset);
+    setTradeSeriesData(tradeMacdSignalSeries, m.signalLine, reset);
+    setTradeSeriesData(tradeMacdHistSeries, m.hist, reset);
   }
   // 播种增量指标状态，实时 tick 走 O(1) 更新而非全量重算
   seedTradeIndicatorState(data);
@@ -415,12 +447,12 @@ function applyTradeLivePriceChart(nextPrice, receivedAt) {
   } else {
     tradeCandleData.push(tradeLiveCandle);
   }
-  tradeCandleSeries.update(tradeLiveCandle);
+  updateTradeSeriesPoint(tradeCandleSeries, tradeLiveCandle);
 
   // MA（O(period)，仅最近几根求和，始终保持数据最新）
   for (const [period, series] of tradeMaSeries) {
     const history = tradeLiveCandleHistory?.slice(-period) || [];
-    if (history.length >= period) series.update({ time, value:history.reduce((sum,c)=>sum+c.close,0)/period });
+    if (history.length >= period) updateTradeSeriesPoint(series, { time, value:history.reduce((sum,c)=>sum+c.close,0)/period });
   }
   // EMA —— O(1) 增量：ema(n) = close*k + ema(n-1)*(1-k)
   for (const [period, series] of tradeEmaSeries) {
@@ -429,7 +461,7 @@ function applyTradeLivePriceChart(nextPrice, receivedAt) {
     if (isNewBar) state.prev = state.cur;
     const k = 2 / (period + 1);
     state.cur = nextPrice * k + state.prev * (1 - k);
-    series.update({ time, value:state.cur });
+    updateTradeSeriesPoint(series, { time, value:state.cur });
   }
   // BOLL（O(period)，最近 20 根，始终保持数据最新）
   if (tradeCandleData.length >= BOLL_PERIOD) {
@@ -437,9 +469,9 @@ function applyTradeLivePriceChart(nextPrice, receivedAt) {
     const mean = slice.reduce((s, c) => s + c.close, 0) / BOLL_PERIOD;
     const variance = slice.reduce((s, c) => s + (c.close - mean) ** 2, 0) / BOLL_PERIOD;
     const sd = Math.sqrt(variance);
-    tradeBollUpper?.update({ time, value:mean + BOLL_STD * sd });
-    tradeBollMiddle?.update({ time, value:mean });
-    tradeBollLower?.update({ time, value:mean - BOLL_STD * sd });
+    updateTradeSeriesPoint(tradeBollUpper, { time, value:mean + BOLL_STD * sd });
+    updateTradeSeriesPoint(tradeBollMiddle, { time, value:mean });
+    updateTradeSeriesPoint(tradeBollLower, { time, value:mean - BOLL_STD * sd });
   }
   // MACD —— O(1) 增量：DIF=EMA12-EMA26，DEA=EMA9(DIF)，HIST=DIF-DEA
   if (tradeMacdLive) {
@@ -451,9 +483,9 @@ function applyTradeLivePriceChart(nextPrice, receivedAt) {
     const dif = st.fCur - st.sCur;
     st.sigCur = dif * kg + st.sigPrev * (1 - kg);
     const hist = dif - st.sigCur;
-    tradeMacdLineSeries?.update({ time, value:dif });
-    tradeMacdSignalSeries?.update({ time, value:st.sigCur });
-    tradeMacdHistSeries?.update({ time, value:hist, color:hist >= 0 ? MACD_HIST_UP : MACD_HIST_DOWN });
+    updateTradeSeriesPoint(tradeMacdLineSeries, { time, value:dif });
+    updateTradeSeriesPoint(tradeMacdSignalSeries, { time, value:st.sigCur });
+    updateTradeSeriesPoint(tradeMacdHistSeries, { time, value:hist, color:hist >= 0 ? MACD_HIST_UP : MACD_HIST_DOWN });
   }
 
   // 视图停在最新边缘时自动跟随（用户手动回翻历史期间不打断）
@@ -590,7 +622,7 @@ function setTradeVol(visible = !tradeVolVisibility) {
       }, tradeVolPaneIdx);
       tradeVolSeries.priceScale().applyOptions({ scaleMargins:{ top:0.15, bottom:0 } });
       tradeChart.panes()[tradeVolPaneIdx]?.setHeight(100);
-      if (tradeCandleData.length) tradeVolSeries.setData(volumeData(tradeCandleData));
+      if (tradeCandleData.length) setTradeSeriesData(tradeVolSeries, volumeData(tradeCandleData));
     }
     tradeVolSeries.applyOptions({ visible:true });
     tradeChart.panes()[tradeVolPaneIdx]?.setStretchFactor(0.18);
@@ -623,9 +655,9 @@ function setTradeMacd(visible = !tradeMacdVisibility) {
       tradeChart.panes()[tradeMacdPaneIdx]?.setHeight(120);
       if (tradeCandleData.length) {
         const m = macdSeries(tradeCandleData);
-        tradeMacdLineSeries.setData(m.macdLine);
-        tradeMacdSignalSeries.setData(m.signalLine);
-        tradeMacdHistSeries.setData(m.hist);
+        setTradeSeriesData(tradeMacdLineSeries, m.macdLine);
+        setTradeSeriesData(tradeMacdSignalSeries, m.signalLine);
+        setTradeSeriesData(tradeMacdHistSeries, m.hist);
       }
     }
     tradeMacdLineSeries.applyOptions({ visible:true });

@@ -1,3 +1,4 @@
+import { prefetchPageData } from '@/lib/page-prefetch';
 import { useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { ArrowUpRight, RefreshCw } from 'lucide-react';
@@ -74,7 +75,7 @@ export default function EarnPage() {
       <Button variant="outline" onClick={() => void window.switchTab('account')}>我的资产 <ArrowUpRight /></Button>
     </PageHeading>
     <Tabs value={tab} onValueChange={value => { if (isTab(value)) go({ tab: value }); }}>
-      <TabsList className="rx-earn-tabs" aria-label="矿池功能">{Object.entries(tabs).map(([key, label]) => <TabsTrigger key={key} value={key}>{label}</TabsTrigger>)}</TabsList>
+      <TabsList className="rx-earn-tabs" aria-label="矿池功能">{Object.entries(tabs).map(([key, label]) => <TabsTrigger key={key} value={key} onPointerEnter={() => void prefetchPageData(key)} onFocus={() => void prefetchPageData(key)}>{label}</TabsTrigger>)}</TabsList>
     </Tabs>
     <div className="rx-tab-body" role="region" aria-label={tabs[tab]}>
       {tab === 'blindbox' ? <Suspense fallback={<Loading />}>{wallet.authenticated ? <BlindboxPage /> : <Gate description="连接并确认钱包，开启盲盒" />}</Suspense>

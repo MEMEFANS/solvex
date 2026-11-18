@@ -1,0 +1,55 @@
+/* The chart owns a bounded canvas area; toolbars never consume axis space. */
+#tab-a-token-trade .atrade-cell-chart { min-width:0; min-height:0; }
+#tab-a-token-trade .atrade-cell-chart > .atrade-chart-card {
+  flex:0 0 auto;
+  height:clamp(480px,65svh,680px)!important;
+  min-height:0!important;
+  margin:0!important;
+}
+/* Important legacy declarations must be overridden within that same layer. */
+@layer legacy {
+  #tab-a-token-trade .atrade-cell-chart > .atrade-chart-card { height:clamp(480px,65svh,680px)!important; }
+  @media(max-width:768px) {
+    #tab-a-token-trade .atrade-cell-chart > .atrade-chart-card { height:clamp(470px,65svh,600px)!important; }
+  }
+}
+.atrade-chart-card > .atrade-chart-toolbar { flex:0 0 auto; min-width:0; }
+.atrade-chart-card > .atrade-chart-host {
+  position:relative; flex:1 1 0; width:100%; height:0!important;
+  min-width:0; min-height:0!important; overflow:hidden;
+}
+.atrade-chart-controls { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; padding:8px 10px; flex:0 0 auto; border-bottom:1px solid var(--border); color:var(--mut); background:var(--panel); }
+.atrade-chart-ohlc { flex:1 1 100%; min-width:0; font:10px/1.6 ui-monospace,SFMono-Regular,Consolas,monospace; overflow-wrap:anywhere; font-variant-numeric:tabular-nums; }
+.atrade-chart-state { flex:1 1 auto; font-size:11px; line-height:1.6; color:var(--mut); }
+.atrade-chart-source-tabs { display:flex; flex:0 0 auto; gap:4px; padding:6px 10px; border-bottom:1px solid var(--border); }
+.atrade-chart-source-tabs button { min-height:32px; padding:4px 12px; border:1px solid transparent; border-radius:6px; background:transparent; color:var(--mut); cursor:pointer; font:inherit; font-size:12px; }
+.atrade-chart-source-tabs button.active { color:var(--brand); background:var(--bg); border-color:var(--border); font-weight:600; }
+.atrade-chart-source-tabs button:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+.atrade-chart-notice { flex:0 0 auto; padding:7px 10px; color:var(--mut); background:var(--panel); border-bottom:1px solid var(--border); font-size:11px; line-height:1.7; }
+.atrade-chart-notice.is-illustration { color:#6b5094; background:#dcd6ed; font-weight:600; }
+.atrade-chart-watermark { position:absolute; z-index:2; left:50%; top:40%; transform:translate(-50%,-50%); max-width:90%; color:#766696; opacity:0.24; font-size:clamp(16px,2.5vw,24px); font-weight:700; white-space:nowrap; pointer-events:none; user-select:none; }
+.atrade-chart-watermark[hidden] { display:none; }
+.atrade-chart-actions { display:flex; gap:6px; flex-wrap:wrap; }
+.atrade-chart-actions button { min-height:34px; min-width:34px; padding:4px 10px; border:1px solid var(--border); border-radius:7px; background:var(--panel); color:var(--body); font:inherit; font-size:12px; white-space:nowrap; cursor:pointer; }
+.atrade-chart-actions button:hover { background:var(--bg); border-color:var(--brand); }
+.atrade-chart-actions button:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+.atrade-chart-dialog { position:fixed; inset:0; margin:0; padding:max(8px,env(safe-area-inset-top)) max(8px,env(safe-area-inset-right)) max(8px,env(safe-area-inset-bottom)) max(8px,env(safe-area-inset-left)); width:100%; height:100%; height:100dvh; max-width:none; max-height:none; box-sizing:border-box; border:0; background:var(--bg); color:var(--body); overflow:hidden; }
+.atrade-chart-dialog::backdrop { background:#20223899; }
+.atrade-chart-dialog > .atrade-chart-card { height:100%!important; min-height:0!important; margin:0!important; background:var(--panel); }
+.atrade-chart-dialog .atrade-chart-tabs { display:flex; flex-wrap:wrap; }
+.atrade-chart-dialog .atrade-chart-tabs button { min-height:38px; }
+/* Isolate the library's layout table from application-wide table styles. */
+.atrade-chart-host .tv-lightweight-charts table { border-collapse:collapse; border-spacing:0; }
+.atrade-chart-host .tv-lightweight-charts td { padding:0!important; border:0!important; }
+@media(min-width:769px) and (max-width:1150px) {
+  #tab-a-token-trade .atrade-terminal-grid { grid-template-columns:minmax(0,1fr); grid-template-rows:auto auto; }
+}
+@media(max-width:768px) {
+  #tab-a-token-trade .atrade-cell-chart > .atrade-chart-card { height:clamp(470px,65svh,600px)!important; }
+  .atrade-chart-controls { padding:6px 8px; }
+  .atrade-chart-actions { width:100%; }
+  .atrade-chart-actions button { flex:1; min-height:38px; padding-inline:7px; }
+  .atrade-chart-ohlc { font-size:9px; }
+  .atrade-chart-dialog .atrade-chart-toolbar { padding:6px; }
+  .atrade-chart-dialog .atrade-chart-toolbar > .muted { display:none; }
+}

@@ -2024,6 +2024,8 @@ export function openDatabase(dataRoot) {
   const setCommunityMemberMuteStmt = db.prepare(`UPDATE community_members SET muted_until=?, updated_at=? WHERE address=? COLLATE NOCASE`);
   const deleteCommunityMessageStmt = db.prepare(`UPDATE community_messages SET status='deleted', deleted_at=?, deleted_by=?
     WHERE id=? AND status='visible'`);
+  const clearExpiredCommunityVideosStmt = db.prepare(`UPDATE community_messages SET payload_json='{}'
+    WHERE kind='video' AND status='visible' AND created_at<? AND payload_json<>'{}'`);
   const listCommunityMessagesAdminStmt = db.prepare(`SELECT * FROM community_messages ORDER BY id DESC LIMIT ?`);
   const getCommunityAdminStmt = db.prepare(`SELECT * FROM community_admins WHERE address=? COLLATE NOCASE LIMIT 1`);
   const listCommunityAdminsStmt = db.prepare(`SELECT * FROM community_admins ORDER BY appointed_at DESC LIMIT ?`);
@@ -2227,6 +2229,10 @@ export function openDatabase(dataRoot) {
     WHERE wallet=? COLLATE NOCASE AND biz_type=? AND biz_id=? AND period_key=?`);
   const listATokenPendingRewardsStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
     WHERE wallet=? COLLATE NOCASE AND status=? ORDER BY created_at DESC LIMIT ?`);
+  const listAllATokenPendingRewardsStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
+    WHERE wallet=? COLLATE NOCASE ORDER BY created_at DESC LIMIT ?`);
+  const listATokenPendingRewardsByBizIdStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
+    WHERE wallet=? COLLATE NOCASE AND biz_type=? AND biz_id=? ORDER BY created_at LIMIT ?`);
   const listDueATokenPendingRewardsStmt = db.prepare(`SELECT * FROM a_token_pending_rewards
     WHERE status='pending' AND expires_at<=? ORDER BY expires_at LIMIT ?`);
   const markATokenPendingRewardClaimedStmt = db.prepare(`UPDATE a_token_pending_rewards
@@ -2311,7 +2317,7 @@ export function openDatabase(dataRoot) {
   const listActiveATokenBlindBoxesStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
     WHERE status='active' ORDER BY started_at LIMIT ?`);
   const listRecentATokenBlindBoxesStmt = db.prepare(`SELECT * FROM a_token_blind_boxes
-    ORDER BY started_at DESC LIMIT ?`);
+    ORDER BY started_at DESC LIMIT ? OFFSET ?`);
   const updateATokenBlindBoxStmt = db.prepare(`UPDATE a_token_blind_boxes
     SET status=?,issued_units=?,last_issue_day=?,completed_at=?,payload_json=?
     WHERE id=?`);
@@ -2930,6 +2936,16 @@ export function openDatabase(dataRoot) {
       .all(String(wallet || '').toLowerCase(), String(status || 'pending'), Math.min(Math.max(Number(limit) || 200, 1), 5000))
       .map(mapATokenPendingReward);
   }
+  function listAllATokenPendingRewards(wallet, limit = 500) {
+    return listAllATokenPendingRewardsStmt
+      .all(String(wallet || '').toLowerCase(), Math.min(Math.max(Number(limit) || 500, 1), 5000))
+      .map(mapATokenPendingReward);
+  }
+  function listATokenPendingRewardsByBizId(wallet, bizType, bizId, limit = 1000) {
+    return listATokenPendingRewardsByBizIdStmt
+      .all(String(wallet || '').toLowerCase(), String(bizType || ''), String(bizId || ''), Math.min(Math.max(Number(limit) || 1000, 1), 5000))
+      .map(mapATokenPendingReward);
+  }
   function listDueATokenPendingRewards(now, limit = 500) {
     return listDueATokenPendingRewardsStmt
       .all(Number(now), Math.min(Math.max(Number(limit) || 500, 1), 5000))
@@ -3192,9 +3208,9 @@ export function openDatabase(dataRoot) {
       .all(Math.min(Math.max(Number(limit) || 200, 1), 5000)).map(blindBoxRow);
   }
   // 后台概率核对：最近开出的盲盒（按参与时间倒序）
-  function listRecentATokenBlindBoxes(limit = 500) {
+  function listRecentATokenBlindBoxes(limit = 500, offset = 0) {
     return listRecentATokenBlindBoxesStmt
-      .all(Math.min(Math.max(Number(limit) || 500, 1), 5000)).map(blindBoxRow);
+      .all(Math.min(Math.max(Number(limit) || 500, 1), 5000), Math.max(0, Number(offset) || 0)).map(blindBoxRow);
   }
   function updateATokenBlindBox(id, { status, issuedUnits, lastIssueDay, completedAt, payload } = {}) {
     const current = getATokenBlindBoxById(id);
@@ -4242,6 +4258,9 @@ export function openDatabase(dataRoot) {
   function softDeleteCommunityMessage(id, deletedBy, now = Date.now()) {
     return deleteCommunityMessageStmt.run(Number(now), String(deletedBy), Number(id)).changes > 0;
   }
+  function clearExpiredCommunityVideos(cutoff = Date.now() - 24 * 60 * 60_000) {
+    return Number(clearExpiredCommunityVideosStmt.run(Number(cutoff)).changes || 0);
+  }
   function listCommunityMessagesAdmin(limit = 100) {
     return listCommunityMessagesAdminStmt.all(Math.min(Math.max(Number(limit) || 100, 1), 500));
   }
@@ -4510,7 +4529,7 @@ export function openDatabase(dataRoot) {
     insertATokenMatchPoolEntry, getATokenMatchPoolEntry, listATokenMatchPoolEntries, listDueATokenMatchPoolEntries, markATokenMatchPoolEntryReleased,
     insertATokenTurboPurchase, getATokenTurboPurchase, listATokenTurboPurchases,
     insertATokenPendingRewardRow, getATokenPendingReward, getATokenPendingRewardByKey,
-    listATokenPendingRewards, listDueATokenPendingRewards, markATokenPendingRewardClaimed,
+    listATokenPendingRewards, listAllATokenPendingRewards, listATokenPendingRewardsByBizId, listDueATokenPendingRewards, markATokenPendingRewardClaimed,
     expireATokenPendingReward, expireDueATokenPendingRewards, reverseATokenPendingReward,
     insertATokenLpPoolEntryRow, listATokenLpPoolEntries, getATokenLpPoolEntryByRef, getATokenLpPoolBalance,
     listAllATokenLpPoolEntries,
@@ -4562,7 +4581,7 @@ export function openDatabase(dataRoot) {
     getCommunityMessageByClient, listCommunityMessages, latestCommunityMessageId,
     countCommunityUnread, countCommunityWalletRecent, getCommunityRead, setCommunityRead,
     getCommunityMessageByRef, listCommunityMembersAll, setCommunityMemberStatus, setCommunityMemberMute,
-    softDeleteCommunityMessage, listCommunityMessagesAdmin,
+    softDeleteCommunityMessage, clearExpiredCommunityVideos, listCommunityMessagesAdmin,
     getCommunityAdmin, listCommunityAdmins, listActiveCommunityAdminAddresses,
     appointCommunityAdmin, revokeCommunityAdmin, insertCommunityAdminLog, listCommunityAdminLogs,
     listCommunitySensitiveWords, addCommunitySensitiveWord, removeCommunitySensitiveWord,

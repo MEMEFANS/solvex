@@ -12,7 +12,7 @@ let connectedProvider = null;
 let walletConnectInProgress = false;
 let platformLoginPromise = null;
 let connectorRestoring = true;
-let pendingWalletSwitch = null;   // 进站恢复期间用户切了钱包，记下来等恢复结束后补签名
+let pendingWalletSwitch;   // 进站恢复期间用户切了钱包，记下来等恢复结束后补签名
 let connectorReadyPromise = null;
 
 // React 页面的钱包桥：provider / 配置 / 会话都从这里取，避免第二套钱包状态。
@@ -308,7 +308,7 @@ function renderWalletProfile(profile) {
   if (changed && $('tab-trade')?.classList.contains('active') && typeof loadPlatformProfile === 'function') loadPlatformProfile().catch(() => {});
   if (changed) refreshWalletDependents();
   bindPendingReferral();
-  if ($('tab-account')?.classList.contains('active')) {
+  if (!window.WG_REACT_APP && $('tab-account')?.classList.contains('active')) {
     if (profile.balances) loadAccountUid();
     else loadWalletProfile().catch(() => {});
   }
@@ -441,9 +441,12 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
     const loginAddress = connectedWalletAddress;
     const loginProvider = connectedProvider;
     const requireSameWallet = () => {
+      const live = window.WGWalletConnector?.getConnection?.();
       if (connectedWalletAddress.toLowerCase() !== loginAddress.toLowerCase()
-        || connectedProvider !== loginProvider) throw new Error('钱包账户已切换，请重新验证');
+        || connectedProvider !== loginProvider
+        || (window.WGWalletConnector?.getConnection && live?.address?.toLowerCase() !== loginAddress.toLowerCase())) throw new Error('钱包账户已切换，请重新验证');
     };
+    let finishVerification;
     try {
       // 4. 第一步：登录签名（personal_sign 纯文本，钱包弹窗显示人类可读消息）
       console.log('[wallet] Step 1: login challenge + sign');
@@ -457,13 +460,16 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
       }, requireSameWallet), walletWithTimeout(ensureBscChain(), 45000, '钱包确认超时，请检查钱包扩展后重试')]);
       requireSameWallet();
       const loginMessage = loginChallenge.message;
+      const finishSignature = window.solvexPerformance?.start('wallet-signature');
       const loginSig = await walletWithTimeout(
         loginProvider.request({ method:'personal_sign', params:[loginMessage, loginAddress] }),
-        60000, '钱包确认超时，请检查钱包扩展后重试');
+        60000, '钱包确认超时，请检查钱包扩展后重试').finally(finishSignature);
+      finishVerification = window.solvexPerformance?.start('wallet-verification');
       requireSameWallet();
       console.log('[wallet] Step 1: login signed, submitting...');
+      let verifiedSession = null;
       try {
-        await walletApi('/api/wallet/login-sign', {
+        const verified = await walletApi('/api/wallet/login-sign', {
           method:'POST',
           body:JSON.stringify({
             message:loginMessage,
@@ -471,6 +477,14 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
             device:window.WGDevice?.payload?.() || null,
           }),
         });
+        requireSameWallet();
+        // A successful server verification already carries the authenticated identity.
+        // Keep only identity fields; never copy the bearer token into UI state.
+        if (verified.address && verified.address.toLowerCase() !== loginAddress.toLowerCase()) throw new Error('服务器验证的钱包账户不一致，请重新验证');
+        if (verified.ok === true && verified.address?.toLowerCase() === loginAddress.toLowerCase()
+          && Date.parse(verified.expiresAt) > Date.now()) {
+          verifiedSession = { authenticated:true, address:verified.address, expiresAt:verified.expiresAt };
+        }
       } catch (error) {
         // A lost response may have already set the session cookie. Check it without resubmitting the signature.
         if (!error.retryable) throw error;
@@ -478,16 +492,14 @@ async function ensurePlatformSession(triggerButton = null, options = {}) {
       console.log('[wallet] Step 1: login DONE');
 
       // 5. 更新 UI
-      const profile = await walletLoginRequest('/api/wallet/session', {}, requireSameWallet);
+      const profile = verifiedSession || await walletLoginRequest('/api/wallet/session', {}, requireSameWallet);
       requireSameWallet();
       if (!profile.authenticated || profile.address?.toLowerCase() !== loginAddress.toLowerCase()) {
         throw new Error('身份验证失败');
       }
       renderWalletProfile(profile);
       return profile;
-    } catch (err) {
-      throw err;
-    }
+    } finally { finishVerification?.(); }
   })();
   try {
     return await platformLoginPromise;
@@ -692,14 +704,14 @@ async function initializeWallet() {
   await prepareWalletConnector();
 
   // 自动恢复连接：进入/刷新页面时用 eth_accounts 静默恢复账户（不弹授权窗口），
-  // 有效会话与恢复的钱包地址一致时直接沿用，避免刷新页面重复签名。
+  // 静默恢复到账户后，本次进站仍会要求一次登录签名。
   try {
     walletConnectInProgress = true;
     const restored = await restoreWithRetry();
     if (restored) {
       renderWalletConnection(restored);
-      // 会话失效或地址不匹配时才签名；取消后仍可从菜单「身份验证」重试。
-      await ensurePlatformSession().catch(reportWalletLoginError);
+      // 每次打开站点都重新确认一次登录签名；取消后仍可从菜单「身份验证」重试。
+      await ensurePlatformSession(null, { force:true }).catch(reportWalletLoginError);
     } else {
       renderWalletDisconnected();
       // 静默恢复拿不到账户时，主动发起「连接授权 + 登录签名」：
@@ -718,8 +730,8 @@ async function initializeWallet() {
         }
         if (conn) {
           renderWalletConnection(conn);
-          // 手机钱包重新授权后，也先恢复与该钱包一致的有效会话。
-          await ensurePlatformSession().catch(reportWalletLoginError);
+          // 手机钱包重新授权后，本次进站仍要求用户确认登录签名。
+          await ensurePlatformSession(null, { force:true }).catch(reportWalletLoginError);
         } else {
           renderWalletDisconnected();
         }
@@ -731,10 +743,11 @@ async function initializeWallet() {
     walletConnectInProgress = false;
     connectorRestoring = false;
     // 进站恢复期间用户切了钱包：恢复流程结束后补触发签名+刷新
-    if (pendingWalletSwitch) {
+    if (pendingWalletSwitch !== undefined) {
       const conn = pendingWalletSwitch;
-      pendingWalletSwitch = null;
-      if (conn?.address && conn.address.toLowerCase() !== connectedWalletAddress?.toLowerCase()) {
+      pendingWalletSwitch = undefined;
+      if (!conn) renderWalletDisconnected();
+      else if (conn.address && conn.address.toLowerCase() !== connectedWalletAddress?.toLowerCase()) {
         renderWalletConnection(conn);
       }
       if (connectedWalletAddress && !walletProfile?.authenticated) {

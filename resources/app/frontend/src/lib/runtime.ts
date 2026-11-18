@@ -1,6 +1,10 @@
 import template from '../../legacy/index.html?raw';
-export const pageNames: Record<string, string> = { earn:'矿池', mall:'商城', trade:'交易', 'ai-managed':'Ai量化', 'a-token-trade':'SVX交易', leaderboard:'合约风云榜', referrals:'团队', account:'我的资产', support:'在线客服', 'community-chat':'群聊', 'partner-plan':'合伙人计划', portfolio:'投资组合', vaults:'金库', staking:'能量', ledger:'机器人账本', ai:'AI 助手' };
-export const loadLegacyStyles = () => import('../../legacy/styles.css');
+import { pageNames, readRoute } from './routes';
+import { runtimeScriptUrl, walletConnectorUrl } from './runtime-assets';
+import { toast } from 'sonner';
+import { loadLegacyStyles } from './legacy-styles';
+export { loadLegacyStyles } from './legacy-styles';
+export { pageNames } from './routes';
 export function installLegacyDOM() {
   window.WG_REACT_APP = true;
   const parsed = new DOMParser().parseFromString(template, 'text/html');
@@ -39,8 +43,7 @@ function runtimeScriptReady(name: string) {
 
 function loadScript(name: string) {
   const path = '/js/' + name + '.js';
-  const version = name === 'theme' ? '20261114-logo-palette-1' : '20261114-market-retry-1';
-  const src = path + '?v=' + version;
+  const src = runtimeScriptUrl(name);
   // Match by pathname as well as the full URL. A tab opened before a deploy
   // can still contain the same classic script with the previous query string;
   // appending a second copy would re-declare its top-level `let`/`const` names.
@@ -88,8 +91,19 @@ async function startRuntimeOnce() {
   // route can request a deferred feature. The remaining boot scripts are
   // independent and can download together, shaving several round trips on
   // mobile networks without changing their initialization order.
-  await Promise.all([loadScript('account-action-guard'), loadScript('theme'), loadScript('i18n'), loadScript('core'), loadScript('device-id'), loadScript('portal-shared'), loadScript('page-loader'), loadScript('announcement')]);
-  await loadScript('wallet');
+  const { page: entryPage } = readRoute();
+  const entryStyles = ['earn', 'referrals', 'leaderboard'].includes(entryPage) ? Promise.resolve() : loadLegacyStyles();
+  const presentation = Promise.all([loadScript('theme'), loadScript('i18n')]);
+  const dependencies = Promise.all([loadScript('account-action-guard'), loadScript('core'), loadScript('device-id'), loadScript('portal-shared'), loadScript('page-loader')]);
+  // The connector is independent; fetch it alongside core rather than after wallet.js.
+  if (![...document.scripts].some(script => {
+    try { return new URL(script.src, location.href).pathname === '/vendor/wallet/connector.js'; } catch { return false; }
+  })) {
+    const connector = document.createElement('script');
+    connector.type = 'module'; connector.src = walletConnectorUrl; connector.dataset.solvexRuntime = '1';
+    document.head.append(connector);
+  }
+  await Promise.all([entryStyles, presentation, dependencies.then(() => loadScript('wallet'))]);
   window.Portal?.register('referrals', { load: () => window.dispatchEvent(new Event('referralrefresh')), reset: () => window.ReferralRewards?.reset() });
   const legacySwitch = window.switchTab;
   let routeRequest = 0;
@@ -97,8 +111,15 @@ async function startRuntimeOnce() {
     if (page === 'shareholder') page = 'partner-plan';
     if (!pageNames[page]) return false;
     const request = ++routeRequest;
-    if (!['earn','referrals','leaderboard'].includes(page)) await loadLegacyStyles();
+    if (!['earn','referrals','leaderboard'].includes(page)) {
+      try { await loadLegacyStyles(); }
+      catch {
+        if (request === routeRequest) toast.error('页面资源暂时加载失败，请重试', { id:'legacy-style-load', action: { label: '重试', onClick: () => { void window.switchTab(page); } } });
+        return false;
+      }
+    }
     if (request !== routeRequest) return false;
+    toast.dismiss('legacy-style-load');
     const result = await legacySwitch(page);
     if (result && document.getElementById('tab-' + page)?.classList.contains('active')) {
       const hash = '#/' + page;
@@ -114,24 +135,12 @@ async function startRuntimeOnce() {
     if (!document.getElementById('tab-earn')?.classList.contains('active')) void window.switchTab('earn');
     window.dispatchEvent(new CustomEvent('earntabchange', { detail: sub }));
   };
-  if (![...document.scripts].some(script => {
-    try { return new URL(script.src, location.href).pathname === '/vendor/wallet/connector.js'; } catch { return false; }
-  })) {
-    const connector = document.createElement('script');
-    connector.type = 'module';
-    connector.src = '/vendor/wallet/connector.js?v=20261113-runtime-dedupe-2';
-    connector.dataset.solvexRuntime = '1';
-    document.head.append(connector);
-  }
-  const fromURL = () => {
-    const route = location.hash.replace('#/','') || new URLSearchParams(location.search).get('page') || 'earn';
-    if (route === 'shareholder' || route === 'earn/shareholder') return 'partner-plan';
-    const page = route.split('/')[0];
-    return pageNames[page] ? page : 'earn';
-  };
+  const fromURL = () => readRoute().page;
   window.addEventListener('popstate', () => { void window.switchTab(fromURL()); });
   await window.switchTab(fromURL());
-  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261113-module-recovery-1').catch(() => {});
+  // An optional announcement must not hold the wallet or current page hostage.
+  void loadScript('announcement').catch(() => {});
+  if ('serviceWorker' in navigator && !import.meta.env.DEV) void navigator.serviceWorker.register('/sw.js?v=20261116-style-recovery-1').catch(() => {});
 }
 let legacyEarn: Promise<void> | undefined;
 export async function showLegacyEarn(tab: string, isCurrent = () => true) {

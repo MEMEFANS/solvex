@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { canRetainQueryData } from '@/lib/page-cache';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowUpRight, CalendarClock, Check, RotateCcw, Sparkles } from 'lucide-react';
-import { api, post } from '@/lib/api';
+import { api, post, walletIdentity } from '@/lib/api';
+import { paymentKey, paymentSnapshot, parsePayment, preparePayment, migratePayment, savePayment, clearPayment, subscribePayments } from '@/lib/blindbox-payment';
 import { date, formatDecimal, mulDecimal, toUnits } from '@/lib/utils';
 import { buyBlindboxOnchain } from '@/lib/wallet-onchain';
 import { useWallet } from '@/hooks/use-wallet';
@@ -30,6 +32,16 @@ export default function BlindboxPage() {
   const [now, setNow] = useState(Date.now());
   const [phase, setPhase] = useState<BoxPhase>('closed');
   const [result, setResult] = useState<BoxReward | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState('');
+  const [recovering, setRecovering] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const paymentConfig = query.data?.rules.onchainPayment;
+  const storageKey = wallet.address && paymentConfig ? paymentKey({ ...paymentConfig, wallet: wallet.address }) : '';
+  const savedText = useSyncExternalStore(subscribePayments, () => paymentSnapshot(storageKey));
+  const savedPayment = useMemo(() => parsePayment(savedText), [savedText]);
+  const context = storageKey + ':' + wallet.address + ':' + wallet.revision + ':' + wallet.authenticated;
+  const contextRef = useRef(context);
+  contextRef.current = context;
   const timer = useRef<number | null>(null);
   const stopTimer = () => { if (timer.current !== null) { window.clearTimeout(timer.current); timer.current = null; } };
   useEffect(() => {
@@ -39,8 +51,8 @@ export default function BlindboxPage() {
     const timeout = window.setTimeout(() => setNow(Date.now()), Math.min(next - now + 50, 2_147_483_647));
     return () => window.clearTimeout(timeout);
   }, [now, query.data?.pending]);
-  useEffect(() => { stopTimer(); setResult(null); setPhase('closed'); }, [wallet.address, wallet.revision]);
-  useEffect(() => stopTimer, []);
+  useEffect(() => { stopTimer(); setResult(null); setPhase('closed'); setPaymentStatus(''); setRecovering(false); }, [context]);
+  useEffect(() => () => { contextRef.current = ''; stopTimer(); }, []);
   const settle = () => { stopTimer(); setPhase('opened'); };
   const play = () => {
     stopTimer();
@@ -48,7 +60,64 @@ export default function BlindboxPage() {
     setPhase('opening');
     timer.current = window.setTimeout(() => { timer.current = null; setPhase('opened'); }, 2100);
   };
-  if (query.error) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
+  async function acceptPayment(response: BoxJoinResult, receiptKey: string, requestContext: string) {
+    if (contextRef.current !== requestContext) return;
+    let received = response.overview?.box;
+    if (response.overview) client.setQueryData(blindboxQueryKey, response.overview);
+    if (positiveDecimal(response.totalCoins)) received = { totalCoins: response.totalCoins, dailyQuotaCoins: response.dailyQuotaCoins || '0', claimDays: response.claimDays || query.data?.rules.claimDays || 30, remainingCoins: response.totalCoins };
+    if (!received) received = (await query.refetch()).data?.box;
+    if (contextRef.current !== requestContext) return;
+    if (!received || !positiveDecimal(received.totalCoins)) throw new Error('支付已确认，奖励同步中，请稍后核对');
+    clearPayment(storageKey, receiptKey);
+    setPaymentStatus('链上支付已确认，奖励已到账');
+    setResult(received);
+    play();
+    void priceQuery.refetch();
+  }
+  useEffect(() => {
+    if (!storageKey || !paymentConfig || !wallet.authenticated) return;
+    migratePayment({ ...paymentConfig, wallet: wallet.address });
+    const saved = parsePayment(paymentSnapshot(storageKey));
+    if (query.data?.joined && saved) clearPayment(storageKey, saved.receiptKey);
+  }, [storageKey, wallet.authenticated, query.data?.joined]);
+  // Recovery only asks the server to verify the saved transaction. It never
+  // opens a wallet prompt or submits another transfer, even after a reload.
+  useEffect(() => {
+    if (!savedPayment?.transactionHash || !wallet.authenticated || !paymentConfig?.enabled || query.data?.joined || action.busy) return;
+    const pending = savedPayment, requestContext = context, identity = walletIdentity();
+    const controller = new AbortController();
+    let cancelled = false, running = false, timer = 0, failures = 0;
+    const current = () => !cancelled && contextRef.current === requestContext && walletIdentity() === identity;
+    async function verify() {
+      window.clearTimeout(timer);
+      if (!current() || running || document.hidden || !navigator.onLine) return;
+      running = true; setRecovering(true); setPhase('waiting'); setPaymentStatus('正在核对已提交的支付…');
+      let delay = 0;
+      try {
+        const response = await api<BoxJoinResult>('a-token/blindbox/join', { method: 'POST', signal: controller.signal, headers: { 'Content-Type': 'application/json', 'Idempotency-Key': pending.receiptKey }, body: JSON.stringify({ receiptKey: pending.receiptKey, transactionHash: pending.transactionHash }) });
+        if (current()) await acceptPayment(response, pending.receiptKey, requestContext);
+      } catch (caught) {
+        if (!current()) return;
+        const error = caught as Error & { status?: number; code?: string };
+        setPaymentStatus(error.message || '暂时无法核对支付，请稍后重试');
+        // Only the verifier's explicit on-chain failure permits another attempt.
+        // Timeouts, missing receipts and incomplete confirmations keep the hash.
+        if (error.status === 400 && error.message === '盲盒链上支付失败，请检查钱包交易记录') {
+          savePayment(storageKey, { receiptKey: pending.receiptKey, createdAt: pending.createdAt });
+          setPhase('closed');
+        } else if (['BLINDBOX_TX_PENDING', 'BLINDBOX_CONFIRMING'].includes(error.code || '')) delay = 4000;
+        else if (!error.status || error.status >= 500) delay = Math.min(3000 * 2 ** Math.min(failures++, 3), 30000);
+      } finally {
+        running = false;
+        if (current()) { setRecovering(false); if (delay && !document.hidden && navigator.onLine) timer = window.setTimeout(() => void verify(), delay); }
+      }
+    }
+    const resume = () => { if (!document.hidden && navigator.onLine) void verify(); else window.clearTimeout(timer); };
+    void verify();
+    window.addEventListener('online', resume); window.addEventListener('offline', resume); document.addEventListener('visibilitychange', resume);
+    return () => { cancelled = true; controller.abort(); window.clearTimeout(timer); window.removeEventListener('online', resume); window.removeEventListener('offline', resume); document.removeEventListener('visibilitychange', resume); };
+  }, [savedText, context, wallet.authenticated, paymentConfig?.enabled, query.data?.joined, action.busy, retry]);
+  if (query.error && !canRetainQueryData(query)) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
   if (!query.data) return <Loading />;
   const data = query.data;
   const reward = result || (positiveDecimal(data.box?.totalCoins) ? data.box! : null);
@@ -62,37 +131,34 @@ export default function BlindboxPage() {
   const join = () => void action.run('开启盲盒', '支付 ' + data.rules.entryUsdt + ' USDT，同一笔链上交易自动配对 SVX 加入流动性。初始报价约 0.1 USDT/SVX；每个钱包限一份，' + claimDays + ' 天每日手动领取。', async () => {
     const payment = data.rules.onchainPayment;
     if (!payment?.enabled) throw new Error('链上盲盒收款尚未配置，请联系平台管理员');
-    const identity = wallet.address.toLowerCase();
-    if (!identity) throw new Error('请先连接并确认钱包');
-    const storageKey = 'solvex:blindbox-payment:' + identity;
-    let saved: { receiptKey?: string; transactionHash?: string } = {};
-    try { saved = JSON.parse(sessionStorage.getItem(storageKey) || '{}'); } catch { /* create a fresh receipt key */ }
-    const receiptKey = saved.receiptKey || ('0x' + Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join(''));
-    sessionStorage.setItem(storageKey, JSON.stringify({ ...saved, receiptKey }));
-    let response: BoxJoinResult;
+    if (!wallet.address) throw new Error('请先连接并确认钱包');
+    const identity = walletIdentity(), requestContext = context;
+    const saved = preparePayment({ ...payment, wallet: wallet.address }), receiptKey = saved.receiptKey;
+    const current = () => contextRef.current === requestContext && walletIdentity() === identity;
+    setPhase('waiting'); setPaymentStatus('正在准备支付，请查看钱包提示');
     try {
       let transactionHash = saved.transactionHash;
       if (!transactionHash) {
-        const paymentResult = await buyBlindboxOnchain({ ...payment, receiptKey, onStatus: status => { if (status.includes('授权')) setPhase('waiting'); } });
+        const paymentResult = await buyBlindboxOnchain({ ...payment, receiptKey,
+          onStatus: status => { if (current()) setPaymentStatus(status); },
+          onSubmitted: hash => savePayment(storageKey, { ...saved, transactionHash: hash }),
+          onFailed: () => { if (parsePayment(paymentSnapshot(storageKey))?.receiptKey === receiptKey) savePayment(storageKey, { receiptKey, createdAt: saved.createdAt }); },
+        });
         transactionHash = paymentResult.transactionHash;
-        sessionStorage.setItem(storageKey, JSON.stringify({ receiptKey, transactionHash }));
       }
-      setPhase('waiting');
-      response = await post<BoxJoinResult>('a-token/blindbox/join', { receiptKey, transactionHash }, { 'Idempotency-Key': receiptKey });
-      sessionStorage.removeItem(storageKey);
-    } catch (error) { setPhase('closed'); throw error; }
-    let received = response.overview?.box;
-    if (response.overview) client.setQueryData(blindboxQueryKey, response.overview);
-    if (positiveDecimal(response.totalCoins)) received = { totalCoins: response.totalCoins, dailyQuotaCoins: response.dailyQuotaCoins || '0', claimDays: response.claimDays || claimDays, remainingCoins: response.totalCoins };
-    if (!received) received = (await query.refetch()).data?.box;
-    void priceQuery.refetch();
-    if (received && positiveDecimal(received.totalCoins)) {
-      setResult(received);
-      play();
-      return '盲盒已开启，开出 ' + formatDecimal(received.totalCoins) + ' SVX';
+      if (!current()) return '支付记录已保存，返回盲盒页可继续核对';
+      setPaymentStatus('链上支付已确认，正在同步奖励…');
+      const response = await post<BoxJoinResult>('a-token/blindbox/join', { receiptKey, transactionHash }, { 'Idempotency-Key': receiptKey });
+      if (current()) await acceptPayment(response, receiptKey, requestContext);
+      return '盲盒已开启';
+    } catch (error) {
+      if (current()) {
+        const submitted = Boolean(parsePayment(paymentSnapshot(storageKey))?.transactionHash);
+        setPhase(submitted ? 'waiting' : 'closed');
+        setPaymentStatus(submitted ? '支付记录已保存，正在继续核对结果' : error instanceof Error ? error.message : '支付未完成');
+      }
+      throw error;
     }
-    setPhase('opened');
-    return '盲盒已开启，正在同步奖励';
   }, 'none');
   const priceNote = price ? <>1 SVX ≈ {formatDecimal(price, 6)} USDT · 参考估值</> : <>{priceQuery.isFetching ? '正在获取参考价格…' : '估值暂不可用'}{!priceQuery.isFetching && <button type="button" onClick={() => void priceQuery.refetch()}>刷新价格</button>}</>;
 
@@ -113,8 +179,9 @@ export default function BlindboxPage() {
         </div>}
         <div className="svx-box-release"><CalendarClock size={22} strokeWidth={1.5} /><div><b>{claimDays} 天按日释放 · 每天 08:00 开放领取</b><span>{reward ? '每日约 ' + formatDecimal(reward.dailyQuotaCoins, 2) + ' SVX，需手动领取' : '每天手动领取，当日未领取的额度过期作废'}</span></div></div>
         <div className="svx-box-actions">
-          {opened ? <div className="svx-box-opened-state"><span><Check size={14} /> 已开启 · 每个钱包限 1 份</span>{reward && <button type="button" disabled={view === 'opening' || action.busy} onClick={play}><RotateCcw size={13} />重播动画</button>}</div> : <><Button disabled={action.busy || phase === 'waiting' || !data.rules.onchainPayment?.enabled} onClick={join}>{phase === 'waiting' ? '正在开启盲盒…' : '支付 ' + data.rules.entryUsdt + ' USDT 开盲盒'}<ArrowUpRight size={17} /></Button><p>{data.rules.entryUsdt} USDT 将在同一笔交易中配对 SVX 自动加入流动性 · 初始报价约 0.1 USDT/SVX · 每个钱包限 1 份</p></>}
+          {opened ? <div className="svx-box-opened-state"><span><Check size={14} /> 已开启 · 每个钱包限 1 份</span>{reward && <button type="button" disabled={view === 'opening' || action.busy} onClick={play}><RotateCcw size={13} />重播动画</button>}</div> : <><Button disabled={action.busy || recovering || !data.rules.onchainPayment?.enabled} onClick={savedPayment?.transactionHash ? () => setRetry(value => value + 1) : join}>{savedPayment?.transactionHash ? recovering ? '正在核对支付…' : '核对支付结果' : action.busy ? '请查看钱包提示…' : '支付 ' + data.rules.entryUsdt + ' USDT 开盲盒'}<ArrowUpRight size={17} /></Button><p>{data.rules.entryUsdt} USDT 将在同一笔交易中配对 SVX 自动加入流动性 · 初始报价约 0.1 USDT/SVX · 每个钱包限 1 份</p></>}
         </div>
+        {!opened && (paymentStatus || savedPayment?.transactionHash) && <div className="rx-note" data-blindbox-payment-status role="status" aria-live="polite"><p>{paymentStatus || '已保存支付记录，准备核对结果'}</p>{savedPayment?.transactionHash && paymentConfig?.chainId === 56 && <a href={'https://bscscan.com/tx/' + savedPayment.transactionHash} target="_blank" rel="noopener noreferrer">查看链上交易</a>}</div>}
         <details className="svx-box-rules"><summary>领取与估值说明</summary><p>数量与参考价值为整份盲盒的奖励，分 {claimDays} 天释放，并非开盒后一次性到账。USDT 价值随 SVX 参考价格变化。</p><p>北京时间 08:00 结算，当期额度需在次日 08:00 前领取，过期作废。领到的 SVX 计入主余额与蓄能额度；卖出需具备超速驱动的流通额度。</p></details>
       </div>
     </div>

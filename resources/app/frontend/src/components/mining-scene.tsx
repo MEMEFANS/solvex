@@ -6,8 +6,8 @@ import './toy-mining-scene.css';
 type Tier = 'copper' | 'silver' | 'gold';
 type Props = {
   authenticated: boolean;
-  counts: Record<Tier, number>;
-  activeCount: number;
+  counts: Record<Tier, bigint>;
+  activeCount: bigint;
   loading: boolean;
   error: boolean;
   onConnect: () => void;
@@ -52,7 +52,7 @@ export function MiningScene({ authenticated, counts, activeCount, loading, error
     </header>
     <div className="rx-cavern-viewport" role="region" aria-label="完整矿场全景，铜银金三个矿区同时显示">
       <div className="rx-cavern-stage">
-        <img className="rx-cavern-background" src="/assets/mining/toy-cavern-v2.webp" width={2048} height={1152} alt="紫蓝晶石点亮连通的地下洞穴，铜矿、银矿、金矿沿矿车轨道依次分布" decoding="async" fetchPriority="high" draggable={false} />
+        <img className="rx-cavern-background" src="/assets/mining/toy-cavern-v2.webp" srcSet="/assets/mining/toy-cavern-v2-w640.webp 640w, /assets/mining/toy-cavern-v2-w960.webp 960w, /assets/mining/toy-cavern-v2-w1440.webp 1440w, /assets/mining/toy-cavern-v2.webp 2048w" sizes="(max-width: 900px) calc(100vw - 32px), calc(100vw - 320px)" width={2048} height={1152} alt="紫蓝晶石点亮连通的地下洞穴，铜矿、银矿、金矿沿矿车轨道依次分布" decoding="async" fetchPriority="high" draggable={false} />
         <span className="rx-cavern-motes" aria-hidden="true"><i /><i /><i /><i /><i /><i /></span>
         {regions.map(region => {
           const working = hasWorkers && counts[region.tier] > 0;

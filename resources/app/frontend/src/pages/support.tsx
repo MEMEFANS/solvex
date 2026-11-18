@@ -1,3 +1,4 @@
+import { canRetainQueryData } from '@/lib/page-cache';
 import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -72,7 +73,7 @@ export default function SupportPage() {
   return <div className="rx-page">
     <PageHeading title="在线客服" subtitle="7×24 小时在线客服，充值、提现、矿池与交易问题均可在此咨询" />
     {!wallet.authenticated ? <Gate description="连接并确认钱包后即可与在线客服对话" />
-      : query.error ? <ErrorState error={query.error} retry={() => void query.refetch()} />
+      : query.error && !canRetainQueryData(query) ? <ErrorState error={query.error} retry={() => void query.refetch()} />
       : !session ? <Loading />
       : <div className="support-chat-wrap"><div className="support-chat-card">
         <div className="support-chat-head">

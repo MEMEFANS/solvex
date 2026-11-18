@@ -1,5 +1,5 @@
 @layer legacy, theme, base, components, utilities;
-@import "../../public/styles/critical.css" layer(legacy);
+@import "../../public/styles/react-shell.css" layer(legacy);
 @import "tailwindcss/theme.css" layer(theme);
 @import "tailwindcss/utilities.css" layer(utilities);
 @source "./";
@@ -37,9 +37,12 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
 .ui-tab { border:0; background:transparent; white-space:nowrap; }
 .ui-tab[data-state=active] { background:var(--panel); color:#6336cd; }
 .ui-dialog { overflow:visible; max-height:90dvh; overflow-y:auto; }
+/* Center in normal flow: no percentage offsets or transforms to lose in WebViews. */
+.ui-dialog-frame { display:flex; align-items:center; justify-content:center; box-sizing:border-box; padding:16px; overflow:auto; }
+.ui-dialog-frame > .ui-dialog-center { position:relative; inset:auto; left:auto; top:auto; transform:none; translate:none; flex:0 1 auto; margin:auto; box-sizing:border-box; width:100%; min-width:0; max-height:calc(100vh - 32px); max-height:calc(100dvh - 32px); overflow-x:hidden; overflow-y:auto; overscroll-behavior:contain; }
 .ui-dialog-close { background:transparent; border:0; cursor:pointer; }
 .rx-dialog-title { font-size:21px; font-weight:650; padding-right:26px; }
-.rx-dialog-description { font-size:14px; line-height:1.9; color:#656c8c; margin:20px 0 28px; white-space:pre-wrap; }
+.rx-dialog-description { font-size:14px; line-height:1.9; color:#656c8c; margin:20px 0 28px; white-space:pre-wrap; overflow-wrap:anywhere; }
 .rx-dialog-actions { display:flex; gap:10px; justify-content:flex-end; }
 .rx-sidebar { position:fixed; inset:0 auto 0 0; width:224px; padding:28px 18px 18px; z-index:110; background:var(--panel); border-right:1px solid #e7e9f2; display:flex; flex-direction:column; overflow-y:auto; }
 .rx-brand { display:flex; gap:11px; align-items:center; text-decoration:none; color:#21263c; padding:0 12px; margin:0 0 40px; }
@@ -277,3 +280,11 @@ body.solvex-react { background:var(--bg); color:var(--body); font:14px/1.5 "Inte
   .rx-dialog-title { font-size:19px; }.rx-dialog-description { font-size:13px; }.rx-gate { padding:40px 20px; }.rx-gate p { font-size:11px; }
 }
 @media(prefers-reduced-motion:reduce) { .solvex-react * { scroll-behavior:auto!important; animation-duration:0.01ms!important; transition-duration:0.01ms!important; } }
+
+/* First visit only; successful responses stay on screen during refresh. */
+.rx-loading.rx-page-skeleton { display:grid; justify-content:stretch; align-items:stretch; gap:12px; width:100%; max-width:960px; margin:0 auto; padding:28px 20px; }
+.rx-page-skeleton > span { display:block; height:18px; border-radius:10px; background:color-mix(in srgb, var(--muted-foreground, #65716d) 9%, transparent); }
+.rx-page-skeleton > span:first-child { width:38%; }
+.rx-page-skeleton > span:nth-child(2) { height:96px; }
+.rx-page-skeleton > span:last-child { width:72%; }
+.rx-cache-notice { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:12px clamp(12px, 3vw, 36px) 0; color:var(--muted-foreground, #65716d); font-size:12px; }

@@ -16,7 +16,7 @@ import { A_TOKEN_DECIMALS, USDT_DECIMALS } from './a-token-service.js';
 //   · 领取周期 30 天，每天手动领取；每日额度固定为「总币数 / 30 天」，不乘任何系数；
 //   · 次日 UTC 00:00（北京 08:00）前未领，当天作废（不滚存），累计发放封顶总币数，领完即结束；
 //   · 领取后进入SVX主余额及蓄能额度，供超速驱动使用；
-//   · 不计团队业绩，不发推广奖励。
+//   · 开盒总币数一次计入团队业绩；每日额度领取后计直推与级差奖励。
 //
 // 账务与幂等：
 //   · 参与：钱包 USDT -1，写 LP 流水（source='blindbox'，ref_id=盲盒 id，唯一索引防重）；
@@ -41,7 +41,7 @@ const fmtA = units => { try { return formatUnits(BigInt(units || '0'), A_TOKEN_D
 const fmtU = units => { try { return formatUnits(BigInt(units || '0'), USDT_DECIMALS); } catch { return '0'; } };
 
 export function createATokenBlindBoxService({
-  aTokenService, database, pendingService, chainPayment = null,
+  aTokenService, database, pendingService, teamService = null, chainPayment = null,
   // 无配置时的均匀兜底：返回 100–500 的整数币数；测试可注入固定值
   randomCoins = () => BigInt(crypto.randomInt(Number(BLINDBOX_MIN_COINS), Number(BLINDBOX_MAX_COINS) + 1)),
   // 按权重抽档：返回 [0, totalBps) 的安全随机整数；测试可注入确定性序列
@@ -50,6 +50,20 @@ export function createATokenBlindBoxService({
 }) {
   const at = aTokenService;
   const db = database;
+
+  // Backfill previously opened boxes once per deterministic event ID. Re-running is safe.
+  const performanceBackfillKey = 'blindbox_team_performance_backfill_v1';
+  if (teamService?.recordTeamPerformance && db.getSetting(performanceBackfillKey) !== 'done') {
+    for (let offset = 0; ; offset += 500) {
+      const batch = db.listRecentATokenBlindBoxes(500, offset);
+      for (const box of batch) teamService.recordTeamPerformance(box.wallet, {
+          bizType:'blindbox', bizId:box.id, amountUnits:box.totalUnits,
+          occurredAt:box.startedAt, payload:{ source:'blindbox', backfill:true },
+        });
+      if (batch.length < 500) break;
+    }
+    db.saveSetting(performanceBackfillKey, 'done');
+  }
 
   function clampCoins(value) {
     let coins = BigInt(value ?? 0);
@@ -378,12 +392,14 @@ export function createATokenBlindBoxService({
     }
 
     try {
-      ensureLpEntry(box, now);
-      // 首个统一结算日由 processDue 生成，参与当天不提前释放。
-    } catch (error) {
-      // 盲盒已扣款并入库，LP/首日收益失败不退款，交由幂等重试与扫描兜底
-      console.error(`[盲盒] ${box.id} 初始化 LP/首日收益失败:`, error?.message || error);
-    }
+      teamService?.recordTeamPerformance?.(wallet, {
+        bizType:'blindbox', bizId:box.id, amountUnits:box.totalUnits,
+        occurredAt:now, payload:{ source:'blindbox' },
+      });
+    } catch (error) { console.error(`[盲盒] ${box.id} 团队业绩记录失败:`, error?.message || error); }
+    try { ensureLpEntry(box, now); }
+    catch (error) { console.error(`[盲盒] ${box.id} LP 初始化失败，等待扫描兜底:`, error?.message || error); }
+    // 首个统一结算日由 processDue 生成，参与当天不提前释放。
     return { ...presentBox(db.getATokenBlindBoxById(box.id)), idempotent: false };
   }
 

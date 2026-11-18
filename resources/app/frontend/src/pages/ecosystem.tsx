@@ -1,3 +1,4 @@
+import { canRetainQueryData } from '@/lib/page-cache';
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -17,14 +18,15 @@ function Frame({ title, children, action }: { title: string; children: ReactNode
 function Table({ headings, children }: { headings: string[]; children: ReactNode }) { return <div className="rx-table-wrap"><table className="rx-table no-mobile-stack"><thead><tr>{headings.map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
 
 function DrivePage() {
-  const wallet = useWallet(), query = useData<DriveState>('match-pool'), profile = useProfile(), action = useAction();
+  const wallet = useWallet(), query = useData<DriveState>('match-pool'), profile = useProfile(), action = useAction('drive');
   const [purchase, setPurchase] = useState(''), [amount, setAmount] = useState('');
   const [debounced, setDebounced] = useState('');
   useEffect(() => { const timer = setTimeout(() => setDebounced(purchase.trim()), 350); return () => clearTimeout(timer); }, [purchase]);
   const valid = /^\d+(?:\.\d{1,18})?$/.test(debounced) && toUnits(debounced) > 0n;
   const quote = useQuery({ queryKey: ['drive-quote', wallet.address, wallet.revision, debounced], queryFn: ({ signal }) => api<TurboQuote>('a-token/match-pool/quote?aix=' + encodeURIComponent(debounced), { signal }), enabled: wallet.authenticated && valid });
-  if (query.error) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
-  if (!query.data || !profile.data) return profile.error ? <ErrorState error={profile.error} retry={() => void profile.refetch()} /> : <Loading />;
+  if (query.error && !canRetainQueryData(query)) return <ErrorState error={query.error} retry={() => void query.refetch()} />;
+  if (profile.error && !canRetainQueryData(profile)) return <ErrorState error={profile.error} retry={() => void profile.refetch()} />;
+  if (!query.data || !profile.data) return <Loading />;
   const data = query.data, q = quote.data;
   const maximum = [data.matchQuota?.available || '0', data.turboQuota || '0'].map(n => toUnits(n)).reduce((a, b) => a < b ? a : b);
   const enter = () => void action.run('放入超速驱动协议', '放入 ' + amount + ' SVX，消耗等量蓄能额度与驱动额度，锁定 ' + data.nextDurationHours + ' 小时，到期生成双倍 SVX 与流通额度。每日仅一次。', async () => {

@@ -41,22 +41,22 @@ try {
   const s = staking.stake(u1, 'energy', '1000');
   assert.equal(db.listATokenZoneBalances(u1).alpha, A(9000).toString());
   assert.equal(at.balanceA(u1), A(10000), '主余额不动');
-  assert.equal(s.planId, 'energy');
+  assert.equal(s.planId, 'energy30');
   assert.equal(s.principalUnits, A(1000).toString());
   assert.equal(Number(s.startedAt), now);
-  assert.equal(Number(s.expiresAt), nextSettlementAt(s.startedAt) + 99 * DAY, '100 天释放，从首个 UTC 结算日起算');
+  assert.equal(Number(s.expiresAt), nextSettlementAt(s.startedAt) + 29 * DAY, '30 天释放，从首个 UTC 结算日起算');
 
   // 未到首个 UTC 结算日不挂账
   now = nextSettlementAt(s.startedAt) - 1;
   staking.processAll();
   assert.equal(pending.list(u1, 'pending').length, 0, '未到结算日不挂账');
 
-  // 首个结算日：释放原额度 1% = 10 枚
+  // 首个结算日：释放原额度的 1/30，最后一期补齐尾差
   now = nextSettlementAt(s.startedAt);
   staking.processAll();
   const p = pending.list(u1, 'pending');
   assert.equal(p.length, 1);
-  assert.equal(BigInt(p[0].amountUnits), A(10), '每天释放原额度 1%');
+  assert.equal(BigInt(p[0].amountUnits), A(1000) / 30n, '每天释放原额度的 1/30');
   assert.equal(p[0].periodKey, 'energy_0');
   assert.equal(p[0].availableAt, now, '结算日当天可领');
 
@@ -69,29 +69,29 @@ try {
   const zoneBefore = BigInt(db.getATokenZoneBalance(u1, 'alpha').units);
   pending.claim(u1, p[0].id);
   assert.equal(at.balanceA(u1) - before, 0n);
-  assert.equal(BigInt(db.getATokenZoneBalance(u1, 'alpha').units) - zoneBefore, A(10));
+  assert.equal(BigInt(db.getATokenZoneBalance(u1, 'alpha').units) - zoneBefore, A(1000) / 30n);
 
-  // 连续 9 个结算日：每天一条 10 枚，互不合并
+  // 连续 9 个结算日：每天一条，互不合并
   now += 9 * DAY;
   staking.processAll();
   const rows = pending.list(u1, 'pending');
   assert.equal(rows.length, 9, '每满一个结算日生成一条');
-  assert.equal(rows.reduce((sum, r) => sum + BigInt(r.amountUnits), 0n), A(90));
+  assert.equal(rows.reduce((sum, r) => sum + BigInt(r.amountUnits), 0n), A(300));
 
-  // 100 天释放完毕：累计释放 = 本金，仓位结束
+  // 30 天释放完毕：累计释放 = 本金，仓位结束
   now = Number(s.expiresAt);
   staking.processAll();
   const issued = [
     ...pending.list(u1, 'pending', 500),
     ...pending.list(u1, 'claimed', 500),
   ].filter(r => r.bizType === 'stake' && r.bizId === s.id);
-  assert.equal(issued.length, 100, '共 100 条日释放');
+  assert.equal(issued.length, 30, '共 30 条日释放');
   assert.equal(issued.reduce((sum, r) => sum + BigInt(r.amountUnits), 0n), A(1000), '累计释放等于本金，不超发');
   const done = db.listATokenStakes(u1).find(r => r.id === s.id);
   assert.equal(done.status, 'completed');
   assert.equal(done.totalEarnedUnits, A(1000).toString());
 
-  console.log('P1 质押链路校验通过（旧档拒绝新增 + 能量每日释放 1%）');
+  console.log('P1 质押链路校验通过（旧档拒绝新增 + 能量统一30天释放）');
 } finally {
   closeDatabase(root);
   fs.rmSync(root, { recursive: true, force: true });

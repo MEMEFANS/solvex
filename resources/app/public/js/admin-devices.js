@@ -23,7 +23,7 @@
     const listEl = byId('admin-devices-list');
     const statusEl = byId('admin-devices-status');
     const summaryEl = byId('admin-devices-summary');
-    const limit = Number(data?.maxWalletsPerDevice) || 3;
+    const limit = Number(data?.maxWalletsPerDevice) || 5;
     if (summaryEl) {
       summaryEl.textContent = `同一设备最多绑定 ${limit} 个钱包；解除绑定只释放名额，不删除钱包、会话与资金记录`;
     }

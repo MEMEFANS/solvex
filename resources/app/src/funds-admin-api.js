@@ -65,7 +65,7 @@ function tokenEqual(actual, expected) {
 }
 
 // Funds operations require their own bearer credential; operator cookies grant no access.
-export function createFundsAdminApi({ walletService, stakingService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
+export function createFundsAdminApi({ walletService, stakingService, nodeService, payoutService, send:respond, readBody, isSameOrigin, allowRequest, getToken }) {
   const send = (res, status, payload) => { respond(res, status, payload); return true; };
   async function handle(request, res, pathname) {
     if (!pathname.startsWith('/api/wallet/admin/')) return false;
@@ -93,21 +93,70 @@ export function createFundsAdminApi({ walletService, stakingService, payoutServi
         return send(res,200,{items:rows.map(r=>JSON.parse(r.payload_json))});
       }
       if (pathname === '/api/wallet/admin/energy-grants' && request.method === 'POST') {
+        if (!allowRequest(request,res,'funds-energy-grant',30,60_000)) return true;
         const body = await readBody(request,16000);
         const wallet = getAddress(String(body.wallet||'').trim());
         const requestId=requestIdOf(body), reason=reasonOf(body);
-        const amount=String(body.amount||''); const units=parseUnits(amount,18);
-        const old=walletService.database.getSetting('energy_grant:'+requestId);
-        if(old){ const item=JSON.parse(old); if(item.wallet.toLowerCase()!==wallet.toLowerCase()||item.units!==units.toString())throw conflict(); return send(res,200,{ok:true,energy:item.energy,idempotent:true}); }
-        walletService.ensureUser(wallet);
-        const energy=createAixTransaction(walletService.database,walletService)(()=>{
-          const energy=stakingService.grantEnergy(wallet,amount,{requestId,reason});
-          const record={wallet,units:units.toString(),amount,reason,requestId,energy,adminUsername:'funds-admin',createdAt:Date.now()};
+        const input={amount:body.amount,quantity:body.quantity,planId:body.planId}, quote=stakingService.quoteEnergyGrant(input);
+        const result=createAixTransaction(walletService.database,walletService)(()=>{
+          const old=walletService.database.getSetting('energy_grant:'+requestId);
+          if(old){
+            const record=JSON.parse(old);
+            const recordedPlan=record.planId ?? record.energy?.planId ?? 'energy30';
+            const normalizedRecordedPlan=recordedPlan==='energy'?'energy30':recordedPlan;
+            if(record.wallet.toLowerCase()!==wallet.toLowerCase() || record.units!==quote.units || String(record.quantity ?? 1)!==String(quote.quantity) || normalizedRecordedPlan!==quote.planId || record.reason!==reason) throw conflict();
+            return {energy:record.energy,grant:record,idempotent:true};
+          }
+          const user=walletService.ensureUser(wallet);
+          walletService.database.db.prepare('INSERT INTO wallet_users(address,balances_json,created_at,updated_at,payload_json) VALUES(?,?,?,?,?) ON CONFLICT(address) DO NOTHING')
+            .run(user.address,JSON.stringify(user.balances),Date.parse(user.createdAt),Date.parse(user.updatedAt),JSON.stringify(user));
+          const grant=stakingService.grantEnergyPools(wallet,input,{requestId,reason});
+          const record={...grant,wallet,reason,requestId,adminUsername:'funds-admin',createdAt:grant.startedAt};
           walletService.database.saveSetting('energy_grant:'+requestId,JSON.stringify(record));
           walletService.database.db.prepare('INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)').run('energy_'+requestId,wallet,'funds_energy_grant',record.createdAt,JSON.stringify(record));
-          return energy;
+          return {energy:grant.energy,grant:record,idempotent:false};
         });
-        return send(res,200,{ok:true,energy});
+        return send(res,200,{ok:true,...result});
+      }
+      if (pathname === '/api/wallet/admin/pool-grants' && request.method === 'GET') {
+        if (!nodeService) return send(res, 503, { error: '矿池赠送暂未启用' });
+        const rows = walletService.database.db.prepare("SELECT payload_json FROM audit_log WHERE event_type='funds_pool_grant' ORDER BY created_at DESC LIMIT 200").all();
+        const plans = nodeService.grantPlans();
+        // Already-open v1 pages compare quantities against null as zero and call
+        // BigInt(maxTotalCoins). Cover their full input range with numeric values.
+        // These are compatibility hints only; POST always uses the unlimited rules.
+        const legacy = request.headers['x-funds-ui-version'] !== '2';
+        return send(res, 200, { ...plans, unlimited:true, schemaVersion:2,
+          ...(legacy ? { maxQuantity:999, maxTotalCoins:'9989999999001' } : {}),
+          items: rows.map(row => JSON.parse(row.payload_json)) });
+      }
+      if (pathname === '/api/wallet/admin/pool-grants' && request.method === 'POST') {
+        if (!nodeService) return send(res, 503, { error: '矿池赠送暂未启用' });
+        if (!allowRequest(request, res, 'funds-pool-grant', 30, 60_000)) return true;
+        const body = await readBody(request, 16000), wallet = getAddress(String(body.wallet || '').trim());
+        const requestId = requestIdOf(body), reason = reasonOf(body);
+        const input = { type: body.type, coins: body.coins, quantity: body.quantity };
+        const quote = nodeService.quoteGrant(input);
+        const result = createAixTransaction(walletService.database, walletService)(() => {
+          const old = walletService.database.getSetting('pool_grant:' + requestId);
+          if (old) {
+            const record = JSON.parse(old);
+            if (record.wallet.toLowerCase() !== wallet.toLowerCase() || record.type !== quote.type || record.coinsUnits !== quote.coinsUnits || record.quantity !== quote.quantity || record.reason !== reason) throw conflict();
+            return { grant: record, idempotent: true };
+          }
+          const user = walletService.ensureUser(wallet);
+          // New accounts must exist before the zone ledger's immediate foreign-key
+          // checks. This insert and the final wallet-state save share the same commit.
+          walletService.database.db.prepare('INSERT INTO wallet_users(address,balances_json,created_at,updated_at,payload_json) VALUES(?,?,?,?,?) ON CONFLICT(address) DO NOTHING')
+            .run(user.address, JSON.stringify(user.balances), Date.parse(user.createdAt), Date.parse(user.updatedAt), JSON.stringify(user));
+          const grant = nodeService.grantPools(wallet, input, { requestId, reason });
+          const record = { ...grant, wallet, reason, requestId, adminUsername: 'funds-admin', createdAt: grant.startedAt };
+          walletService.database.saveSetting('pool_grant:' + requestId, JSON.stringify(record));
+          walletService.database.db.prepare('INSERT INTO audit_log(event_id,address,event_type,created_at,payload_json) VALUES(?,?,?,?,?)')
+            .run('pool_' + requestId, wallet.toLowerCase(), 'funds_pool_grant', record.createdAt, JSON.stringify(record));
+          return { grant: record, idempotent: false };
+        });
+        return send(res, 200, { ok: true, ...result });
       }
       if (pathname === '/api/wallet/admin/miner-grants') {
         return send(res,410,{error:'矿机功能已下线',code:'MINER_DISABLED'});

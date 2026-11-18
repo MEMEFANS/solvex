@@ -1,3 +1,6 @@
+/* Restore the complete original order before the other legacy layers. */
+@import "../../public/styles/critical.css" layer(legacy);
 @import "../../public/styles/lazy.css" layer(legacy);
 @import "../../public/styles/solvex-design.css" layer(legacy);
 @import "../../public/styles/solvex-crystal.css" layer(legacy);
+@layer legacy { :root { --solvex-legacy-ready: 1; } }

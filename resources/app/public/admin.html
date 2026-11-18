@@ -12,7 +12,7 @@
   <link rel="alternate icon" href="/favicon.ico?v=20261111-domain-solvex-logo-3">
   <meta name="theme-color" content="#ffffff">
   <link rel="stylesheet" href="/styles/base.css?v=20261111-domain-solvex-2">
-  <link rel="stylesheet" href="/styles/operator-admin.css?v=20261111-domain-solvex-2">
+  <link rel="stylesheet" href="/styles/operator-admin.css?v=20261115-v-levels-1">
   <link rel="stylesheet" href="/styles/terminal.css?v=20261111-domain-solvex-2">
   <!-- 管理后台不加载 i18n.js：后台内容不翻译，避免词典替换破坏 DOM 结构 -->
 </head>
@@ -41,6 +41,7 @@
         <button type="button" data-admin-page="users"><span class="admin-nav-icon">👥</span>用户管理</button>
         <button type="button" data-admin-page="devices"><span class="admin-nav-icon">💻</span>设备管理</button>
         <button type="button" data-open-funds><span class="admin-nav-icon">↗</span>资金后台</button>
+        <button type="button" data-open-funds="pools"><span class="admin-nav-icon">↗</span>矿池赠送</button>
         <button type="button" data-admin-page="deposits"><span class="admin-nav-icon">💰</span>充值记录</button>
         <button type="button" data-admin-page="tokens"><span class="admin-nav-icon">🪙</span>代币管理</button>
         <button type="button" data-admin-page="stocks"><span class="admin-nav-icon">📈</span>股票管理</button>
@@ -94,6 +95,7 @@
       <section class="admin-page-panel" data-admin-panel="users">
         <section class="admin-content-block">
           <header class="admin-list-header"><div><h2>钱包用户</h2><p id="admin-user-count">0 位用户</p></div><div class="admin-filters"><input id="admin-user-search" type="search" placeholder="搜索钱包地址"><label><input id="admin-real-only" type="checkbox"> 只看真实充值用户</label></div></header>
+          <p class="admin-v-level-help">可设置 V1–V10，设置后保持该等级，影响建群权限与后续团队级差。选择「自动评定」可恢复按升级舱与团队业绩计算。</p>
           <div class="admin-table-scroll"><table><thead><tr><th>钱包地址</th><th>等级</th><th>用户类型</th><th>确认充值</th><th>平台余额</th><th>首次连接</th><th>最近充值</th><th>操作</th></tr></thead><tbody id="admin-users-body"></tbody></table></div>
           <div class="admin-filters" style="margin-top:14px;justify-content:flex-end">
             <span id="admin-users-page-status" aria-live="polite"></span>
@@ -216,6 +218,7 @@
         <section class="admin-content-block">
           <header><div><h2>SVX 资产管理</h2><p>充值、扣除需要单独验证资金权限。</p></div></header>
           <button type="button" class="admin-primary-button" data-open-funds>打开资金后台</button>
+          <button type="button" class="admin-secondary-button" data-open-funds="pools">赠送矿池（类型 / 数量）</button>
         </section>
         <section class="admin-content-block">
           <header><div><h2>查询用户 SVX 余额</h2><p>输入钱包地址查看当前 SVX 余额</p></div></header>
@@ -336,8 +339,8 @@
   </div>
   <script src="/js/admin-dialogs.js?v=20261111-domain-solvex-2"></script>
   <script src="/js/admin-community-admin.js?v=20261111-domain-solvex-2"></script>
-  <script src="/js/operator-admin.js?v=20261112-remove-agents-1"></script>
-  <script src="/js/admin-devices.js?v=20261111-domain-solvex-2"></script>
+  <script src="/js/operator-admin.js?v=20261117-svx-target-1"></script>
+  <script src="/js/admin-devices.js?v=20261116-five-wallets-1"></script>
   <script src="/js/admin-mall.js?v=20261111-domain-solvex-2"></script>
 </body>
 </html>

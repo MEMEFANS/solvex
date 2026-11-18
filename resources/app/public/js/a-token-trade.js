@@ -16,6 +16,10 @@
   let atradeLastTime = 0;
   let atradeDataSeq = 0; // 请求世代号：丢弃切换周期后才返回的过期响应
   let atradeLoadedPeriod = null;
+  let atradeChartData = [];
+  let atradeQuoteData = [];
+  let atradeChartSource = 'illustration';
+  let atradeRestoreChart = null;
   const atradeBarSpacing = { '1m':12, '5m':12, '15m':12, '1h':11, '4h':10, '1d':9 };
   // 按像素保持蜡烛宽度：先展示最近行情，历史可向左拖动查看。
   // 日线历史较少时允许左侧留白，避免 fitContent / fixLeftEdge 将几根蜡烛拉满屏。
@@ -50,9 +54,8 @@
   };
   const fmtA = (v) => { const n = Number(v); return Number.isFinite(n) ? n.toLocaleString('en-US', { maximumFractionDigits: 4 }) : '0'; };
   const fmtUsdt = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '$0.00'; };
-  // 委托价 / 成交价：SVX 池价带 7-8 位小数（如 0.10001927），只显示 4 位会被截成 $0.1000，
-  // 用户按 $0.1 心算会以为 100U 应得 1000 SVX，与实际（按真实池价约 999.8）不符。统一显示 6 位。
-  const fmtPrice4 = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(6)}` : '—'; };
+  // 仅展示保留四位；报价、订单数量和结算继续使用接口的原始精度。
+  const fmtPrice4 = (v) => { const n = Number(v); return Number.isFinite(n) ? `$${n.toFixed(4)}` : '—'; };
   function showOk(msg) { if (typeof showToast === 'function') showToast(msg, 'ok'); else alert(msg); }
   function showErr(msg) { if (typeof showToast === 'function') showToast(msg, 'error'); else alert(msg); }
   function friendlyError(e, fallback) {
@@ -97,6 +100,7 @@
   let loadSeq = 0;
   const active = () => P.active('a-token-trade');
   function stopPolling() {
+    atradeRestoreChart?.();
     window.atradeCloseOrder();
     for (const timer of [atradeOrdersTimer, atradeKlineTimer, atradeStatsTimer]) clearInterval(timer);
     atradeStatsTimer = null;
@@ -132,6 +136,22 @@
       const stats = await api('pool');
       if (!active() || seq !== atradeStatsSeq) return;
       poolStats = stats;
+      const price = Number(stats.priceUsdt);
+      const livePrice = document.getElementById('atrade-price-live');
+      if (livePrice && price > 0 && Number.isFinite(price)) livePrice.textContent = '$' + price.toFixed(4);
+      showAtradeChartState();
+      const change = document.getElementById('atrade-price-change');
+      if (change && Number.isFinite(Number(stats.changePct24h))) {
+        const value = Number(stats.changePct24h);
+        change.textContent = (value >= 0 ? '+' : '') + value.toFixed(2) + '%';
+        change.classList.toggle('up', value >= 0); change.classList.toggle('down', value < 0);
+        livePrice?.parentElement?.classList.toggle('up', value >= 0);
+        livePrice?.parentElement?.classList.toggle('down', value < 0);
+      }
+      for (const [id, value] of [['atrade-high-live', stats.todayHigh], ['atrade-low-live', stats.todayLow]]) {
+        const element = document.getElementById(id);
+        if (element && Number(value) > 0 && Number.isFinite(Number(value))) element.textContent = '$' + Number(value).toFixed(4);
+      }
       const today = document.getElementById('atrade-burn-today');
       const total = document.getElementById('atrade-burn-total');
       if (today) today.textContent = fmtA(stats.todayBurned) + ' SVX';
@@ -223,11 +243,11 @@
         </div>
       </div>
       <div class="price-big">
-        <div class="num ${cls}">$${priceStr}<small style="font-size:13px;color:var(--mut);margin-left:8px;font-weight:500">USDT</small></div>
+        <div class="num ${cls}"><span id="atrade-price-live">$${priceStr}</span><small style="font-size:13px;color:var(--mut);margin-left:8px;font-weight:500">USDT</small></div>
         <div class="sub">
-          <span class="change-pill price-change ${cls}">${up ? '+' : ''}${changePct.toFixed(2)}%</span>
-          <span class="price-range-item">24h 最高 <b style="color:var(--txt)">$${high24h.toFixed(6)}</b></span>
-          <span class="price-range-item">24h 最低 <b style="color:var(--txt)">$${low24h.toFixed(6)}</b></span>
+          <span id="atrade-price-change" class="change-pill price-change ${cls}">${up ? '+' : ''}${changePct.toFixed(2)}%</span>
+          <span class="price-range-item">24h 最高 <b id="atrade-high-live" style="color:var(--txt)">$${high24h.toFixed(4)}</b></span>
+          <span class="price-range-item">24h 最低 <b id="atrade-low-live" style="color:var(--txt)">$${low24h.toFixed(4)}</b></span>
         </div>
       </div>
       <div class="svx-market-details"><div class="atrade-spot-meta">
@@ -259,7 +279,7 @@
     return `<dialog id="svx-order-sheet" class="svx-order-sheet" aria-labelledby="svx-order-title" ${orderMedia.matches ? '' : 'open'}>
       <header class="svx-order-sheet-head"><div><h2 id="svx-order-title">SVX 交易</h2><p>核对方向、分区与预计到账金额</p></div><button type="button" onclick="window.atradeCloseOrder()" aria-label="关闭交易面板">✕</button></header>
       <aside class="aentry">
-      <div class="aentry-title">一键交易<small>SVX / USDT · 大盘价 $${price.toFixed(6)}</small></div>
+      <div class="aentry-title">一键交易<small title="价格显示四位小数，订单按实际报价计算">SVX / USDT · 大盘价 $${price.toFixed(4)}</small></div>
       <div class="aentry-switch">
         <button type="button" data-side="buy" class="active buy" onclick="window.atradeSide('buy')">买入 SVX</button>
         <button type="button" data-side="sell" class="sell" onclick="window.atradeSide('sell')">卖出 SVX</button>
@@ -390,9 +410,25 @@
       <section class="atrade-chart-card atrade-chart-section">
         <div class="atrade-chart-toolbar">
           <div class="atrade-chart-tabs">${tabs}</div>
-          <span class="muted" style="font-size:11px;margin-left:auto">SVX / USDT · ${profile?.liquidity?.enabled ? '实时行情' : '内盘行情'}</span>
+          <span id="atrade-chart-source-label" class="muted" style="font-size:11px;margin-left:auto">SVX / USDT · 走势示意</span>
         </div>
-        <div id="atrade-chart" class="atrade-chart-host"></div>
+        <div class="atrade-chart-source-tabs" role="group" aria-label="图表数据来源">
+          <button type="button" data-chart-source="illustration" class="${atradeChartSource === 'illustration' ? 'active' : ''}" onclick="window.atradeSetChartSource('illustration')">走势示意</button>
+          <button type="button" data-chart-source="quote" class="${atradeChartSource === 'quote' ? 'active' : ''}" onclick="window.atradeSetChartSource('quote')">实际报价</button>
+        </div>
+        <div id="atrade-chart-notice" class="atrade-chart-notice" role="note"></div>
+        <div class="atrade-chart-controls" aria-label="K线视图控制">
+          <span id="atrade-chart-ohlc" class="atrade-chart-ohlc" aria-live="off">SVX / USDT</span>
+          <span id="atrade-chart-state" class="atrade-chart-state"></span>
+          <div class="atrade-chart-actions">
+            <button type="button" title="缩小K线" aria-label="缩小K线" onclick="window.atradeChartView('out')">−</button>
+            <button type="button" title="放大K线" aria-label="放大K线" onclick="window.atradeChartView('in')">＋</button>
+            <button type="button" onclick="window.atradeChartView('latest')">最新</button>
+            <button type="button" onclick="window.atradeChartView('all')">全部</button>
+            <button type="button" id="atrade-chart-expand" title="放大查看K线" aria-label="放大查看K线" aria-expanded="false" onclick="window.atradeExpandChart()">全屏</button>
+          </div>
+        </div>
+        <div id="atrade-chart" class="atrade-chart-host"><span id="atrade-chart-watermark" class="atrade-chart-watermark" aria-hidden="true">走势示意 · 模拟数据</span></div>
       </section>
     `;
   }
@@ -762,6 +798,150 @@
   };
 
   // ── K 线交互 ──
+  function normalizeAtradeCandles(rows) {
+    const valid = new Map();
+    for (const c of rows || []) {
+      const bar = { time:Number(c.time), open:Number(c.open), high:Number(c.high), low:Number(c.low), close:Number(c.close) };
+      if (!Object.values(bar).every(Number.isFinite) || bar.time <= 0 || !Number.isInteger(bar.time)
+        || Math.min(bar.open, bar.high, bar.low, bar.close) <= 0
+        || bar.high < Math.max(bar.open, bar.close) || bar.low > Math.min(bar.open, bar.close)) continue;
+      valid.set(bar.time, bar);
+    }
+    return [...valid.values()].sort((a,b) => a.time - b.time);
+  }
+  function showAtradeOhlc(bar) {
+    const label = document.getElementById('atrade-chart-ohlc');
+    if (!label || !bar) return;
+    label.textContent = `${atradeChartSource === 'illustration' ? '示意' : '实际报价'}｜开 ${bar.open.toFixed(4)}  高 ${bar.high.toFixed(4)}  低 ${bar.low.toFixed(4)}  收 ${bar.close.toFixed(4)}`;
+    label.title = label.textContent;
+  }
+  function showAtradeChartState() {
+    const demo = atradeChartSource === 'illustration';
+    const period = { '1m':'1分钟', '5m':'5分钟', '15m':'15分钟', '1h':'1小时', '4h':'4小时', '1d':'1天' }[atradePeriod];
+    const label = document.getElementById('atrade-chart-state');
+    if (label) label.textContent = '每根' + period + ' · 价格显示4位小数';
+    const source = document.getElementById('atrade-chart-source-label');
+    if (source) source.textContent = 'SVX / USDT · ' + (demo ? '走势示意（模拟数据）' : '实际平台报价');
+    const notice = document.getElementById('atrade-chart-notice');
+    if (notice) {
+      const price = Number(poolStats?.priceUsdt);
+      notice.textContent = (demo ? '模拟数据，仅作走势示意，不用于成交或结算。' : '实际平台报价记录；固定价格时呈水平线。')
+        + (Number.isFinite(price) && price > 0 ? '实际买卖报价：' + price.toFixed(4) + ' USDT' : '');
+      notice.classList.toggle('is-illustration', demo);
+    }
+    const watermark = document.getElementById('atrade-chart-watermark');
+    if (watermark) watermark.hidden = !demo;
+    document.querySelectorAll('[data-chart-source]').forEach(button => {
+      const selected = button.dataset.chartSource === atradeChartSource;
+      button.classList.toggle('active', selected);
+      button.setAttribute('aria-pressed', String(selected));
+    });
+  }
+  // Display-only illustration, explicitly labelled in the toolbar, banner,
+  // OHLC legend and watermark. Never write these prices to poolStats, profile,
+  // the API, order quotes or the stored quote history.
+  function buildAtradeIllustration(quotes, period, nowS = Math.floor(Date.now() / 1000)) {
+    const seconds = { '1m':60, '5m':300, '15m':900, '1h':3600, '4h':14400, '1d':86400 }[period];
+    const noise = (time, interval, salt) => {
+      const slot = Math.floor(time / interval), part = time / interval - slot;
+      const hash = index => {
+        let n = Math.imul(index ^ salt, 0x45d9f3b);
+        n = Math.imul(n ^ (n >>> 16), 0x45d9f3b);
+        return ((n ^ (n >>> 16)) >>> 0) / 4294967295 * 2 - 1;
+      };
+      const weight = part * part * (3 - 2 * part);
+      return hash(slot) * (1 - weight) + hash(slot + 1) * weight;
+    };
+    const offset = time => 0.005 * (
+      0.40 * noise(time, 7200, 0x51de9a1) + 0.28 * noise(time, 1800, 0x134f)
+      + 0.18 * noise(time, 360, 0x9251) + 0.09 * noise(time, 60, 0x137b) + 0.05 * noise(time, 15, 0x7a29));
+    return quotes.map(bar => {
+      const end = Math.max(bar.time, Math.min(bar.time + seconds, nowS));
+      const elapsed = end - bar.time, step = Math.max(5, seconds / 24);
+      const at = time => {
+        const progress = elapsed > 0 ? (time - bar.time) / elapsed : 1;
+        const reference = bar.open + (bar.close - bar.open) * progress;
+        return Number(Math.max(0.00000001, reference * (1 + offset(time))).toFixed(8));
+      };
+      const open = at(bar.time), close = at(end);
+      let high = Math.max(open, close), low = Math.min(open, close);
+      for (let time = bar.time + step; time < end; time += step) {
+        const value = at(time); high = Math.max(high, value); low = Math.min(low, value);
+      }
+      return { time:bar.time, open, high, low, close };
+    });
+  }
+  function displayedAtradeCandles() {
+    return atradeChartSource === 'illustration' ? buildAtradeIllustration(atradeQuoteData, atradePeriod) : atradeQuoteData.slice();
+  }
+  window.atradeSetChartSource = source => {
+    if (!['illustration', 'quote'].includes(source)) return;
+    atradeChartSource = source;
+    if (atradeCandleSeries) {
+      atradeChartData = displayedAtradeCandles();
+      atradeCandleSeries.applyOptions({ priceLineVisible:source === 'quote' });
+      atradeCandleSeries.setData(atradeChartData);
+      window.atradeChartView('latest');
+    }
+    showAtradeChartState();
+  };
+  window.atradeChartView = action => {
+    if (!atradeChart || !atradeChartData.length) return;
+    const scale = atradeChart.timeScale();
+    if (action === 'in' || action === 'out') {
+      const range = scale.getVisibleLogicalRange();
+      if (!range) return;
+      const span = Math.max(8, Math.min(atradeChartData.length + 12, (range.to - range.from) * (action === 'in' ? 0.7 : 1.4)));
+      scale.applyOptions({ minBarSpacing:0.25 });
+      scale.setVisibleLogicalRange({ from:range.to - span, to:range.to });
+      return;
+    }
+    atradeCandleSeries.priceScale().applyOptions({ autoScale:true });
+    if (action === 'all') {
+      scale.applyOptions({ minBarSpacing:0.25 });
+      scale.setVisibleLogicalRange({ from:-1, to:atradeChartData.length + 1 });
+    } else {
+      const bars = Math.min(atradeChartData.length, atradeChartHost.clientWidth < 600 ? 50 : 80);
+      const spacing = Math.max(3, Math.min(atradeBarSpacing[atradePeriod], scale.width() / (Math.max(12, bars) + 4)));
+      scale.applyOptions({ ...atradeTimeScaleOptions(atradePeriod), barSpacing:atradeChartData.length < 15 ? atradeBarSpacing[atradePeriod] : spacing });
+      scale.scrollToPosition(3, false);
+    }
+    showAtradeOhlc(atradeChartData.at(-1));
+  };
+  window.atradeExpandChart = () => {
+    if (atradeRestoreChart) { atradeRestoreChart(); return; }
+    const card = atradeChartHost?.closest('.atrade-chart-card');
+    if (!card) return;
+    const marker = document.createComment('SVX chart position'), dialog = document.createElement('dialog');
+    const previousOverflow = document.body.style.overflow;
+    card.before(marker);
+    dialog.className = 'atrade-chart-dialog';
+    dialog.setAttribute('aria-label', 'SVX K线放大查看');
+    dialog.append(card); document.body.append(dialog);
+    const button = document.getElementById('atrade-chart-expand');
+    button.textContent = '返回'; button.setAttribute('aria-expanded', 'true');
+    button.setAttribute('autofocus', '');
+    let restored = false;
+    const restore = () => {
+      if (restored) return; restored = true;
+      marker.replaceWith(card); dialog.close(); dialog.remove();
+      document.removeEventListener('keydown', escape, true);
+      document.body.style.overflow = previousOverflow;
+      button.textContent = '全屏'; button.setAttribute('aria-expanded', 'false');
+      button.removeAttribute('autofocus');
+      atradeRestoreChart = null;
+      requestAnimationFrame(() => { atradeChartResizeHandler?.(); button.focus({ preventScroll:true }); });
+    };
+    atradeRestoreChart = restore;
+    const escape = event => {
+      if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); restore(); }
+    };
+    document.addEventListener('keydown', escape, true);
+    dialog.addEventListener('cancel', event => { event.preventDefault(); restore(); });
+    dialog.addEventListener('close', restore);
+    try { dialog.showModal(); document.body.style.overflow = 'hidden'; atradeChartResizeHandler?.(); }
+    catch { restore(); }
+  };
   window.atradeInitChart = () => {
     const host = document.getElementById('atrade-chart');
     if (!host || typeof LightweightCharts === 'undefined' || !active()) return;
@@ -776,6 +956,8 @@
     atradeChartViewportHandler = null;
     if (atradeChart) { try { atradeChart.remove(); } catch {} atradeChart = null; atradeCandleSeries = null; }
     if (atradeKlineTimer) { clearInterval(atradeKlineTimer); atradeKlineTimer = null; }
+    atradeChartData = [];
+    atradeQuoteData = [];
 
     const theme = window.WGTheme?.chartOptions?.() || {
       layout:{ background:{ type:'solid', color:'#0b1113' }, textColor:'#91a19b' },
@@ -789,9 +971,11 @@
       layout:{ ...theme.layout, fontFamily:'-apple-system, Segoe UI, sans-serif' },
       grid:theme.grid,
       crosshair:{ mode: LightweightCharts.CrosshairMode.Normal },
-      rightPriceScale:{ ...theme.rightPriceScale, scaleMargins:{ top:0.08, bottom:0.08 } },
+      rightPriceScale:{ ...theme.rightPriceScale, autoScale:true, minimumWidth:72, scaleMargins:{ top:0.12, bottom:0.1 } },
       timeScale:{ ...theme.timeScale, ...tzOpts.timeScale, ...atradeTimeScaleOptions(atradePeriod) },
       localization:{ locale:'zh-CN', ...tzOpts.localization },
+      handleScroll:{ mouseWheel:true, pressedMouseMove:true, horzTouchDrag:true, vertTouchDrag:false },
+      handleScale:{ axisPressedMouseMove:true, mouseWheel:true, pinch:true, axisDoubleClickReset:true },
     });
     // base.css turns ordinary mobile tables into stacked cards. Lightweight
     // Charts uses a private table to place the candle pane and price scale
@@ -802,7 +986,7 @@
       if (!atradeChart) return;
       const w = host?.clientWidth || 0;
       const h = host?.clientHeight || 360;
-      if (w > 0) atradeChart.applyOptions({ width:w, height:h });
+      if (w > 0 && h > 0) atradeChart.resize(Math.floor(w), Math.floor(h));
     };
     if (window.ResizeObserver && host) {
       atradeChartResizeObserver = new ResizeObserver(fitAtradeChart);
@@ -814,16 +998,16 @@
     window.visualViewport?.addEventListener?.('resize', atradeChartViewportHandler);
     fitAtradeChart();
     atradeCandleSeries = atradeChart.addSeries(LightweightCharts.CandlestickSeries, {
-      upColor:'#4fd1b5', downColor:'#f06f75', borderVisible:false, wickUpColor:'#4fd1b5', wickDownColor:'#f06f75',
-      // 内盘横盘时保留至少 0.2% 的纵轴范围：小蜡烛可见，微波也不会拉满整张图。
+      upColor:'#168b76', downColor:'#c54d66', borderVisible:false, wickUpColor:'#168b76', wickDownColor:'#c54d66',
+      priceLineVisible:atradeChartSource === 'quote',
+      // 四位价格轴至少留出12个最小刻度，平价时刻度不重复。
       // 后台主动调大行情后仍按实际高低价扩展，不会裁掉真实波动。
       autoscaleInfoProvider: (original) => {
         const info = original();
         const range = info?.priceRange;
         if (!range) return info;
         const center = (range.minValue + range.maxValue) / 2;
-        const referencePrice = Number(poolStats?.priceUsdt || center);
-        const minimumVisibleSpan = referencePrice * 0.002;
+        const minimumVisibleSpan = Math.max(center * 0.012, 0.0012);
         if (!(minimumVisibleSpan > 0) || range.maxValue - range.minValue >= minimumVisibleSpan) return info;
         return {
           ...info,
@@ -838,10 +1022,11 @@
       autoScale:true,
     });
     atradeCandleSeries.applyOptions({
-      priceFormat:{ type:'price', precision:4, minMove: 0.0001 },
+      priceFormat:{ type:'price', precision:4, minMove:0.0001 },
     });
+    atradeChart.subscribeCrosshairMove(param => showAtradeOhlc(param.seriesData?.get(atradeCandleSeries) || atradeChartData.at(-1)));
 
-    window.atradeLoadKline(atradePeriod);
+    window.atradeLoadKline(atradePeriod).catch(err => showErr(friendlyError(err, 'K线加载失败，请切换周期重试')));
 
     atradeKlineTimer = setInterval(() => {
       if (!active()) return;
@@ -866,13 +1051,7 @@
     const res = await api(`kline?period=${encodeURIComponent(period)}&limit=500`);
     // 网络往返期间用户又切了周期/图表被销毁：本响应过期，丢弃
     if (seq !== atradeDataSeq || series !== atradeCandleSeries || period !== atradePeriod) return;
-    const candles = (res?.candles || []).map(c => ({
-      time: Number(c.time),
-      open: Number(c.open),
-      high: Number(c.high),
-      low: Number(c.low),
-      close: Number(c.close),
-    }));
+    const candles = normalizeAtradeCandles(res?.candles);
     // 内盘阶段（自由交易未开放、50 万 LP 后才接链上）：还没有成交记录时 K 线不能空白，
     // 用平台内盘指导价铺满最近 60 个周期，让行情图立即可见；价格全部取当前内盘价，
     // 不编造涨跌幅与成交量，后续有真实内盘成交就由成交 K 线逐根替换。
@@ -886,12 +1065,13 @@
         }
       }
     }
-    series.setData(candles);
+    atradeQuoteData = candles;
+    atradeChartData = displayedAtradeCandles();
+    series.setData(atradeChartData);
     atradeLastTime = candles[candles.length - 1]?.time || 0;
     atradeLoadedPeriod = period;
-    const timeScale = atradeChart.timeScale();
-    timeScale.applyOptions(atradeTimeScaleOptions(period));
-    timeScale.scrollToPosition(4, false);
+    showAtradeChartState();
+    window.atradeChartView('latest');
   };
 
   window.atradeRefreshKline = async () => {
@@ -904,13 +1084,19 @@
     const candles = res?.candles || [];
     if (!candles.length) return;
     // 增量：最后 1-2 根 update，如有新 bar 则追加
-    const sorted = candles.map(c => ({ time: Number(c.time), open: +c.open, high: +c.high, low: +c.low, close: +c.close }))
-      .sort((a,b) => a.time - b.time);
+    const sorted = normalizeAtradeCandles(candles);
+    const previousLastTime = atradeLastTime;
     for (const bar of sorted) {
-      // 单根异常（如早于图表最早一根）不影响其余 bar 更新
-      try { atradeCandleSeries.update(bar); } catch {}
+      if (bar.time < atradeLastTime) continue;
+      if (bar.time === atradeLastTime) atradeQuoteData[atradeQuoteData.length - 1] = bar;
+      else atradeQuoteData.push(bar);
+      atradeLastTime = bar.time;
     }
-    atradeLastTime = sorted[sorted.length - 1].time;
+    const displayed = displayedAtradeCandles();
+    for (const bar of displayed) if (bar.time >= previousLastTime) atradeCandleSeries.update(bar);
+    atradeChartData = displayed;
+    showAtradeOhlc(atradeChartData.at(-1));
+    showAtradeChartState();
   };
 
   P.register('a-token-trade', { render, load, activate, deactivate:stopPolling, reset() { stopPolling(); ++loadSeq; profile = null; myOrdersCache = []; const host = document.getElementById('atrade-content'); if (host) host.innerHTML = P.loading(6); }, fail: e => { const h = document.getElementById('atrade-content'); if (h) h.innerHTML = P.error(e.message, "Portal.load('a-token-trade',true)"); } });

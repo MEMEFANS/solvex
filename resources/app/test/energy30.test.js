@@ -1,0 +1,56 @@
+import assert from 'node:assert/strict';
+import {createPoolFixture,A,user} from './fixtures/funds-pools.mjs';
+const f=createPoolFixture(),DAY=86400000;
+const send=(body,options={})=>f.request(body,{...options,route:'energy-grants'});
+const gift={wallet:user(30),amount:'3000',quantity:'3',planId:'energy30',reason:'30天能量池赠送',requestId:'energy30_grant_test'};
+const count=()=>f.db.db.prepare('SELECT COUNT(*) n FROM a_token_stakes').get().n;
+const rewards=(wallet)=>f.pending.list(wallet,'',1000);
+try {
+ for(const planId of ['invalid','__proto__','constructor',null,'',30]){const n=count();assert.equal((await send({...gift,planId})).status,400);assert.equal(count(),n);}
+ const created=await send(gift);assert.equal(created.status,200,JSON.stringify(created.payload));
+ assert.equal(created.payload.grant.days,30);assert.equal(created.payload.grant.planId,'energy30');
+ assert.equal(created.payload.grant.totalAmount,'9000.0');assert.equal(created.payload.grant.energyIds.length,3);
+ assert.equal(f.wallet.balanceUnits(gift.wallet,'A'),0n);assert.equal(BigInt(f.db.getATokenZoneBalance(gift.wallet,'alpha').units),0n);
+ assert(f.energy.present(gift.wallet).every(s=>s.days===30&&s.planId==='energy30'&&s.dayEarned==='100.0'));
+ assert.equal((await send(gift)).payload.idempotent,true);
+ assert.equal((await send({...gift,planId:'energy'})).payload.idempotent,true,'旧计划请求映射到统一30天');
+ const old=await send({...gift,wallet:user(100),planId:undefined,requestId:'legacy_energy_alias'});assert.equal(old.payload.energy.planId,'energy30');
+ assert.equal(old.payload.grant.planId,'energy30');
+ assert.equal((await send({...gift,wallet:user(100),planId:'energy',requestId:'legacy_energy_alias'})).payload.idempotent,true);
+ assert.equal((await send({...gift,amount:'3001',wallet:user(100),planId:'energy',requestId:'legacy_energy_alias'})).status,409);
+ const compact=await send({...gift,wallet:user(31),amount:'1.000000000000000001',quantity:'101',requestId:'energy30_compact'});
+ assert.equal(compact.status,200);assert.equal(compact.payload.grant.energyIds.length,1);assert.equal(f.energy.present(user(31))[0].days,30);
+ const buyer=user(32);f.wallet.ensureUser(buyer);f.at.transaction(()=>f.db.creditATokenZone({wallet:buyer,zone:'alpha',units:A(5000).toString(),bizType:'fixture',refId:'energy30_seed',createdAt:f.now}));
+ const paid=f.energy.stake(buyer,'energy30','3000',{requestId:'energy30_paid'});assert.equal(paid.planId,'energy30');assert.equal(BigInt(f.db.getATokenZoneBalance(buyer,'alpha').units),A(2000));
+ assert.equal(f.energy.stake(buyer,'energy30','3000',{requestId:'energy30_paid'}).id,paid.id);
+ assert.throws(()=>f.energy.stake(buyer,'energy100','3000',{requestId:'energy30_paid'}),/无效/);
+ assert.equal(BigInt(f.db.getATokenZoneBalance(buyer,'alpha').units),A(2000));
+ f.db.db.exec("CREATE TEMP TRIGGER fail_energy30 BEFORE INSERT ON audit_log WHEN NEW.event_type='funds_energy_grant' BEGIN SELECT RAISE(ABORT,'isolated energy30 failure'); END");
+ const before=count();assert.equal((await send({...gift,wallet:user(33),requestId:'energy30_failure'})).status,400);assert.equal(count(),before);
+ assert.equal(f.db.getSetting('energy_grant:energy30_failure'),null);f.db.db.exec('DROP TRIGGER fail_energy30');
+ const legacyStarted=f.now-10*DAY, legacyId='legacy_100_day_position';
+ f.wallet.ensureUser(user(34));
+ f.db.upsertATokenStakeRow({id:legacyId,wallet:user(34),planId:'energy',principalUnits:A(1000).toString(),dailyRateBps:100,startedAt:legacyStarted,expiresAt:legacyStarted+100*DAY,lastSettledAt:legacyStarted,dayEarnedUnits:'0',totalEarnedUnits:'0',energyDays:0,status:'active',principalReturnedUnits:'0',interestEarnedUnits:'0',source:'admin',reason:'旧100天仓'});
+ assert.equal(f.energy.migrateLegacyEnergy(),1);
+ const migrated=f.db.getATokenStake(legacyId);assert.equal(migrated.planId,'energy30');assert.equal(migrated.energyDays,0);assert.equal(migrated.principalUnits,A(900).toString());assert.equal(migrated.migration.paidBefore30DayUnits,A(100).toString());
+ assert.equal(f.energy.migrateLegacyEnergy(),0,'历史迁移重复执行安全');
+ assert.equal(f.energy.present(user(34))[0].days,30);assert.equal(f.energy.present(user(34))[0].totalEarned,'100.0');
+ f.reopen();assert.equal((await send(gift)).payload.idempotent,true);
+ console.log('PASS 30-day gifts/self-open: quantities, balances, plan conflicts, legacy retries, rollback and persistence');
+ f.now+=DAY;f.energy.processAll();
+ const first=rewards(gift.wallet);assert.equal(first.length,3);assert(first.every(r=>BigInt(r.amountUnits)===A(100)));
+ f.pending.claim(gift.wallet,first[0].id);assert.throws(()=>f.pending.claim(gift.wallet,first[0].id));
+ f.now+=DAY;f.energy.processAll();assert.throws(()=>f.pending.claim(gift.wallet,first[1].id));
+ f.now+=13*DAY;f.energy.processAll();
+ assert(f.energy.present(gift.wallet).every(s=>s.energyDays===15&&s.progressPct===50&&s.totalEarned==='1500.0'));
+ assert(f.energy.present(user(100)).every(s=>s.energyDays===15&&s.progressPct===50&&s.totalEarned==='1500.0'));
+ f.now+=15*DAY;f.energy.processAll();
+ assert(f.energy.present(gift.wallet).every(s=>s.status==='completed'&&s.energyDays===30&&s.progressPct===100&&s.outstandingPrincipal==='0.0'));
+ assert(f.energy.present(user(100)).every(s=>s.status==='completed'&&s.energyDays===30&&s.progressPct===100));
+ const amounts=rewards(user(31));assert.equal(amounts.length,30);assert.equal(amounts.reduce((n,r)=>n+BigInt(r.amountUnits),0n),BigInt(compact.payload.grant.totalUnits));
+ const perPool=1000000000000000001n;for(let i=0;i<30;i++){const r=amounts.find(row=>row.periodKey==='energy_'+i);assert.equal(BigInt(r.amountUnits),(perPool*BigInt(i+1)/30n-perPool*BigInt(i)/30n)*101n);}
+ const n=amounts.length;f.energy.processAll();assert.equal(rewards(user(31)).length,n);
+ f.now+=70*DAY;f.energy.processAll();assert(f.energy.present(user(100)).every(s=>s.status==='completed'&&s.outstandingPrincipal==='0.0'));
+ assert.equal(f.db.db.prepare('SELECT COUNT(*) n FROM a_token_pending_rewards WHERE wallet=?').get(gift.wallet).n,90);
+ console.log('PASS 30-day release: exact rounding, claim expiry, 100-day legacy migration and idempotency');
+} finally {f.close();}

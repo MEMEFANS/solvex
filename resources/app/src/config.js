@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_MAX_WALLETS_PER_DEVICE } from './device-service.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const dataRoot = process.env.WG_DATA_DIR
@@ -111,7 +112,7 @@ export function getConfig() {
     // 会话 Cookie 作用域：设置后 www/apex 等子域共享同一登录态（建议 .solvexdex.com）
     sessionCookieDomain: String(process.env.WALLET_COOKIE_DOMAIN || '').trim(),
     // 同一设备最多可绑定的钱包账号数（第 N+1 个在建立会话时拒绝）
-    maxWalletsPerDevice: Number(process.env.DEVICE_MAX_WALLETS || 3),
+    maxWalletsPerDevice: Number(process.env.DEVICE_MAX_WALLETS || DEFAULT_MAX_WALLETS_PER_DEVICE),
     // 提现手续费 2% 自动加 LP：链下入队 + 指令生成；执行器默认关闭，建议由运维脚本单独跑，
     // 避免与提现出款共用同一个出款钱包时并发抢 nonce。
     autoLp: {

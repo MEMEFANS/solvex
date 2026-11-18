@@ -57,7 +57,6 @@ try {
 
   // ── 参与：1 USDT 进 LP + 按钱包地址限 1 份 + 幂等 ──
   const dailyOf = (w) => pending.list(w, 'pending', 100).filter(r => r.bizType === 'blindbox');
-  const teamBefore = db.sumAllATokenTeamPerfUnits().size;
   const first = blind.join({ wallet: alice, refId: 'join-alice' });
   assert.equal(first.idempotent, false);
   assert.equal(Number(first.totalCoins), 300);
@@ -82,9 +81,6 @@ try {
   const carolBox = blind.join({ wallet: carol, refId: 'join-carol' });
   const daveBox = blind.join({ wallet: dave, refId: 'join-dave' });
   assert.equal(db.listActiveATokenBlindBoxes(50).length, 4, '4 个不同钱包各 1 份');
-
-  // 盲盒不计团队业绩
-  assert.equal(db.sumAllATokenTeamPerfUnits().size, teamBefore, '盲盒不计团队业绩');
 
   // ── 每日固定额度：总币数 / 30，与推荐关系无关，不乘任何系数 ──
   // 首个 UTC 结算日：processDue 生成 d0，窗口为 [结算日, 次日结算日)
@@ -294,7 +290,7 @@ try {
   console.log('  ✓ 滚动 24h 未领当天作废，不滚存');
   console.log('  ✓ 累计发放封顶总币数，发满即结束且不再新增');
   console.log('  ✓ 不整除时最后一天补余数，累计仍等于总币数');
-  console.log('  ✓ 产出进甲区蓄能额度、不进主余额、不计团队业绩');
+  console.log('  ✓ 产出进甲区蓄能额度、不进主余额；团队计业绩与奖励由团队服务集成测试覆盖');
   console.log('  ✓ 概率配置校验：权重合计 ≠ 100%、币数越界/非整数、重复币数、空档位均被拒');
   console.log('  ✓ 按权重抽档：固定随机源下边界命中正确，配置存 service_settings(bps)');
   console.log('  ✓ 后台分布统计与确定性抽取一致，历史均匀结果单独计数');

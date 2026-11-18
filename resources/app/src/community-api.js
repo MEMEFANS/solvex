@@ -1,9 +1,17 @@
 // 群聊 HTTP 路由（/api/community/*）
 // 读接口允许匿名（未登录可看历史），写接口要求钱包会话 + 同源校验。
+import { createCommunityEvents } from './community-events.js';
 export function createCommunityApi({
-  service:baseService, adminService, redPacketService:basePackets, groupService, send, readBody, getSession, isSameOrigin,
+  service:baseService, adminService, redPacketService:basePackets, groupService, send: rawSend, readBody, getSession, isSameOrigin,
 }) {
   if (!baseService) throw new Error('communityApi 需要 service');
+  const contexts = new WeakMap();
+  const events = createCommunityEvents({ getSession, canReadGroup: (number, wallet) => groupService ? Boolean(groupService.canReadEvents(number, wallet)) : number === '100001' });
+  const send = (res, status, payload) => {
+    const context = contexts.get(res);
+    if (context && status >= 200 && status < 300) events.notify(context);
+    return rawSend(res, status, payload);
+  };
 
   function sendError(res, error) {
     const message = String(error?.message || '请求失败，请重试');
@@ -63,6 +71,16 @@ export function createCommunityApi({
     try {
       const address=getSession(request)?.address||'';
       const params=new URLSearchParams(request.url?.split('?')[1]||'');
+      if (request.method === 'GET' && pathname === '/api/community/events') {
+        guardWrite(request);
+        const session = requireSession(request);
+        if (!events.connect(request, res, session.address)) return send(res, 429, { error: '连接较多，已切换为定时刷新' });
+        return true;
+      }
+      if (request.method === 'POST' && pathname !== '/api/community/read') {
+        const personal = pathname === '/api/community/groups' || pathname === '/api/community/groups/join';
+        contexts.set(res, personal ? { wallet: address } : pathname === '/api/community/profile' ? {} : { group: params.get('group') || '100001' });
+      }
       const groupAvatarMatch = request.method === 'GET' && pathname.match(/^\/api\/community\/group-avatar\/(\d{1,12})$/);
       if (groupAvatarMatch) {
         const avatar = groupService?.getAvatar(groupAvatarMatch[1]);
@@ -129,12 +147,37 @@ export function createCommunityApi({
         res.writeHead(200, {
           'Content-Type': image.mime,
           'Content-Length': body.length,
-          'Cache-Control': 'public, max-age=86400',
+          // Images inherit group access and withdrawal permissions. Never let
+          // a shared cache serve a private or subsequently withdrawn image.
+          'Cache-Control': 'private, no-store',
           'X-Content-Type-Options': 'nosniff',
           'Cross-Origin-Resource-Policy': 'same-origin',
         });
         res.end(body);
         return true;
+      }
+      const messageVideoMatch = request.method === 'GET' && pathname.match(/^\/api\/community\/message-video\/(\d{1,12})$/);
+      if (messageVideoMatch) {
+        const video = service.getMessageVideo ? service.getMessageVideo(messageVideoMatch[1]) : null;
+        if (!video) return send(res, 404, { error: '视频不存在或已自动清理' });
+        const body = Buffer.from(video.data, 'base64');
+        const range = String(request.headers?.range || '');
+        let start = 0, end = body.length - 1, status = 200;
+        const match = range.match(/^bytes=(\d*)-(\d*)$/);
+        if (match) {
+          if (match[1]) start = Math.min(Number(match[1]), body.length - 1);
+          if (match[2]) end = Math.min(Number(match[2]), body.length - 1);
+          else end = Math.min(start + 1024 * 1024 - 1, body.length - 1);
+          if (start > end) return send(res, 416, { error: '视频范围无效' });
+          status = 206;
+        }
+        const chunk = body.subarray(start, end + 1);
+        res.writeHead(status, {
+          'Content-Type': video.mime, 'Content-Length': chunk.length,
+          ...(status === 206 ? { 'Content-Range': `bytes ${start}-${end}/${body.length}`, 'Accept-Ranges': 'bytes' } : { 'Accept-Ranges': 'bytes' }),
+          'Cache-Control': 'private, no-store', 'X-Content-Type-Options': 'nosniff', 'Cross-Origin-Resource-Policy': 'same-origin',
+        });
+        res.end(chunk); return true;
       }
       if(groupService && request.method==='POST' && pathname.startsWith('/api/community/admin/')) {
         guardWrite(request);const actor=requireSession(request).address;const input=await readBody(request,8000);
@@ -166,11 +209,12 @@ export function createCommunityApi({
       if (request.method === 'POST' && pathname === '/api/community/messages') {
         guardWrite(request);
         const session = requireSession(request);
-        const payload = await readBody(request, 600_000);
+        const payload = await readBody(request, 30 * 1024 * 1024);
         return send(res, 200, service.postMessage(session.address, {
           body: payload.body,
           clientId: payload.clientId,
           image: payload.image,
+          video: payload.video,
         }));
       }
       // POST /api/community/profile { nickname, avatar? }
@@ -257,6 +301,7 @@ export function createCommunityApi({
   // 后台路由：调用方（server.js）已校验管理员会话
   async function handleAdmin(request, res, pathname, context = {}) {
     if (!pathname.startsWith('/api/admin/community/')) return false;
+    if (request.method === 'POST') contexts.set(res, {});
     const actor = String(context.operatorSession?.username || context.operator?.username || 'admin');
     try {
       if (request.method === 'GET' && pathname === '/api/admin/community/overview') {
@@ -310,5 +355,5 @@ export function createCommunityApi({
     }
   }
 
-  return { handle, handleAdmin };
+  return { handle, handleAdmin, close: events.close };
 }

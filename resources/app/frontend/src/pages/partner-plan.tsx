@@ -1,5 +1,7 @@
-﻿﻿﻿﻿import { useEffect, useId, useState } from 'react';
+import { canRetainQueryData } from '@/lib/page-cache';
+import { useId, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useBoundaryClock } from '@/hooks/use-boundary-clock';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownToLine, ArrowUpRight, Check, ChevronRight, Clock3, Coins, Handshake, LockKeyhole, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import { api, post, postSigned, walletIdentity } from '@/lib/api';
@@ -35,6 +37,11 @@ const duration = (milliseconds: number) => {
 function Table({ headings, children }: { headings: string[]; children: ReactNode }) { return <div className="rx-table-wrap pp-table"><table className="rx-table no-mobile-stack"><thead><tr>{headings.map(h => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>; }
 function CompactEmpty({ children }: { children: ReactNode }) { return <div className="pp-empty"><Empty>{children}</Empty></div>; }
 
+function QualificationCountdown({ deadline }: { deadline: number }) {
+  const now = useBoundaryClock([deadline], 60000);
+  return <>{duration(deadline - now)}</>;
+}
+
 function QualificationProgress({ title, current, target }: { title: string; current: string; target: string }) {
   const currentUnits = toUnits(current), targetUnits = toUnits(target), complete = currentUnits >= targetUnits;
   const labelId = useId();
@@ -46,11 +53,10 @@ function QualificationProgress({ title, current, target }: { title: string; curr
 }
 
 function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: PartnerState; team?: Team; teamError: Error | null; retryTeam: () => void; refresh: () => Promise<unknown> }) {
-  const action = useAction(), wallet = useWallet(), member = data.member, active = member?.status === 'active';
-  const [now, setNow] = useState(Date.now());
+  const action = useAction('partner'), wallet = useWallet(), member = data.member, active = member?.status === 'active';
+  const now = useBoundaryClock([...(data.dividends || []).filter(row => !row.status || row.status === 'pending').flatMap(row => [row.availableAt, row.expiresAt]), ...(active ? [member.qualificationDeadline] : [])]);
   const [recordTab, setRecordTab] = useState('dividends');
   const [dividendFilter, setDividendFilter] = useState<DividendFilter>('pending');
-  useEffect(() => { const timer = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(timer); }, []);
   const history = useQuery({
     queryKey: ['partner-dividends', wallet.address, wallet.revision, dividendFilter],
     queryFn: ({ signal }) => api<{ pending: DividendRecord[] }>(`a-token/pending?status=${dividendFilter}&limit=1000`, { signal }),
@@ -93,7 +99,7 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
           }
         }
         return `已领取 ${completed} 笔分红，已计入 SVX 主余额`;
-      } finally { if (walletIdentity() === identity) void refresh(); }
+      } catch (error) { if (walletIdentity() === identity) void refresh(); throw error; }
     });
   };
   const showDividends = () => { setRecordTab('dividends'); setDividendFilter('pending'); document.getElementById('partner-records')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); };
@@ -124,7 +130,7 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
 
       <Card className="pp-qualification-card" data-partner-qualification>
         <div className="pp-card-heading"><span className="pp-section-icon"><ShieldCheck size={20} /></span><div><h2>V3 资格进度</h2><p>升级舱与团队业绩需同时满足</p></div>{(team || active) && <span className={'pp-status-pill' + (qualified ? ' is-good' : '')}>{qualified ? '已达标' : '待达标'}</span>}</div>
-        <div className={'pp-qualification-deadline' + (active && !qualified && deadline <= now ? ' is-overdue' : '')}><Clock3 size={15} /><div><strong>{active ? qualified ? '资格已满足，请保持 V3 条件' : duration(deadline - now) : '加入后 30 天内完成资格'}</strong><span>{active ? `达标截止 ${date(deadline)} · 北京时间` : '可先查看当前进度，再决定加入'}</span></div></div>
+        <div className={'pp-qualification-deadline' + (active && !qualified && deadline <= now ? ' is-overdue' : '')}><Clock3 size={15} /><div><strong>{active ? qualified ? '资格已满足，请保持 V3 条件' : <QualificationCountdown deadline={deadline} /> : '加入后 30 天内完成资格'}</strong><span>{active ? `达标截止 ${date(deadline)} · 北京时间` : '可先查看当前进度，再决定加入'}</span></div></div>
         {teamError ? <ErrorState error={teamError} retry={retryTeam} /> : !team ? <div className="pp-qualification-loading"><Loading /></div> : <div className="pp-progress-list"><QualificationProgress title="个人升级舱" current={team.upgradeA} target={String(requirement?.warehouse ?? '5000')} /><QualificationProgress title="团队业绩" current={team.teamPerfA} target={String(requirement?.teamPerf ?? '100000')} /></div>}
         <div className="pp-qualification-footer"><span><Sparkles size={13} />升级舱投入不计收益</span><Button variant="outline" size="sm" onClick={() => void window.switchTab('referrals')}>查看团队 <ArrowUpRight size={13} /></Button></div>
       </Card>
@@ -136,7 +142,7 @@ function PartnerContent({ data, team, teamError, retryTeam, refresh }: { data: P
         <TabsList className="pp-record-tabs" aria-label="合伙人记录"><TabsTrigger value="dividends">分红记录</TabsTrigger><TabsTrigger value="fees">手续费记录</TabsTrigger><TabsTrigger value="pools">分红池记录</TabsTrigger></TabsList>
         <TabsContent value="dividends" className="pp-record-panel">
           <div className="pp-record-toolbar"><p>领取窗口内操作，过期分红作废。</p><label><span className="sr-only">分红状态</span><select aria-label="分红状态" value={dividendFilter} onChange={event => setDividendFilter(event.target.value as DividendFilter)}>{Object.entries(filters).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label></div>
-          {dividendFilter !== 'pending' && history.error ? <ErrorState error={history.error} retry={() => void history.refetch()} /> : dividendFilter !== 'pending' && !history.data ? <Loading /> : !records.length ? <CompactEmpty>{dividendFilter === 'pending' ? '暂无待领取分红' : `暂无${filters[dividendFilter]}分红记录`}</CompactEmpty> : <Table headings={['分红金额', '开放领取', dividendFilter === 'claimed' ? '领取时间' : '领取截止', '状态', ...(dividendFilter === 'pending' ? ['操作'] : [])]}>{records.map(row => {
+          {dividendFilter !== 'pending' && history.error && !canRetainQueryData(history) ? <ErrorState error={history.error} retry={() => void history.refetch()} /> : dividendFilter !== 'pending' && !history.data ? <Loading /> : !records.length ? <CompactEmpty>{dividendFilter === 'pending' ? '暂无待领取分红' : `暂无${filters[dividendFilter]}分红记录`}</CompactEmpty> : <Table headings={['分红金额', '开放领取', dividendFilter === 'claimed' ? '领取时间' : '领取截止', '状态', ...(dividendFilter === 'pending' ? ['操作'] : [])]}>{records.map(row => {
             const readyNow = readyIds.has(row.id) && canClaim(row, now);
             const status = row.status === 'pending' ? now >= row.expiresAt ? '已过期' : now < row.availableAt ? '待开放' : '待领取' : filters[row.status as DividendFilter] || '已结束';
             return <tr key={row.id}><td className="pp-numeric">{formatDecimal(row.amountSvx, 2)} <small>SVX</small></td><td>{date(row.availableAt)}</td><td>{date(dividendFilter === 'claimed' && 'claimedAt' in row ? Number(row.claimedAt) : row.expiresAt)}</td><td><span className={'pp-record-status' + (readyNow ? ' is-ready' : '')}>{status}</span></td>{dividendFilter === 'pending' && <td><Button size="sm" variant="outline" disabled={action.busy || !readyNow} onClick={() => claimDividends([row.id])}>领取</Button></td>}</tr>;
@@ -167,6 +173,6 @@ export default function PartnerPlanPage() {
   const refresh = () => Promise.allSettled([query.refetch(), team.refetch(), client.invalidateQueries({ queryKey: ['partner-dividends'] })]);
   return <div className="rx-page rx-partner-plan">
     <PageHeading title="合伙人计划" subtitle="你的合伙人身份、资格进度与分红。"><Button variant="outline" size="icon" aria-label="刷新合伙人计划" disabled={!wallet.authenticated || query.isFetching || team.isFetching} onClick={() => void refresh()}><RefreshCw size={17} /></Button></PageHeading>
-    {!wallet.authenticated ? <Gate description="连接并确认钱包，查看合伙人计划与分红权益" /> : query.error ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : !query.data ? <Loading /> : <PartnerContent key={wallet.address + ':' + wallet.revision} data={query.data} team={team.data} teamError={team.error} retryTeam={() => void team.refetch()} refresh={refresh} />}
+    {!wallet.authenticated ? <Gate description="连接并确认钱包，查看合伙人计划与分红权益" /> : query.error && !canRetainQueryData(query) ? <ErrorState error={query.error} retry={() => void query.refetch()} /> : !query.data ? <Loading /> : <PartnerContent key={wallet.address + ':' + wallet.revision} data={query.data} team={team.data} teamError={canRetainQueryData(team) ? null : team.error} retryTeam={() => void team.refetch()} refresh={refresh} />}
   </div>;
 }

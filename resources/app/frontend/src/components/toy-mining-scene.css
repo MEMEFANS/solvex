@@ -49,4 +49,9 @@
   .rx-cavern[data-scene-style=toy] .rx-cavern-label span { display:none; }
   .solvex-react .rx-cavern[data-scene-style=toy] .rx-cavern-footer { padding:12px 14px; }
 }
+@media(max-width:480px) {
+  .rx-cavern[data-scene-style=toy] .rx-cavern-worker { background-image:url('/assets/mining/toy-miner-copper-v3-w1024.webp'); }
+  .rx-cavern[data-scene-style=toy] .is-silver .rx-cavern-worker { background-image:url('/assets/mining/toy-miner-silver-v3-w1024.webp'); }
+  .rx-cavern[data-scene-style=toy] .is-gold .rx-cavern-worker { background-image:url('/assets/mining/toy-miner-gold-v3-w1024.webp'); }
+}
 @media(prefers-reduced-motion:reduce) { .rx-cavern[data-scene-style=toy] .rx-cavern-worker { animation:none; background-position:0 0; }.rx-cavern[data-scene-style=toy] .rx-cavern-impact,.rx-cavern[data-scene-style=toy] .rx-cavern-motes i { animation:none; opacity:0; } }

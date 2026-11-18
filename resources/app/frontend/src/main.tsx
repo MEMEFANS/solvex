@@ -5,13 +5,17 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from '@/lib/api';
 import { installLegacyDOM, startRuntime } from '@/lib/runtime';
 import App from './app';
+import { prepareEntry } from '@/lib/entry-preparation';
+import { installPerformanceMetrics } from '@/lib/performance-metrics';
 import './styles.css';
 import './brand-theme.css';
 import './ui-refinement.css';
 import './ui-system.css';
 import './mobile-experience.css';
 import './logo-surfaces.css';
+import './svx-chart.css';
 document.body.classList.add('solvex-react');
+installPerformanceMetrics();
 // 移动端锁定整页缩放：iOS Safari 忽略 user-scalable=no，需要拦掉 pinch 手势事件
 const blockZoomGesture = (event: Event) => event.preventDefault();
 for (const type of ['gesturestart', 'gesturechange', 'gestureend']) {
@@ -23,4 +27,7 @@ let resolveReady: () => void;
 let rejectReady: (reason: unknown) => void;
 window.solvexRuntimeReady = new Promise<void>((resolve, reject) => { resolveReady = resolve; rejectReady = reject; });
 flushSync(() => createRoot(document.getElementById('root')!).render(<QueryClientProvider client={queryClient}><App /></QueryClientProvider>));
-void startRuntime().then(() => resolveReady()).catch(error => rejectReady(error));
+const stopEntryPreparation = prepareEntry();
+if (import.meta.hot) import.meta.hot.dispose(stopEntryPreparation);
+const finishRuntime = window.solvexPerformance?.start('runtime');
+void startRuntime().then(() => resolveReady()).catch(error => rejectReady(error)).finally(finishRuntime);

@@ -1,3 +1,4 @@
+import { canRetainQueryData } from '@/lib/page-cache';
 import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -129,7 +130,7 @@ function RecordCard({ record }: { record: AiManagedRecord }) {
 export default function AiManagedPage() {
   const wallet = useWallet();
   const identity = walletIdentity();
-  const { run, busy, dialog } = useAction();
+  const { run, busy, dialog } = useAction('ai');
   const [amount, setAmount] = useState('');
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [analysisAt, setAnalysisAt] = useState('');
@@ -211,7 +212,7 @@ export default function AiManagedPage() {
     <Gate description="连接并确认钱包，查看量化批次与策略收益" />
   </div>;
 
-  if (query.error) return <div className="rx-page">
+  if (query.error && !canRetainQueryData(query)) return <div className="rx-page">
     <PageHeading title="Ai量化" subtitle="以策略连接市场 · 每日结算，自主管理" />
     <ErrorState error={query.error} retry={() => void query.refetch()} />
   </div>;

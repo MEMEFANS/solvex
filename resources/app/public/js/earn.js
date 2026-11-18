@@ -352,7 +352,7 @@
     activationEnabled: true,
     withdrawEnabled: false,
     staking: [
-      { planId: 'energy', label: '能量', days: 100, dailyRateBps: 100, flexible: false, energy: true, minCoins: '0' }
+      { planId: 'energy30', label: '能量·30天', days: 30, dailyRateBps: 333, flexible: false, energy: true, minCoins: '0' }
     ],
     miner: [ { plan: 'mini120', days: 30 }, { plan: 'pro1500', days: 90 } ],
     _fallback: true
@@ -581,7 +581,7 @@
       </div>`;
   }
   function stakeCardHtml(p, showButton = true) {
-    if (p.energy) return `<div class="stake-card svx-energy-card"><span class="stake-tag">能量释放</span><div class="stake-rate-big">1%<small>每日释放原额度</small></div><p>面向工作室，普通用户也可参与。后台充值或从蓄能额度投入，按原始额度（SVX 枚数）每天释放 1%，100 次释放完毕；按枚数计息、不按 USDT 市值折算，不额外产生利息。</p><p>每天 UTC 00:00（北京 08:00）开放领取，次日同一时点未领作废；不可提前赎回。</p><button class="btn-stake" onclick="window.earnStake('energy')" ${showButton?'':'disabled'}>投入能量</button></div>`;
+    if (p.energy) return `<div class="stake-card svx-energy-card"><span class="stake-tag">能量释放 · 30天</span><div class="stake-rate-big">约3.33%<small>每日释放原额度</small></div><p>面向工作室，普通用户也可参与。后台赠送或从蓄能额度投入，按原始 SVX 额度分 30 天释放，尾差自动补齐；不额外产生利息。</p><p>每天 UTC 00:00（北京 08:00）开放领取，次日同一时点未领作废；不可提前赎回。</p><button class="btn-stake" onclick="window.earnStake('energy30')" ${showButton?'':'disabled'}>投入能量</button></div>`;
 
     // 2026-11-09 P1：新三档按「周期总收益」展示，每天08:00领取利息，到期另领本金
     const maturity = Boolean(p.pendingMaturity);
@@ -1290,7 +1290,7 @@
             <div class="stake-record-item"><span>每日释放</span><b>${fmtA(s.dayEarned)} SVX</b></div>
             <div class="stake-record-item"><span>累计已释放</span><b>${fmtA(s.totalEarned)} SVX</b></div>
             <div class="stake-record-item"><span>剩余额度</span><b>${fmtA(s.outstandingPrincipal)} SVX</b></div>
-            <div class="stake-record-item"><span>释放进度</span><b>${Number(s.energyDays||0)} / 100 次</b></div>
+            <div class="stake-record-item"><span>释放进度</span><b>${Number(s.energyDays||0)} / ${s.days||30} 次</b></div>
           </div></div>`).join('')||'<div class="ev2-empty">暂无能量记录</div>'}</div></div>`;
   }
 
@@ -1313,7 +1313,7 @@
     return `
       <div class="team-hero">
         <h2>盲盒 · 1 USDT 开 100–500 SVX</h2>
-        <p>注册后可支付 1 USDT 开启盲盒（全额进 LP 池），开盒随机 100–500 枚 SVX（0.1 USDT/枚）；30 天每日手动领取，次日 UTC 00:00（北京 08:00）未领当天作废。领取后进入主余额并获得蓄能额度，使用超速驱动协议获得卖出额度；不计团队业绩、不计推广收益。</p>
+        <p>注册后可支付 1 USDT 开启盲盒（全额进 LP 池），开盒随机 100–500 枚 SVX（0.1 USDT/枚）；30 天每日手动领取，次日 UTC 00:00（北京 08:00）未领当天作废。开盒总币数计入团队业绩；领取每日收益后计算直推与级差奖励，奖励接收人需持有有效矿池。</p>
       </div>
 
       <div class="portal-metrics" style="margin-bottom:22px;border-radius:14px;overflow:hidden">
@@ -1364,7 +1364,8 @@
           · 奖品范围 100–500 枚 SVX，具体档位概率不对外公开。<br>
           · 领取周期 30 天，每天手动领取；每日额度固定为「总币数 ÷ 30」，不乘任何系数。<br>
           · 次日 UTC 00:00（北京 08:00）未领，当天额度过期作废且不滚存；累计发放封顶总币数，领完即结束。<br>
-          · 产出进入主余额并获得蓄能额度，通过超速驱动协议获得卖出额度；不计团队业绩与推广收益。
+          · 开盒总币数计入团队业绩；盲盒日收益领取后参与直推奖励（10%）与等级差奖励。<br>
+          · 直推、团队等级差奖励仅发给仍持有有效矿池的会员。
         </p>
       </div>`;
   }
@@ -1783,7 +1784,7 @@
   async function earnDoStake(planId, amount) {
     try {
       const r = await authApi('stake', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ planId, principal: amount }) });
-      const label = planId === 'energy' ? '能量' : planId;
+      const label = planId === 'energy30' || planId === 'energy' ? '能量·30天' : planId;
       const displayA = r?.stake?.principalUnits ? formatUnits18(r.stake.principalUnits) : fmtA(amount);
       showOk(`质押成功 · ${label} ${displayA} 币，到期后收益进入「待领取」`);
       closeStakeModal();

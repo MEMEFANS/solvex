@@ -1,4 +1,4 @@
-import { formatUnits } from 'ethers';
+import { formatUnits, getAddress } from 'ethers';
 import { createHash, randomUUID } from 'node:crypto';
 import { A_TOKEN_DECIMALS } from './a-token-service.js';
 import { ROLLING_WINDOW_MS, settlementDayStart, nextSettlementAt } from './a-token-time.js';
@@ -32,9 +32,8 @@ export function nodeYieldBpsFor(coinsUnits) {
   return NODE_TERM.lowYieldBps;
 }
 
-function quoteOf(coinsUnits) {
+function quoteOf(coinsUnits, yieldBps = nodeYieldBpsFor(coinsUnits)) {
   const coins = BigInt(coinsUnits);
-  const yieldBps = nodeYieldBpsFor(coins);
   const interestUnits = coins * BigInt(yieldBps) / BPS;
   const payoutUnits = coins + interestUnits;
   return {
@@ -95,10 +94,11 @@ export function createATokenNodeService({ aTokenService, database, pendingServic
   }
 
   // 建仓：只从甲区扣币。调用方保证事务。
-  function openInside(wallet, coinsInput, { id, startedAt, requestId } = {}) {
+  function openInside(wallet, coinsInput, { id, startedAt, requestId } = {}, grantQuote = null) {
     const key = String(wallet || '').toLowerCase();
     const coins = aTokenService.parseA(coinsInput, '矿池币数');
-    const q = quoteOf(coins);
+    // Only grantPools can supply a fixed-tier quote. Public open never forwards one.
+    const q = grantQuote || quoteOf(coins);
     const now = Number(startedAt ?? clock());
     if (!id && requestId) id = 'atn_req_' + createHash('sha256').update(key + ':' + requestId).digest('hex');
     const existing = id ? db.getATokenNode(id) : null;
@@ -138,24 +138,105 @@ export function createATokenNodeService({ aTokenService, database, pendingServic
     return transaction(() => openInside(wallet, coinsInput, options));
   }
 
-  // 利息按实际持有时长分摊，统一在 UTC 00:00 生成；跳过的领取日不顺延。
+  function grantPlans() {
+    const minimums = [NODE_TERM.minCoinsUnits, NODE_TERM.midCoinsUnits, NODE_TERM.highCoinsUnits];
+    const rates = [NODE_TERM.lowYieldBps, NODE_TERM.midYieldBps, NODE_TERM.highYieldBps];
+    return {
+      maxQuantity: null, maxTotalCoins: null, compactAfter: 100,
+      plans: ['copper', 'silver', 'gold'].map((type, index) => ({
+        type, name: SOLVEX_RULES.pool.names[index], days: NODE_TERM.days,
+        minCoins: (BigInt(minimums[index]) / A_UNIT).toString(),
+        maxCoinsExclusive: null,
+        yieldBps: rates[index], ratePct: rates[index] / 100,
+      })),
+    };
+  }
+
+  function quoteGrant({ type, coins, quantity } = {}) {
+    const config = grantPlans(), plan = config.plans.find(item => item.type === type);
+    if (!plan) throw new Error('请选择铜矿、银矿或金矿');
+    const amount = String(coins ?? plan.minCoins).trim(), count = String(quantity ?? '').trim();
+    if (!/^[1-9]\d*$/.test(amount) || typeof coins === 'number' && !Number.isSafeInteger(coins)) throw new Error('每份矿池币数必须为精确的正整数');
+    if (!/^[1-9]\d*$/.test(count) || typeof quantity === 'number' && !Number.isSafeInteger(quantity)) throw new Error('赠送份数须为精确的正整数');
+    if (BigInt(amount) < BigInt(plan.minCoins)) {
+      throw new Error(`${plan.name}每份币数须不少于 ${plan.minCoins} SVX`);
+    }
+    const q = quoteOf(BigInt(amount) * A_UNIT, plan.yieldBps), totalPrincipalUnits = BigInt(q.coinsUnits) * BigInt(count);
+    const totalInterestUnits = BigInt(q.interestUnits) * BigInt(count);
+    return { ...q, coins: formatUnits(BigInt(q.coinsUnits), A_TOKEN_DECIMALS),
+      interest: formatUnits(BigInt(q.interestUnits), A_TOKEN_DECIMALS), payout: formatUnits(BigInt(q.payoutUnits), A_TOKEN_DECIMALS),
+      type, name: plan.name, quantity: BigInt(count) <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(count) : count,
+      totalPrincipalUnits: totalPrincipalUnits.toString(), totalInterestUnits: totalInterestUnits.toString(),
+      totalPrincipal: formatUnits(totalPrincipalUnits, A_TOKEN_DECIMALS),
+      totalInterest: formatUnits(totalInterestUnits, A_TOKEN_DECIMALS),
+      totalPayout: formatUnits(totalPrincipalUnits + totalInterestUnits, A_TOKEN_DECIMALS),
+    };
+  }
+
+  function grantPools(wallet, input, { requestId, reason } = {}) {
+    const key = getAddress(String(wallet || '').trim()).toLowerCase(), q = quoteGrant(input);
+    if (!/^[A-Za-z0-9._:-]{8,80}$/.test(String(requestId || ''))) throw new Error('操作请求编号格式不正确');
+    if (typeof reason !== 'string' || reason.trim().length < 2 || reason.length > 120) throw new Error('请填写赠送原因');
+    return transaction(() => {
+      const now = clock(), nodes = [], prefix = 'atn_gift_' + createHash('sha256').update(requestId).digest('hex');
+      // Large gifts share one position with an explicit number of identical units.
+      // This keeps unlimited business quantities atomic without an unbounded loop.
+      const compact = BigInt(q.quantity) > BigInt(grantPlans().compactAfter);
+      const positionQuantity = compact ? String(q.quantity) : '1';
+      const positionQuote = compact ? quoteOf(BigInt(q.totalPrincipalUnits), q.yieldBps) : q;
+      for (let index = 0; index < (compact ? 1 : Number(q.quantity)); index++) {
+        const id = prefix + '_' + index, existing = db.getATokenNode(id);
+        if (existing) {
+          if (existing.wallet !== key || existing.principalUnits !== positionQuote.coinsUnits || existing.grantType !== q.type || String(existing.grantQuantity) !== String(q.quantity) || existing.grantReason !== reason) {
+            throw Object.assign(new Error('该请求编号已用于另一笔矿池赠送'), { statusCode: 409, code: 'IDEMPOTENCY_CONFLICT' });
+          }
+          nodes.push(existing); continue;
+        }
+        // Grant funding and consume it into a normal pool in the same commit.
+        // The recipient's spendable balance is unchanged; both ledger legs remain auditable.
+        db.creditATokenZone({ wallet: key, zone: 'alpha', units: positionQuote.coinsUnits, bizType: 'funds_pool_grant', refId: id,
+          createdAt: now, payload: { requestId, reason, type: q.type, quantity: q.quantity } });
+        const node = openInside(key, formatUnits(BigInt(positionQuote.coinsUnits), A_TOKEN_DECIMALS), { id, startedAt: now }, positionQuote);
+        Object.assign(node, { source: 'admin_grant', grantRequestId: requestId, grantType: q.type, grantQuantity: q.quantity, grantReason: reason,
+          positionQuantity, grantUnitCoins: q.coins });
+        db.upsertATokenNodeRow(node); nodes.push(node);
+      }
+      return { ...q, nodeIds: nodes.map(node => node.id), startedAt: nodes[0].startedAt, expiresAt: nodes[0].expiresAt };
+    });
+  }
+
+  // 矿池按收益日计息：每个结算日（北京时间08:00）发放完整的一日额度，首日不足24小时也算一天。
+  // 30期总额严格封顶于合同总利息；第30期补足整数精度尾差，错过的领取日不顺延。
   function settleDaily(node, now) {
     if (node.status !== 'active') return;
     const started = Number(node.startedAt), maturity = Number(node.expiresAt);
     const totalInterest = BigInt(node.interestUnits);
     let last = Number(node.lastInterestAt || started);
+    // 首次结算时为旧仓位从已有流水重建已发期数和金额，防止升级后重复发奖或突破总收益。
+    if (!Number.isInteger(Number(node.interestDaysIssued)) || node.interestIssuedUnits == null) {
+      const issued = db.listATokenPendingRewardsByBizId(node.wallet, 'node', node.id, 1000)
+        .filter(row => String(row.periodKey || '').startsWith('interest_'));
+      node.interestDaysIssued = issued.length;
+      node.interestIssuedUnits = issued.reduce((sum, row) => sum + BigInt(row.amountUnits || '0'), 0n).toString();
+    }
     const boundary = settlementDayStart(now);
     while (last < maturity && nextSettlementAt(last) <= boundary) {
       const available = nextSettlementAt(last);
       const end = Math.min(available, maturity);
-      const accrued = t => totalInterest * BigInt(t - started) / BigInt(maturity - started);
-      const amount = accrued(end) - accrued(last);
+      const remaining = totalInterest - BigInt(node.interestIssuedUnits || '0');
+      const dayIndex = Number(node.interestDaysIssued || 0) + 1;
+      const dailyBase = totalInterest / BigInt(NODE_TERM.days);
+      const amount = dayIndex > NODE_TERM.days || remaining <= 0n ? 0n
+        : dayIndex === NODE_TERM.days ? remaining
+          : dailyBase < remaining ? dailyBase : remaining;
       if (amount > 0n) {
         pendingService.createReward({ wallet: node.wallet, bizType: 'node', bizId: node.id,
           periodKey: 'interest_' + end, amountUnits: amount.toString(), quotaUnits: amount.toString(),
           availableAt: available, expiresAt: nextSettlementAt(available),
           payload: { component: 'interest', interestUnits: amount.toString(), principalUnits: '0' } });
-        teamService?.distributeNodeReward?.(node.wallet, amount, node.id, available, now);
+        node.interestDaysIssued = dayIndex;
+        node.interestIssuedUnits = (BigInt(node.interestIssuedUnits || '0') + amount).toString();
+        // Team rewards are created atomically when this interest is claimed.
       }
       last = end;
       node.lastInterestAt = end;
@@ -220,5 +301,5 @@ export function createATokenNodeService({ aTokenService, database, pendingServic
     };
   }
 
-  return { open, quote, processAll, present, overview, describe, NODE_TERM, nodeYieldBpsFor };
+  return { open, quote, processAll, present, overview, describe, grantPlans, quoteGrant, grantPools, NODE_TERM, nodeYieldBpsFor };
 }

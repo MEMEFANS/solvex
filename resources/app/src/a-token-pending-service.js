@@ -38,6 +38,11 @@ function unitsOf(value) {
 export function createATokenPendingService({ aTokenService, database, clock = () => Date.now() }) {
   const db = database;
   const transaction = aTokenService.transaction;
+  let claimHandler = null;
+  function setClaimHandler(handler) {
+    if (typeof handler !== 'function' || claimHandler) throw new Error('领取处理器已设置或无效');
+    claimHandler = handler;
+  }
 
   // 生成一条待领取收益；重复调用不会重复记账，直接返回已存在的记录。
   function createReward({
@@ -117,6 +122,9 @@ export function createATokenPendingService({ aTokenService, database, clock = ()
           db.creditATokenZone({ wallet: row.wallet, zone: 'alpha', units: amount.toString(), bizType: 'output', refId: row.id, createdAt: now, payload: { source: row.bizType } });
         }
       }
+      // Synchronous: personal credit and all related rewards share one commit.
+      // Throwing here rolls back both the claim status and every balance change.
+      claimHandler?.({ ...row, status: 'claimed', claimedAt: now });
       return {
         id: row.id, bizType: row.bizType, bizId: row.bizId, periodKey: row.periodKey,
         asset: row.asset || 'A',
@@ -176,5 +184,5 @@ export function createATokenPendingService({ aTokenService, database, clock = ()
     };
   }
 
-  return { createReward, claim, sweepExpired, reverse, list, summary };
+  return { createReward, claim, sweepExpired, reverse, list, summary, setClaimHandler };
 }

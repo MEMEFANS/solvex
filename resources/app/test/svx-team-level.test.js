@@ -20,7 +20,7 @@ function fixture(run) {
   const db = wallet.database;
   const at = createATokenService({ database: db, walletService: wallet });
   const pending = createATokenPendingService({ aTokenService: at, database: db, clock: () => now });
-  const team = createATokenTeamService({ database: db, walletService: wallet, pendingService: pending });
+  const team = createATokenTeamService({ database: db, walletService: wallet, pendingService: pending, clock: () => now });
   const referrals = createReferralService({ database: db, walletService: wallet });
   const fund = (n, amount) => {
     wallet.ensureUser(user(n));
@@ -40,8 +40,12 @@ function fixture(run) {
     id: `node_${address}`, wallet: address, principalUnits: A(1000).toString(), yieldBps: 2500,
     startedAt: now, expiresAt: now + 30 * 86400000, status: 'active', settledAt: 0, pendingId: '', payload: {},
   });
+  const claimInterest = (address, units, id) => {
+    const row = pending.createReward({ wallet: address, bizType: 'node', bizId: id, periodKey: 'interest_' + now, amountUnits: units.toString(), availableAt: now, expiresAt: now + 86400000 });
+    return pending.claim(address, row.id);
+  };
   try {
-    run({ db, at, pending, team, referrals, wallet, fund, link, upgrade, perf, activate, now });
+    run({ db, at, pending, team, referrals, wallet, fund, link, upgrade, perf, activate, now, claimInterest });
   } finally {
     closeDatabase(root);
     fs.rmSync(root, { recursive: true, force: true });
@@ -96,7 +100,7 @@ fixture(({ team, fund, link, upgrade, perf }) => {
 });
 
 // 3) 级差 = 自己比例 − 直接下级比例；收益进待领取；幂等
-fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) => {
+fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now, claimInterest }) => {
   const grand = fund(1), parent = fund(2), child = fund(3);
   link(parent, grand);
   link(child, parent);
@@ -113,7 +117,7 @@ fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) =>
 
   // parent(V1=5%) 对 child(V0) → 5%；grand(V2=10%) 对 parent(V1=5%) → 5%。
   // 2026-11-12：级差按矿池每日利息计提。
-  team.distributeNodeReward(child, A(1000), 'node_p3_diff', now);
+  claimInterest(child, A(1000), 'node_p3_diff');
   const parentRows = db.listATokenTeamRewards(parent, 50).filter(r => r.kind === 'node_level_diff');
   const grandRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(parentRows.length, 1);
@@ -145,7 +149,7 @@ fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) =>
 });
 
 // 4) 平级 = 0；下级更高 = 0
-fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
+fixture(({ db, team, fund, link, upgrade, perf, activate, now, claimInterest }) => {
   const grand = fund(1), parent = fund(2), child = fund(3);
   link(parent, grand);
   link(child, parent);
@@ -160,13 +164,13 @@ fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
   team.snapshot(child);
   assert.equal(team.getLevel(parent), 2);
   assert.equal(team.getLevel(grand), 2);
-  team.distributeNodeReward(child, A(1000), 'node_p3_equal', now);
+  claimInterest(child, A(1000), 'node_p3_equal');
   const equalRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(equalRows.length, 0, '平级不发级差');
   console.log('  ✓ 平级为 0');
 });
 
-fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
+fixture(({ db, team, fund, link, upgrade, perf, activate, now, claimInterest }) => {
   const grand = fund(1), parent = fund(2), child = fund(3);
   link(parent, grand);
   link(child, parent);
@@ -181,14 +185,14 @@ fixture(({ db, team, fund, link, upgrade, perf, activate, now }) => {
   team.snapshot(child);
   assert.equal(team.getLevel(grand), 1);
   assert.equal(team.getLevel(parent), 2);
-  team.distributeNodeReward(child, A(1000), 'node_p3_higher', now);
+  claimInterest(child, A(1000), 'node_p3_higher');
   const higherRows = db.listATokenTeamRewards(grand, 50).filter(r => r.kind === 'node_level_diff');
   assert.equal(higherRows.length, 0, '下级更高不发级差');
   console.log('  ✓ 下级更高为 0');
 });
 
 // 6) 无效会员（未持有矿池）不发动态收益：直推与级差都要在结算侧拦住
-fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) => {
+fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now, claimInterest }) => {
   const grand = fund(1), parent = fund(2), child = fund(3);
   link(parent, grand);
   link(child, parent);
@@ -211,6 +215,26 @@ fixture(({ db, at, pending, team, fund, link, upgrade, perf, activate, now }) =>
   const eligiblePending = pending.list(parent).filter(r => r.bizType === 'team');
   assert.equal(eligiblePending.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(100), '补矿池后直推 10% 正常进待领取，无级差');
   console.log('  ✓ 无效会员拦截直推与级差');
+});
+
+// 盲盒开盒额计团队业绩，领取的日收益触发直推与级差；奖励上级仍须有有效矿池。
+fixture(({ db, pending, team, fund, link, upgrade, perf, activate, now }) => {
+  const grand = fund(41), parent = fund(42), child = fund(43);
+  link(parent, grand); link(child, parent);
+  upgrade(parent, 1000); upgrade(grand, 3000); perf(child, 30000, 'blindbox_level_perf');
+  activate(parent); activate(grand);
+  team.snapshot(parent); team.snapshot(grand); team.snapshot(child);
+  const performance = team.recordTeamPerformance(child, {bizType:'blindbox',bizId:'blindbox_perf',amountUnits:A(300).toString(),occurredAt:now});
+  assert.equal(performance.recorded,2);
+  assert.equal(team.getTeamPerfUnits(parent),A(30300));
+  const source = pending.createReward({wallet:child,bizType:'blindbox',bizId:'blindbox_claim_source',periodKey:'d0',amountUnits:A(100).toString(),availableAt:now,expiresAt:now+86400000});
+  pending.claim(child,source.id);
+  const parentRewards=db.listATokenTeamRewards(parent,50).filter(r=>r.kind.startsWith('blindbox_'));
+  const grandRewards=db.listATokenTeamRewards(grand,50).filter(r=>r.kind.startsWith('blindbox_'));
+  assert.deepEqual(parentRewards.map(r=>[r.kind,BigInt(r.amountUnits)]),[['blindbox_direct',A(10)],['blindbox_level_diff',A(5)]]);
+  assert.deepEqual(grandRewards.map(r=>[r.kind,BigInt(r.amountUnits)]),[['blindbox_level_diff',A(5)]]);
+  assert.equal(pending.list(parent).filter(row=>row.bizType==='team').length,2);
+  console.log('  ✓ 盲盒团队业绩、领取后直推/级差奖励及矿池有效资格');
 });
 
 console.log('svx-team-level tests passed: dual-condition, team performance reversal, level diff, pending idempotency, parity rules');

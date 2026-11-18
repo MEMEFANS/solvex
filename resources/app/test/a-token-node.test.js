@@ -82,6 +82,20 @@ try {
   assert.equal(secondRows.filter(x => String(x.periodKey) === 'principal').length, 1, '第二期到期同样挂本金');
   assert.ok(secondRows.filter(x => String(x.periodKey).startsWith('interest_')).length >= 30, '第二期同样按日分摊');
 
+  // 首个收益日即使只经过数小时，也按完整一天计；30期合计严格等于总收益。
+  const u4 = user(4); wallet.ensureUser(u4);
+  const start = Date.UTC(2026, 10, 16, 3); // 北京时间 11:00，距下一结算仅 5 小时
+  now = start;
+  db.creditATokenZone({ wallet: u4, zone: 'alpha', units: A(2000).toString(), bizType: 'buy', refId: 'buy-first-day', createdAt: now });
+  const n3 = nodes.open(u4, '2000');
+  now = nextSettlementAt(start); nodes.processAll();
+  let dailyRows = pending.list(u4, 'pending', 500).filter(x => x.bizId === n3.id && String(x.periodKey).startsWith('interest_'));
+  assert.equal(BigInt(dailyRows[0].amountUnits), A(900) / 30n, '不足24小时首日也领取完整日利息');
+  for (let day = 1; day < 30; day += 1) { now = nextSettlementAt(start) + day * 86400000; nodes.processAll(); }
+  dailyRows = db.listAllATokenPendingRewards(u4, 500).filter(x => x.bizId === n3.id && String(x.periodKey).startsWith('interest_'));
+  assert.equal(dailyRows.length, 30, '期限内最多发放30个收益日');
+  assert.equal(dailyRows.reduce((sum, row) => sum + BigInt(row.amountUnits), 0n), A(900), '30日总利息不超出档位约定');
+
   console.log('P1 节点链路校验通过');
 } finally {
   closeDatabase(root);

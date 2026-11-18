@@ -197,6 +197,13 @@ export function createATokenAdminApi({
         const settings = klineService.saveSettings(patch);
         return send(res, 200, { ok:true, settings });
       }
+      if (klineService && request.method === 'POST' && pathname === '/api/admin/a-token/kline/target') {
+        if (!operatorSession) return send(res, 401, {error:'请先登录管理后台'});
+        if (allowRequest && !allowRequest(request, res, 'a-token-admin', 10, 60_000)) return true;
+        const body = await readBody(request);
+        const settings = klineService.scheduleTargetPrice(body.targetPrice);
+        return send(res, 200, {ok:true, settings, status:klineService.status()});
+      }
       if (klineService && request.method === 'POST' && pathname === '/api/admin/a-token/kline/rebuild') {
         if (allowRequest && !allowRequest(request, res, 'a-token-admin', 2, 60_000)) return true;
         const body = await readBody(request);

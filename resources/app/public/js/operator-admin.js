@@ -25,6 +25,8 @@
   let usersOffset = 0, usersTotal = 0, usersRequestSeq = 0, overviewRequestSeq = 0, depositsRequestSeq = 0, klineRequestSeq = 0;
   let adminGeneration = 0, userSearchTimer = null;
   const pendingReads = new Map();
+  const levelRequests = new Map(), levelBusy = new Set();
+  const levelLabel = value => Number(value) > 0 ? `V${Number(value)}` : '未达标';
   let blindboxSnapshot = null, blindboxRequestSeq = 0;
   let freeTradingEnabled = false;
 
@@ -80,6 +82,7 @@
     ++usersRequestSeq;
     clearTimeout(userSearchTimer);
     pendingReads.clear();
+    levelRequests.clear();
     if (supportBadgeTimer) clearInterval(supportBadgeTimer);
     supportBadgeTimer = null;
     deactivateSupport();
@@ -145,32 +148,42 @@
     byId('admin-users-prev').disabled = usersOffset === 0;
     byId('admin-users-next').disabled = usersOffset + items.length >= usersTotal;
     const levelColor = lv => lv >= 9 ? '#f06b78' : lv >= 7 ? '#f6c454' : lv >= 4 ? '#4fd1b5' : '#82908c';
-    const levelPill = lv => `<span style="padding:2px 8px;border-radius:10px;font-size:11px;background:${levelColor(lv)}22;color:${levelColor(lv)};border:1px solid ${levelColor(lv)}55;font-weight:700">A${lv}</span>`;
-    const levelOptions = (cur) => Array.from({length:10},(_,i)=>i+1).map(n=>`<option value="${n}" ${Number(cur)===n?'selected':''}>A${n}</option>`).join('');
+    const levelPill = lv => `<span style="padding:2px 8px;border-radius:10px;font-size:11px;background:${levelColor(lv)}22;color:${levelColor(lv)};border:1px solid ${levelColor(lv)}55;font-weight:700">${levelLabel(lv)}</span>`;
+    const levelOptions = user => `<option value="auto" ${user.levelMode !== 'manual' ? 'selected' : ''}>自动评定</option>` + Array.from({length:10},(_,i)=>i+1).map(n=>`<option value="${n}" ${user.levelMode === 'manual' && Number(user.manualVLevel)===n?'selected':''}>V${n}</option>`).join('');
     byId('admin-users-body').innerHTML = items.map(user => `<tr>
       <td data-label="钱包地址"><code>${esc(user.address)}</code></td>
-      <td data-label="等级">${levelPill(user.level || 1)}</td>
+      <td data-label="等级">${levelPill(user.level || 0)}<small class="admin-level-mode">${user.levelMode === 'manual' ? '后台设置' : '自动评定'}</small></td>
       <td data-label="用户类型"><span class="admin-status ${user.isRealUser ? 'good' : ''}">${user.isRealUser ? '真实充值用户' : '钱包用户'}</span></td>
       <td data-label="确认充值">${amount(user.confirmedDepositTotal)} USDT (${Number(user.confirmedDepositCount) || 0} 笔)</td>
       <td data-label="平台余额">${amount(user.platformUsdtBalance)} USDT</td>
       <td data-label="首次连接">${date(user.createdAt)}</td><td data-label="最近充值">${date(user.lastDepositAt)}</td>
-      <td data-label="操作" style="white-space:nowrap">
+      <td data-label="操作"><div class="admin-user-actions">
         <button type="button" class="admin-table-action" data-detail-btn="${esc(user.address)}">详情</button>
-        <select class="admin-level-select" data-level-wallet="${esc(user.address)}" style="height:30px;padding:0 6px;font-size:11px">${levelOptions(user.level || 1)}</select> <button type="button" class="admin-table-action" data-level-btn="${esc(user.address)}">设置</button>
-      </td>
+        <select class="admin-level-select" aria-label="用户 V 等级" data-level-wallet="${esc(user.address)}" ${levelBusy.has(user.address) ? 'disabled' : ''}>${levelOptions(user)}</select> <button type="button" class="admin-table-action" data-level-btn="${esc(user.address)}" ${levelBusy.has(user.address) ? 'disabled' : ''}>设置等级</button>
+      </div></td>
     </tr>`).join('') || emptyRow(8, '没有符合条件的用户');
     document.querySelectorAll('[data-detail-btn]').forEach(btn => btn.addEventListener('click', () => loadUserDetail(btn.dataset.detailBtn)));
     document.querySelectorAll('[data-level-btn]').forEach(btn => btn.addEventListener('click', async () => {
       const wallet = btn.dataset.levelBtn;
       const tr = btn.closest('tr');
       const select = tr && tr.querySelector('select[data-level-wallet]');
-      const level = select ? select.value : '1';
-      if (!await confirmDialog(`确认将用户 ${shortAddress(wallet)} 的等级设置为 A${level}？`)) return;
+      if (!select || levelBusy.has(wallet)) return;
+      const generation = adminGeneration, value = select.value;
+      const payload = value === 'auto' ? { mode:'auto' } : { mode:'manual', level:Number(value) };
+      const message = value === 'auto' ? `确认将用户 ${shortAddress(wallet)} 恢复为自动评定？等级将按升级舱与团队业绩计算。`
+        : `确认将用户 ${shortAddress(wallet)} 设置为 V${value}？\n设置后保持该等级，建群权限和后续团队级差按此生效；可随时恢复自动评定。`;
+      if (!await confirmDialog(message) || generation !== adminGeneration || levelBusy.has(wallet)) return;
+      const fingerprint = JSON.stringify(payload); let pending = levelRequests.get(wallet);
+      if (pending?.fingerprint !== fingerprint) { pending = { fingerprint, requestId:'v_level_' + crypto.randomUUID().replaceAll('-','') }; levelRequests.set(wallet,pending); }
+      levelBusy.add(wallet); btn.disabled = true; select.disabled = true;
       try {
-        await api(`/api/admin/users/${encodeURIComponent(wallet)}/level`, { method:'POST', body:JSON.stringify({ level: Number(level) }) });
-        toast(`✓ 已设置为 A${level}`);
-        await loadAll();
-      } catch (error) { toast(error.message); }
+        const result = await api(`/api/admin/users/${encodeURIComponent(wallet)}/level`, { method:'POST', body:JSON.stringify({ ...payload, requestId:pending.requestId }) });
+        if (generation !== adminGeneration) return;
+        levelRequests.delete(wallet);
+        toast(result.levelMode === 'manual' ? `✓ 已设置为 ${levelLabel(result.level)}` : `✓ 已恢复自动评定，当前${levelLabel(result.level)}`);
+        levelBusy.delete(wallet); await loadUsers();
+      } catch (error) { if (generation === adminGeneration) toast(error.message); }
+      finally { levelBusy.delete(wallet); btn.disabled = false; select.disabled = false; }
     }));
   }
 
@@ -269,7 +282,7 @@
     const teamStatsEditor = `
       <div class="admin-detail-section ats-editor${storedOv ? ' is-set' : ''}">
         ${subHead(storedOv ? `📊 团队展示数据 · 已手动设置（更新于 ${date(storedOv.updatedAt)}${storedOv.updatedBy ? ` · ${esc(storedOv.updatedBy)}` : ''}）` : '📊 团队展示数据（仅前端展示）')}
-        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；该地址的真实上级打开团队页时，团队人数 / 团队业绩会按真实推荐链自动叠加，页面展示等级也会按虚拟业绩相应提升。仅用于前端展示，不影响手续费率、真实等级与分润等实际权益。</p>
+        <p class="ats-tip">填写该地址页面要「显示的总人数」，保存后虚拟人数 = 设定值 − 当前真实值；上级的团队展示数据按推荐链叠加。这里仅调整人数与业绩展示，不改变 V 等级或分润。修改等级请使用用户列表的 V 等级设置。</p>
         <div class="ats-grid">
           ${atsField('ats-direct', '直推人数', d.direct?.count, d.statsOverride?.real?.directCount)}
           ${atsField('ats-indirect', '间推人数', d.indirect?.count, d.statsOverride?.real?.indirectCount)}
@@ -356,7 +369,8 @@
         ${subHead('基本信息')}
         <div class="admin-detail-grid">
           <div><span>钱包地址</span><b><code>${esc(d.address)}</code></b></div>
-          <div><span>等级${Number(d.displayLevel) > Number(d.level || 0) ? '（真实 / 展示）' : ''}</span><b>A${d.level || 0}${Number(d.displayLevel) > Number(d.level || 0) ? ` <span style="color:#0e9c88">/ A${d.displayLevel}</span>` : ''}</b></div>
+          <div><span>V 等级</span><b>${levelLabel(d.level)} · ${d.levelMode === 'manual' ? '后台设置' : '自动评定'}</b></div>
+          <div><span>自动评定等级</span><b>${levelLabel(d.autoLevel)}</b></div>
           <div><span>USDT 余额</span><b>${amount(d.usdtBalance)} USDT</b></div>
           <div><span>SVX 余额</span><b>${amount(d.aixBalance)} SVX</b></div>
           <div><span>个人业绩</span><b>${amount(d.personalHeld)} SVX</b></div>
@@ -674,7 +688,7 @@
   document.querySelectorAll('[data-close-detail]').forEach(el => el.addEventListener('click', () => {
     byId('admin-user-detail-modal').hidden = true;
   }));
-  document.querySelectorAll('[data-open-funds]').forEach(button => button.addEventListener('click', () => window.open('/funds-admin.html', '_blank', 'noopener,noreferrer')));
+  document.querySelectorAll('[data-open-funds]').forEach(button => button.addEventListener('click', () => window.open('/funds-admin.html?v=20261115-admin-tools-1' + (button.dataset.openFunds === 'pools' ? '#pools' : ''), '_blank', 'noopener,noreferrer')));
   byId('admin-refresh').addEventListener('click', loadAll);
   byId('admin-user-search').addEventListener('input', () => {
     ++usersRequestSeq;
@@ -741,7 +755,7 @@
   document.querySelectorAll('[data-admin-page]').forEach(button => button.addEventListener('click', () => {
     navigate(button.dataset.adminPage);
     // mobile: 点菜单后自动收起侧栏
-    try { document.body.classList.remove('admin-nav-open'); } catch (_) {}
+    setNav(false);
   }));
   document.querySelectorAll('[data-jump-page]').forEach(button => button.addEventListener('click', () => navigate(button.dataset.jumpPage)));
 
@@ -998,14 +1012,20 @@
     const modes = [['daily','🎯 每天涨跌固定','#f6c454'],['sideways','〰 基本走平','#50d2c2'],['up','📈 慢慢涨','#50d2a8'],['down','📉 慢慢跌','#f26c78'],['manual','⏸ 价格固定不动','#81918e']];
     const modeDesc = {
       daily: '每天按下方“每天涨跌多少 %”缓慢走完，过程中只保留小幅波动，第二天北京时间 00:00 自动重新开始。',
+      scheduled: '从保存时的当前报价出发，用完整24小时到达目标价；到达后保持目标价，不自动复利。前台标记为平台报价走势。',
       sideways: '价格小幅波动，总体基本走平。',
       up: '价格缓慢上涨（约每分钟 +0.08%），K 线自动生成。',
       down: '价格缓慢下跌（约每分钟 -0.08%），K 线自动生成。',
-      manual: '价格完全固定不动，K 线停止推进。点“重置开盘”后会自动切到这个模式。',
+      manual: '报价保持当前价格，K线按时间横向延伸。点“重置开盘”后会自动切到这个模式。',
     };
     const tip = (html) => `<div style="font-size:12px;color:#5b6b66;margin:6px 0 10px">${html}</div>`;
     const stat = (label, value, color) => `<div class="admin-a-stat"><small>${esc(label)}</small><b style="color:${color}">${esc(value)}</b></div>`;
     const pct = Number(settings.dailyChangePct ?? 1);
+    const target = s.targetProgress;
+    const targetTime = value => new Date(Number(value) * 1000).toLocaleString('zh-CN', {timeZone:'Asia/Shanghai',hour12:false});
+    const targetLine = mode === 'scheduled' && target
+      ? `起点 $${Number(target.startPrice).toFixed(6)} → 目标 $${Number(target.targetPrice).toFixed(6)}；进度 ${Number(target.progressPct).toFixed(2)}%${target.completed ? '（已完成，保持目标价）' : ''}。<br>开始：${targetTime(target.startTimeS)}；完成：${targetTime(target.endTimeS)}（北京时间）`
+      : '当前未运行24小时目标计划；保存目标前，继续使用当前行情模式。';
     const dp = s.dailyProgress || null;
     const dailyLine = dp ? (dp.fixed
       ? tip(`🎯 阶梯恒定价：今日全天恒定 <b style="color:#0e9c88">$${Number(dp.targetEodPrice).toFixed(4)}</b>（锚定 $${Number(dp.startPrice).toFixed(4)} ${pct >= 0 ? '+' : ''}${pct}%），每天北京时间 00:00 跳到下一档价位`)
@@ -1016,6 +1036,15 @@
         ${stat('今日成交量 (SVX)', aFmt(pool.todayVolumeA, 0), '#8a7dff')}
         ${stat('今日成交额 (U)', aFmt(pool.todayVolumeUsdt, 2), '#f6c454')}
         ${stat('分红池 (SVX)', aFmt(pool.dividendPool, 0), '#50d2a8')}
+      </div>
+      <div class="admin-a-card">
+        <h3>🎯 24小时目标报价</h3>
+        ${tip('输入目标价格后，从当前报价缓慢推进，完整24小时到达目标价，到达后保持。报价K线只记录已经走过的时间，不预画未来，不生成成交量。重新保存会从当时当前价重新开始24小时。')}
+        ${tip(targetLine)}
+        <div class="admin-a-form-grid">
+          <label>目标价格 (USDT，最多6位小数)<input id="a-target-price" type="number" min="0.0001" step="0.000001" value="${Number(target?.targetPrice || pool.priceUsdt || 0.1)}"></label>
+          <label style="align-self:flex-end">${aBtn('启动24小时报价计划', {id:'a-save-target'})}</label>
+        </div>
       </div>
       <div class="admin-a-card">
         <h3>📈 行情模式（点一下立即生效）</h3>
@@ -1076,6 +1105,14 @@
     // 绑定 kline 事件
     root.querySelectorAll('.admin-a-mode').forEach(b=>{b.addEventListener('click',async()=>{try{await aApi('/kline/mode',{method:'POST',body:JSON.stringify({mode:b.dataset.mode})});toast('已切换 '+b.textContent);await loadAKline();}catch(e){toast(e.message);}});});
     const $id = (id)=>document.getElementById(id);
+    $id('a-save-target')?.addEventListener('click', async () => {
+      const button = $id('a-save-target'), value = $id('a-target-price').value.trim();
+      if (!/^\d+(?:\.\d{1,6})?$/.test(value) || !(Number(value) >= 0.0001)) return toast('请输入不少于0.0001、最多6位小数的目标报价');
+      if (!await confirmDialog(`当前报价 $${Number(pool.priceUsdt).toFixed(6)} → 目标 $${Number(value).toFixed(6)}，将在保存后24小时内逐步完成，到达后保持。该报价会用于平台交易，确认启动？`)) return;
+      button.disabled = true;
+      try { await aApi('/kline/target', {method:'POST',body:JSON.stringify({targetPrice:value})}); toast('24小时目标报价计划已启动'); await loadAKline(); }
+      catch (error) { toast(error.message); button.disabled = false; }
+    });
     const aSetBtn = (id, label, ok=true) => { const el=$id(id); if(!el)return; const t=el.textContent; el.disabled=true; el.textContent=label; setTimeout(()=>{el.textContent=t; el.disabled=false;}, 1500); if(ok)toast(label); };
     $id('a-save-mode')?.addEventListener('click', async ()=>{ try{await aApi('/kline/mode',{method:'POST',body:JSON.stringify({dailyChangePct: Number($id('a-daily-pct').value ?? 1), volatility: Number($id('a-vol').value || 1)})}); aSetBtn('a-save-mode','✓ 已保存'); await loadAKline(); }catch(e){toast(e.message);}});
     $id('a-reset-open')?.addEventListener('click', async ()=>{ try{const p=Number($id('a-reset-price').value); if(!(p>0)){toast('请输入正确的开盘价');return;} if(!await confirmDialog(`⚠ 将清空全部历史 K 线，从 $${p} 重新开始，并把价格固定在 $${p}（模式切为“价格固定不动”）。确定？`))return; await aApi('/kline/rebuild',{method:'POST',body:JSON.stringify({basePrice:p})}); await aApi('/kline/mode',{method:'POST',body:JSON.stringify({mode:'manual'})}); aSetBtn('a-reset-open',`✓ 已重置到 $${p} 并固定`); await loadAKline(); }catch(e){toast(e.message);}});

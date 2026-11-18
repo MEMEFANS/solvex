@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from './ui/dial
 import { useProfile } from '@/hooks/use-profile';
 import { useWallet } from '@/hooks/use-wallet';
 import { api, postOnce, walletIdentity } from '@/lib/api';
+import { refreshAction } from '@/lib/action-refresh';
 import { formatDecimal, formatUnits, number, toUnits, units } from '@/lib/utils';
 import type { PoolTerm } from '@/types';
 
@@ -85,7 +86,7 @@ export function PoolInvestDialog({ tier, tiers, term, open, onOpenChange }: {
       if (identity !== walletIdentity()) throw new Error('钱包状态已变化，请重新操作');
       await postOnce('a-token/nodes/open', { coins: raw }, 'pool');
       toast.success('已投入 ' + formatDecimal(raw, 0) + ' SVX，周期 ' + (latest.days || term.days) + ' 天');
-      await client.invalidateQueries({ predicate: q => q.queryKey[0] !== 'plans' });
+      await refreshAction(client, 'pool', wallet);
       window.Portal?.invalidate();
       onOpenChange(false);
     } catch (error) {
