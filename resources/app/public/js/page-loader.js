@@ -2,7 +2,7 @@
 (() => {
   const scripts = new Map(), pages = new Map(), ready = new Set();
   const version = '20261111-domain-svxfree-1';
-  const versions = { 'trade-chart':'20261115-chart-incremental-1', 'a-token-trade':'20261118-svx-illustration-1', 'mobile-trade':'20261112-mobile-ui-1', 'a-token-transfer':'20261111-domain-light-3', 'platform-client':'20261111-domain-light-3', assets:'20261111-domain-brand-1', 'wallet-funds':'20261111-domain-light-3', earn:'20261111-buyfee0-1' };
+  const versions = { 'trade-chart':'20261115-chart-incremental-1', 'a-token-trade':'20261118-svx-illustration-1', 'mobile-trade':'20261112-mobile-ui-1', 'a-token-transfer':'20261111-domain-light-3', 'platform-client':'20261111-domain-light-3', assets:'20261111-domain-brand-1', 'wallet-funds':'20261120-withdrawal-balance-1', earn:'20261111-buyfee0-1' };
   const js = name => `/js/${name}.js?v=${versions[name] || version}`;
   const chart = '/vendor/lightweight-charts.js?v=20261111-domain-light-3';
   const deps = {

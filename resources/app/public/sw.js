@@ -7,7 +7,7 @@
  *  - 其余同源 GET     → 不接管，走浏览器默认行为
  * 注意：修改静态文件需升级对应 ?v= 版本号，或递增 SW_VERSION 重建缓存。
  */
-const SW_VERSION = 'solvex-static-v55-svx-illustration';
+const SW_VERSION = 'solvex-static-v56-withdrawal-balance';
 const STATIC_PREFIXES = ['/app/assets/', '/js/', '/styles/', '/vendor/', '/assets/'];
 // 文件名即内容哈希：URL 不变内容就永不变，新版本以新 URL 发布，缓存后无需任何再校验。
 const IMMUTABLE_PREFIXES = ['/app/assets/'];
