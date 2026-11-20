@@ -40,7 +40,7 @@ function userFacingReason(reason) {
 
 // 提现规则文案：后台开启整十提现后，明确提示金额必须为 10 的整数倍
 function withdrawRuleText() {
-  const fee = walletConfig?.withdrawalFeeBps ? '另收2%手续费，全额进入LP池' : '无手续费';
+  const fee = walletConfig?.withdrawalFeeBps ? '另收2%手续费（到账100 U，合计扣102 U）' : '无手续费';
   return walletConfig?.usdtMultipleOfTen
     ? '单笔最小 1 USDT，且金额必须为 10 的整数倍（10/20/30…）· '+fee
     : '单笔最小 1 USDT · '+fee;
@@ -56,7 +56,7 @@ function updateWithdrawRuleHints() {
 
 // 整十提现前端预校验（与后端 requestWithdrawal 同口径，6 位小数精度取整避免浮点误差）
 function assertMultipleOfTen(amountNum) {
-  if (walletConfig?.usdtMultipleOfTen && Math.round(Number(amountNum) * 1e6) % (10 * 1e6) !== 0) {
+  if (walletConfig?.usdtMultipleOfTen && usdtWithdrawalQuote(amountNum).amount % 10000000n !== 0n) {
     throw new Error('当前已开启整十提现，USDT 提现金额必须为 10 的整数倍');
   }
 }
@@ -71,10 +71,54 @@ function usdtWithdrawalQuote(raw) {
   return {amount,fee,total:amount + fee,feeText:display(fee),totalText:display(amount + fee)};
 }
 
-function assertWithdrawalBalance(raw) {
+function withdrawalUnitsText(units) {
+  return `${units / 1000000n}.${String(units % 1000000n).padStart(6, '0')}`.replace(/\.?0+$/, '');
+}
+
+function maxUsdtWithdrawal(profile) {
+  const balance = usdtWithdrawalQuote(profile?.balances?.USDT || '0').amount;
+  // Backend floors the fee to six decimals. This is the largest amount whose
+  // amount + floor(amount * bps / 10000) fits the available balance.
+  const bps = BigInt(walletConfig?.withdrawalFeeBps || 0);
+  let max = (10000n * (balance + 1n) - 1n) / (10000n + bps);
+  if (walletConfig?.usdtMultipleOfTen) max = max / 10000000n * 10000000n;
+  return max >= 1000000n ? max : 0n;
+}
+
+function assertWithdrawalBalance(raw, profile) {
   const quote = usdtWithdrawalQuote(raw);
-  const balance = usdtWithdrawalQuote(walletProfile?.balances?.USDT || '0').amount;
-  if (quote.total > balance) throw new Error('可用 USDT 余额不足，需包含2%手续费');
+  const balance = usdtWithdrawalQuote(profile.balances.USDT).amount;
+  if (quote.total > balance) throw new Error(`余额不足：到账 ${raw} U 需合计扣 ${withdrawalUnitsText(quote.total)} U，当前最多可提 ${withdrawalUnitsText(maxUsdtWithdrawal(profile))} U`);
+}
+
+function withdrawalWalletGuard() {
+  const address = String(connectedWalletAddress || '').toLowerCase();
+  const revision = window.getWalletStateRevision?.();
+  return () => {
+    if (!address || address !== String(connectedWalletAddress || '').toLowerCase()
+      || revision !== window.getWalletStateRevision?.()) {
+      throw new Error('钱包已切换，请重新打开提现');
+    }
+    return address;
+  };
+}
+
+async function refreshWithdrawalProfile() {
+  const guard = withdrawalWalletGuard();
+  let profile;
+  try {
+    profile = await walletApi('/api/wallet/profile', { cache:'no-store', timeoutMs:10000 });
+  } catch {
+    throw new Error('最新余额读取失败，请重试');
+  }
+  const address = guard();
+  if (!profile?.authenticated || profile.address?.toLowerCase() !== address) {
+    throw new Error('登录状态已变化，请重新连接并验证钱包');
+  }
+  if (profile.balances?.USDT == null) throw new Error('最新余额读取失败，请重试');
+  usdtWithdrawalQuote(profile.balances.USDT);
+  renderWalletProfile(profile);
+  return profile;
 }
 
 function renderWalletFunds(profile) {
@@ -242,6 +286,8 @@ window.solvexWalletBridge = Object.assign(window.solvexWalletBridge || {}, {
 
 async function submitWithdrawal() {
   const button = $('withdraw-submit');
+  if (button.dataset.withdrawing === '1') return;
+  button.dataset.withdrawing = '1';
   button.disabled = true;
   try {
     await ensurePlatformSession(button);
@@ -257,8 +303,14 @@ async function submitWithdrawal() {
     if (amountNum < 1) {
       throw new Error('最小提现金额为 1 USDT');
     }
-    assertMultipleOfTen(amountNum);
-    assertWithdrawalBalance(amountRaw);
+    const guard = withdrawalWalletGuard();
+    await loadWalletConfig();
+    guard();
+    if (!walletConfig.withdrawalEnabled) throw new Error('提现功能暂未开放');
+    const freshProfile = await refreshWithdrawalProfile();
+    assertMultipleOfTen(amountRaw);
+    assertWithdrawalBalance(amountRaw, freshProfile);
+    guard();
     const fingerprint = `${connectedWalletAddress}:${$('withdraw-network').value}:${amountRaw}`;
     let pending = {};
     try { pending = JSON.parse(sessionStorage.getItem('wg_pending_withdrawal') || '{}'); } catch { /* reset below */ }
@@ -272,6 +324,7 @@ async function submitWithdrawal() {
     const timestamp = String(Date.now());
     const message = `Solvex 提现确认：${amountRaw} USDT${walletConfig?.withdrawalFeeBps ? '（另收2%手续费）' : ''}，编号 ${requestId}，时间：${timestamp}`;
     const signature = await connectedProvider.request({ method:'personal_sign', params:[message, connectedWalletAddress] });
+    guard();
     const result = await walletApi('/api/wallet/withdrawals', {
       method:'POST', headers:{ 'Idempotency-Key':requestId }, body:JSON.stringify({
         asset:'USDT',
@@ -290,13 +343,16 @@ async function submitWithdrawal() {
     // 后端业务校验信息均为中文（如“必须为 10 的整数倍”），直接透传；技术性英文错误用兜底文案
     setAccountStatus('withdraw-status', /[\u4e00-\u9fa5]/.test(raw) ? raw : '提现失败，请重试', 'error');
   }
-  finally { button.disabled = false; }
+  finally { delete button.dataset.withdrawing; button.disabled = !walletConfig?.withdrawalEnabled; }
 }
 
 
 // ============ USDT 链上提现 modal（与 SVX 提现风格统一）============
 // 复用 SVX 提现的 .awd-* CSS，视觉 1:1 对齐；收款地址强制为当前连接钱包，不可输入
 (function () {
+  let freshProfile = null;
+  let opening = 0;
+  let submitting = false;
   function $(id) { return document.getElementById(id); }
   function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'})[c]); }
   function shortAddr(a) { a = String(a||''); return a.length > 12 ? `${a.slice(0,6)}…${a.slice(-4)}` : a; }
@@ -326,7 +382,8 @@ async function submitWithdrawal() {
             <div class="awd-field">
               <label>提现数量（USDT）</label>
               <input id="uswd-amount" type="number" step="0.000001" min="0" placeholder="最小 1 USDT">
-              <div class="awd-hint" id="uswd-rule-hint">单笔最小 1 USDT · 另收2%手续费进入LP</div>
+              <div class="awd-hint" id="uswd-rule-hint">单笔最小 1 USDT · 另收2%手续费</div>
+              <div class="awd-hint">最多可提 <span id="uswd-max-amount">-</span> U <button id="uswd-max" type="button" class="awd-refresh" disabled>填入最大金额</button></div>
             </div>
             <div class="awd-field">
               <label>提现网络</label>
@@ -341,7 +398,7 @@ async function submitWithdrawal() {
             <div class="awd-quote" id="uswd-quote">
               <div class="awd-quote-row"><span>提现金额</span><b id="uswd-q-amount">-</b></div>
               <div class="awd-quote-row"><span>实际到账（链上）</span><b id="uswd-q-receive">-</b></div>
-              <div class="awd-quote-row"><span>手续费（进入LP）</span><b id="uswd-q-fee">-</b></div>
+              <div class="awd-quote-row"><span>另收手续费</span><b id="uswd-q-fee">-</b></div>
               <div class="awd-quote-row"><span>合计扣款</span><b id="uswd-q-total">-</b></div>
               <div class="awd-quote-row"><span>网络</span><b id="uswd-q-network">BSC</b></div>
               <div class="awd-quote-row"><span>可用 USDT 余额</span><b id="uswd-q-balance">-</b></div>
@@ -371,6 +428,12 @@ async function submitWithdrawal() {
     modal.querySelector('#uswd-amount').addEventListener('input', () => { setStatus(''); updateQuote(); });
     modal.querySelector('#uswd-network').addEventListener('change', updateQuote);
     modal.querySelector('#uswd-submit').addEventListener('click', submit);
+    modal.querySelector('#uswd-max').addEventListener('click', () => {
+      if (!freshProfile || submitting) return;
+      $('uswd-amount').value = withdrawalUnitsText(maxUsdtWithdrawal(freshProfile));
+      setStatus('');
+      updateQuote();
+    });
     modal.querySelector('#uswd-refresh').addEventListener('click', loadRecords);
     return modal;
   }
@@ -399,10 +462,14 @@ async function submitWithdrawal() {
     if ($('uswd-q-fee')) $('uswd-q-fee').textContent=amount>0&&quote?fmtUsd(quote.feeText)+' U':'-';
     if ($('uswd-q-total')) $('uswd-q-total').textContent=amount>0&&quote?fmtUsd(quote.totalText)+' U':'-';
     if ($('uswd-q-network')) $('uswd-q-network').textContent = (walletConfig?.networks || []).find(n => n.id === net)?.name || net.toUpperCase();
-    if ($('uswd-q-balance')) $('uswd-q-balance').textContent = fmtUsd(walletProfile?.balances?.USDT || 0) + ' U';
+    if ($('uswd-q-balance')) $('uswd-q-balance').textContent = freshProfile ? fmtUsd(freshProfile.balances.USDT) + ' U' : '-';
+    if ($('uswd-max-amount')) $('uswd-max-amount').textContent = freshProfile ? fmtUsd(withdrawalUnitsText(maxUsdtWithdrawal(freshProfile))) : '-';
+    if ($('uswd-max')) $('uswd-max').disabled = !freshProfile || submitting || maxUsdtWithdrawal(freshProfile) === 0n;
   }
 
   async function submit() {
+    if (submitting) return;
+    submitting = true;
     const btn = $('uswd-submit');
     if (btn) btn.disabled = true;
     try {
@@ -410,15 +477,25 @@ async function submitWithdrawal() {
       if (!connectedWalletAddress || walletProfile?.address?.toLowerCase() !== connectedWalletAddress.toLowerCase()) {
         throw new Error('当前连接钱包核对失败，请重新连接钱包');
       }
+      const guard = withdrawalWalletGuard();
       const amountRaw = String($('uswd-amount').value || '').trim();
       const amountNum = Number(amountRaw);
       if (!Number.isFinite(amountNum) || amountNum <= 0) throw new Error('请输入有效的提现金额');
       if (amountNum < 1) throw new Error('最小提现金额为 1 USDT');
-      assertMultipleOfTen(amountNum);
-      assertWithdrawalBalance(amountRaw);
       const network = $('uswd-network').value;
       if (!network) throw new Error('请选择提现网络');
-      setStatus('正在提交...', 'info');
+      setStatus('正在核对最新余额...', 'info');
+      freshProfile = null;
+      updateQuote();
+      await loadWalletConfig();
+      guard();
+      updateWithdrawRuleHints();
+      if (!walletConfig.withdrawalEnabled) throw new Error('提现功能暂未开放');
+      freshProfile = await refreshWithdrawalProfile();
+      updateQuote();
+      assertMultipleOfTen(amountRaw);
+      assertWithdrawalBalance(amountRaw, freshProfile);
+      guard();
       const fingerprint = `${connectedWalletAddress}:${network}:${amountRaw}`;
       let pending = {};
       try { pending = JSON.parse(sessionStorage.getItem('wg_pending_withdrawal') || '{}'); } catch { /* reset below */ }
@@ -432,6 +509,7 @@ async function submitWithdrawal() {
       const timestamp = String(Date.now());
       const message = `Solvex 提现确认：${amountRaw} USDT${walletConfig?.withdrawalFeeBps ? '（另收2%手续费）' : ''}，编号 ${requestId}，时间：${timestamp}`;
       const signature = await connectedProvider.request({ method:'personal_sign', params:[message, connectedWalletAddress] });
+      guard();
       const result = await walletApi('/api/wallet/withdrawals', {
         method:'POST', headers:{ 'Idempotency-Key':requestId }, body:JSON.stringify({
           asset:'USDT', network, amount:amountRaw, signature, timestamp,
@@ -440,15 +518,18 @@ async function submitWithdrawal() {
       sessionStorage.removeItem('wg_pending_withdrawal');
       $('uswd-amount').value = '';
       setStatus('提现申请已提交', 'ok');
+      freshProfile = null;
+      try { freshProfile = await refreshWithdrawalProfile(); } catch { /* committed; next attempt refreshes again */ }
       updateQuote();
-      if (typeof loadWalletProfile === 'function') await loadWalletProfile();
     } catch (e) {
       if (Number(e?.code) === 4001 || /denied|rejected|cancel/i.test(e?.message || '')) { setStatus('已取消提现', 'info'); return; }
       const raw = String(e?.message || '');
       // 后端业务校验信息均为中文（如“必须为 10 的整数倍”），直接透传；技术性英文错误用兜底文案
       setStatus(/[\u4e00-\u9fa5]/.test(raw) ? raw : '提现失败，请重试', 'error');
     } finally {
-      if (btn) btn.disabled = false;
+      submitting = false;
+      updateQuote();
+      if (btn) btn.disabled = !walletConfig?.withdrawalEnabled || !freshProfile;
     }
   }
 
@@ -484,12 +565,28 @@ async function submitWithdrawal() {
   }
 
   async function open() {
+    if (submitting) return;
+    const sequence = ++opening;
     ensureModal();
-    // 配置仅在页面初始化时加载一次；若当时恰逢服务重启/网络抖动导致失败，此处兜底重新拉取，
-    // 避免 walletConfig 为 null 时误报“服务器尚未配置 PLATFORM_WITHDRAWAL_ADDRESS”
-    if (!walletConfig) {
-      try { await loadWalletConfig(); } catch { /* 下方按状态分支提示 */ }
+    freshProfile = null;
+    document.getElementById('usdt-withdrawal-modal').classList.add('awd-show');
+    switchTab('form');
+    $('uswd-submit').disabled = true;
+    setStatus('正在读取最新余额...', 'info');
+    updateQuote();
+    try {
+      const guard = withdrawalWalletGuard();
+      await loadWalletConfig();
+      guard();
+      if (sequence !== opening) return;
+      freshProfile = await refreshWithdrawalProfile();
+    } catch (error) {
+      if (sequence !== opening) return;
+      setStatus(error.message || '余额读取失败，请重新打开提现', 'error');
+      updateQuote();
+      return;
     }
+    if (sequence !== opening) return;
     updateWithdrawRuleHints();
     // 填充网络选项
     const netSelect = $('uswd-network');
@@ -514,15 +611,25 @@ async function submitWithdrawal() {
     } else {
       setStatus('');
     }
-    document.getElementById('usdt-withdrawal-modal').classList.add('awd-show');
-    switchTab('form');
+    $('uswd-submit').disabled = !walletConfig?.withdrawalEnabled || !addr;
     updateQuote();
   }
 
   function close() {
+    opening += 1;
     const m = $('usdt-withdrawal-modal');
     if (m) m.classList.remove('awd-show');
   }
+
+  window.addEventListener('walletstatechange', () => {
+    freshProfile = null;
+    opening += 1;
+    if ($('usdt-withdrawal-modal')?.classList.contains('awd-show')) {
+      setStatus('钱包状态已变化，请重新打开提现', 'error');
+      $('uswd-submit').disabled = true;
+      updateQuote();
+    }
+  });
 
   window.USDTWithdrawal = { open, close };
 })();

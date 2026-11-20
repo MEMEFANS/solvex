@@ -1,9 +1,9 @@
 {
   "version": 1,
-  "id": "e2da5133c3e1-2057427c0cbc",
-  "sourceDigest": "e2da5133c3e1bacc4be46fe3ce867e9ffe6df010c922db6526d422aa5c76ec99",
+  "id": "dd0f803b8789-2057427c0cbc",
+  "sourceDigest": "dd0f803b87895856822618fc30037640f3145a36c125cb0087b914339815c890",
   "assetDigest": "2057427c0cbc2ef472ced13f8ac5a2c9c03478083a9b73bda521681cbebfb477",
-  "builtAt": "2026-11-18T15:36:02.871Z",
+  "builtAt": "2026-11-20T10:48:11.200Z",
   "sources": [
     {
       "path": "frontend/README.md",
@@ -671,7 +671,7 @@
     },
     {
       "path": "public/js/page-loader.js",
-      "sha256": "4a735f5ea44931bd03abdc0b3d7505c92d0f0be37fb2556ad9f6d34bfb7aa71a"
+      "sha256": "236232cd92cde8d491124be0260d3cd1c1eddeb91c8bcbd28c2c8f7b83ce8696"
     },
     {
       "path": "public/js/platform-client.js",
@@ -739,7 +739,7 @@
     },
     {
       "path": "public/js/wallet-funds.js",
-      "sha256": "499c15fa26fd1e955404f436da125fb3d198a993558b1001315d258032ba4001"
+      "sha256": "f756affe06c8eb8e12e43ef2cf39671b3fe3b097f451d743f2d1caee43a1051d"
     },
     {
       "path": "public/js/wallet.js",
@@ -1067,5 +1067,5 @@
       "bytes": 253560
     }
   ],
-  "entrySha256": "abaff3067cb49c4a77686d405cd861506cbdc08e12ca11a8def11c0be3614df6"
+  "entrySha256": "37b56ba275e3b69710dd5f092e063401c61e48d5a90765a1e5fd60488bd5a22e"
 }
