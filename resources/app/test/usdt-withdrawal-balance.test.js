@@ -26,6 +26,7 @@ try {
     window.currentWalletProfile = window.walletProfile;
     window.walletConfig = null;
     window.serverBalance = '102';
+    window.platformBalance = '102';
     window.failRead = false;
     window.profileReadCount = 0;
     window.signatures = [];
@@ -51,6 +52,7 @@ try {
         if(window.holdProfile)await window.holdProfile;
         return profile;
       }
+      if(url.startsWith('/api/platform/profile'))return {account:{availableMargin:window.platformBalance}};
       if(url==='/api/wallet/withdrawals'){
         const body=JSON.parse(options.body);
         window.posts.push({body,headers:options.headers});
@@ -58,6 +60,7 @@ try {
         const a=toUnits(body.amount), remaining=toUnits(window.serverBalance)-a-a*200n/10000n;
         if(remaining<0n)throw Error('平台账户余额不足');
         window.serverBalance=`${remaining/1000000n}.${String(remaining%1000000n).padStart(6,'0')}`;
+        window.platformBalance=window.serverBalance;
         return {id:'mock',status:'pending_review'};
       }
       throw Error('Unexpected API '+url);
@@ -85,7 +88,7 @@ try {
   assert.equal(await page.evaluate(()=>signatures[0].params[0].includes('另收2%手续费')),true);
   assert.equal(await text('uswd-q-balance'),'0 U','Refresh after success');
 
-  await page.evaluate(()=>{serverBalance='100';});
+  await page.evaluate(()=>{serverBalance='100';platformBalance='100';});
   await open();
   await amount('100');
   await submit();
@@ -97,24 +100,24 @@ try {
   assert.equal(await text('uswd-status'),'提现申请已提交','MAX must include exact fee flooring');
   assert.equal(await page.evaluate(()=>serverBalance),'0.000000');
 
-  await page.evaluate(()=>{serverBalance='102';});
+  await page.evaluate(()=>{serverBalance='102';platformBalance='102';});
   await open();
-  await page.evaluate(()=>{serverBalance='20';});
+  await page.evaluate(()=>{serverBalance='20';platformBalance='20';});
   await amount('100');
   await submit();
   assert.match(await text('uswd-status'),/最多可提 19.607844 U/,'Refresh again on submit if balance decreased');
   assert.equal(await page.evaluate(()=>posts.length),2);
 
-  await page.evaluate(()=>{serverBalance='102';});
+  await page.evaluate(()=>{serverBalance='102';platformBalance='102';});
   await open();
   await page.evaluate(()=>{failRead=true;});
   await amount('100');
   await submit();
-  assert.match(await text('uswd-status'),/最新余额读取失败/);
+  assert.match(await text('uswd-status'),/平台可用余额读取失败/);
   assert.equal(await page.evaluate(()=>signatures.length),2,'No stale balance fallback when read fails');
   await open();
   assert.equal(await page.$eval('#uswd-submit',el=>el.disabled),true,'Open failure disables submission');
-  await page.evaluate(()=>{failRead=false;config.usdtMultipleOfTen=true;serverBalance='100';});
+  await page.evaluate(()=>{failRead=false;config.usdtMultipleOfTen=true;serverBalance='100';platformBalance='100';});
   await open();
   await page.click('#uswd-max');
   assert.equal(await page.$eval('#uswd-amount',el=>el.value),'90','MAX obeys tens policy');
@@ -139,7 +142,7 @@ try {
     return true;
   }),true);
 
-  await page.evaluate(()=>{config.usdtMultipleOfTen=false;serverBalance='102';});
+  await page.evaluate(()=>{config.usdtMultipleOfTen=false;serverBalance='102';platformBalance='102';});
   await open();
   await amount('100');
   await page.evaluate(other=>{beforeSignReturn=()=>{connectedWalletAddress=other;revision++;window.dispatchEvent(new Event('walletstatechange'));};},other);
@@ -162,7 +165,7 @@ try {
   assert.equal(await page.evaluate(()=>posts.length),3,'Double click creates one request');
 
   // The legacy inline form must use the same strict fresh balance validation.
-  await page.evaluate(()=>{serverBalance='102';walletProfile.balances.USDT='0';document.getElementById('withdraw-amount').value='100';});
+  await page.evaluate(()=>{serverBalance='102';platformBalance='102';walletProfile.balances.USDT='0';document.getElementById('withdraw-amount').value='100';});
   await page.evaluate(()=>submitWithdrawal());
   assert.equal(await text('withdraw-status'),'提现申请已提交');
   assert.equal(await page.evaluate(()=>posts.length),4);
