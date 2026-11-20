@@ -105,17 +105,28 @@ function withdrawalWalletGuard() {
 
 async function refreshWithdrawalProfile() {
   const guard = withdrawalWalletGuard();
-  let profile;
+  let profile, platform;
   try {
-    profile = await walletApi('/api/wallet/profile', { cache:'no-store', timeoutMs:10000 });
+    // 提现额度以平台账户的 availableMargin 为准。wallet/profile 还包含
+    // 链上充值历史与其它资产，不能作为提现可用 U 的唯一来源。
+    [profile, platform] = await Promise.all([
+      walletApi('/api/wallet/profile', { cache:'no-store', timeoutMs:10000 }),
+      walletApi('/api/platform/profile?symbol=BTC', { cache:'no-store', timeoutMs:15000 }),
+    ]);
   } catch {
-    throw new Error('最新余额读取失败，请重试');
+    throw new Error('平台可用余额读取失败，请重试');
   }
   const address = guard();
   if (!profile?.authenticated || profile.address?.toLowerCase() !== address) {
     throw new Error('登录状态已变化，请重新连接并验证钱包');
   }
-  if (profile.balances?.USDT == null) throw new Error('最新余额读取失败，请重试');
+  const platformBalance = platform?.account?.availableMargin;
+  if (platformBalance == null || !/^\d+(?:\.\d{1,6})?$/.test(String(platformBalance))) {
+    throw new Error('平台可用余额读取失败，请重试');
+  }
+  // 后端提现扣的是同一平台 USDT 账本；以平台 profile 的 availableMargin
+  // 覆盖展示 profile，避免页面显示钱包/链上余额造成误判。
+  profile.balances = { ...(profile.balances || {}), USDT:String(platformBalance) };
   usdtWithdrawalQuote(profile.balances.USDT);
   renderWalletProfile(profile);
   return profile;
